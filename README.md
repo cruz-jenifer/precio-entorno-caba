@@ -221,7 +221,7 @@ python -m precio_entorno.eda_delitos
 
 ## Evaluación del modelo
 
-El [pipeline del modelo](docs/modelo.md) cruza los avisos con los delitos de los 12 meses previos a cada captura, por barrio y en un radio de 500 m cuando el pin lo permite. Compara el MAE en USD/m² de la mediana de comparables, un modelo inmobiliario y el mismo modelo con entorno, con la misma partición por aviso, y lo contrasta con un placebo. Con los 1.516 avisos de las inmobiliarias, el cruce por barrio no muestra aporte de los delitos registrados. Con pines aproximados, el pequeño aporte inicial desaparece al sumar transporte, parques, hospitales, escuelas y gastronomía cercanos. El detalle está en [docs/modelo.md](docs/modelo.md).
+El [pipeline del modelo](docs/modelo.md) cruza los avisos con los delitos de los 12 meses previos a cada captura, por barrio y en un radio de 500 m cuando el pin lo permite. Compara el MAE en USD/m² de la mediana de comparables, un modelo inmobiliario y el mismo modelo con entorno, con la misma partición por aviso, y lo contrasta con un placebo. Con la base ampliada del 8 de noviembre de 2026 (3.806 avisos: inmobiliarias, Clarín y Zonaprop), el cruce por barrio no muestra ningún aporte de los delitos registrados. Con pines aproximados, el pequeño aporte inicial desaparece al sumar transporte, parques, hospitales, escuelas y gastronomía cercanos. Los posibles duplicados entre fuentes comparten grupo en la partición. El mejor modelo tiene un MAE de 469 USD/m² en la validación cruzada. El detalle está en [docs/modelo.md](docs/modelo.md).
 
 ```powershell
 python -m precio_entorno.modelo data/raw/<carpeta>/avisos.json --catalogo zonaprop

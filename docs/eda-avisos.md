@@ -2,6 +2,38 @@
 
 Fuente: catálogo consolidado `inmobiliarias-autorizadas` (RE/MAX, Century 21 y Migliorisi), capturado el 7 de noviembre de 2026 con autorización de cada inmobiliaria. Unidad: aviso vigente de un departamento en venta. Son **precios de publicación**, no tasaciones ni precios de cierre.
 
+## Base ampliada · 8 de noviembre de 2026
+
+Las tablas de `data/processed/avisos/` y los gráficos de `docs/img/eda-avisos/` se regeneraron con la base ampliada: inmobiliarias, Clarín y Zonaprop en los 48 barrios. Las secciones siguientes describen la captura del 7 de noviembre.
+
+```powershell
+python -m precio_entorno.eda_avisos data/raw/venta-consolidada-20261108
+```
+
+| Indicador | 7 de noviembre | 8 de noviembre (ampliada) |
+| --- | ---: | ---: |
+| Avisos capturados | 1.628 | 4.007 |
+| Avisos válidos | 1.516 | 3.806 |
+| Barrios con al menos 15 avisos | 21 | 48 |
+| Con coordenadas | 74 % | 89 % |
+| Precio mediano | USD 130.000 | USD 119.900 |
+| USD/m² mediano (P25–P75) | 2.550 (2.015–3.267) | 2.411 (1.855–3.071) |
+| Posibles duplicados entre fuentes | 6 | 221 |
+
+| Fuente | Capturados | Válidos | % válidos | Con coordenadas | Barrios |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Zonaprop | 2.359 | 2.272 | 96,3 % | 2.259 | 48 |
+| RE/MAX | 600 | 583 | 97,2 % | 582 | 46 |
+| Century 21 | 600 | 545 | 90,8 % | 540 | 42 |
+| Migliorisi | 428 | 388 | 90,7 % | 0 | 19 |
+| Clarín | 20 | 18 | 90,0 % | 0 | 3 |
+
+**Lectura:**
+- **La mediana baja porque cambia la muestra, no porque bajen los precios.** Zonaprop aporta hasta 50 avisos por barrio, ordenados por más recientes. Eso suma peso a barrios baratos del sur que antes casi no estaban: Villa Lugano (1.007 USD/m²), Nueva Pompeya (1.224) y Villa Soldati (1.293). La muestra está balanceada por barrio, no es proporcional al mercado.
+- **Los barrios más caros** siguen siendo Puerto Madero (5.608 USD/m²), Colegiales (3.621), Núñez (3.476) y Palermo (3.402).
+- **Los posibles duplicados** son sobre todo avisos de una inmobiliaria que también aparecen en Zonaprop. Se informan y no se eliminan. El modelo los pone en el mismo grupo de partición.
+- **Atípicos:** 153 avisos superan el límite alto de 4.896 USD/m² según el rango intercuartílico, 108 de ellos en Puerto Madero (44), Palermo (39) y Belgrano (25).
+
 ## Cómo reproducirlo
 
 ```powershell

@@ -57,13 +57,30 @@ def load_listings(paths, source, approximate_pins=False):
     df.loc[~df['pin_para_radio'], ['latitude', 'longitude']] = np.nan
     # En un catálogo consolidado, el prefijo del ID identifica a la inmobiliaria.
     df['agency'] = df['id'].map(lambda i: i.split(':', 1)[0] if ':' in i else source.strip().casefold())
+    df['grupo'] = duplicate_groups(df)
     captures = df.groupby('id').size()
     summary = {'archivos': reports, 'observaciones_validas': total,
                'capturas_identicas_descartadas': total - len(df), 'observaciones': len(df),
                'avisos_distintos': int(len(captures)), 'avisos_con_capturas_repetidas': int((captures > 1).sum()),
                'pines_con_precision_declarada': int(accurate.sum()),
-               'pines_usados_para_radio': int(df['pin_para_radio'].sum())}
+               'pines_usados_para_radio': int(df['pin_para_radio'].sum()),
+               'avisos_en_grupos_de_posibles_duplicados': int((df['grupo'] != df['id']).sum()),
+               'grupos_de_posibles_duplicados': int(df.loc[df['grupo'] != df['id'], 'grupo'].nunique())}
     return df, summary
+
+
+def duplicate_groups(df):
+    """Grupo de partición de cada aviso.
+
+    Una misma propiedad puede estar publicada por una inmobiliaria y por un portal. Los
+    avisos de fuentes distintas con mismo barrio, ambientes, m² cubiertos redondeados y
+    precio redondeado a miles comparten grupo, para que la partición no ponga una copia
+    en entrenamiento y otra en prueba. El resto usa su propio ID.
+    """
+    key = (df['neighborhood'].astype(str) + '|' + df['rooms'].astype(str) + '|'
+           + df['covered_area'].round().astype(int).astype(str) + '|' + df['price'].round(-3).astype(int).astype(str))
+    sources = df.groupby(key)['agency'].transform('nunique')
+    return np.where(sources > 1, 'dup:' + key, df['id'])
 
 
 OSM_GROUPS = {
@@ -178,7 +195,7 @@ def environment(listings, crimes, radius_m=RADIUS_M):
 def group_split(df, seed, test_size=0.2):
     from sklearn.model_selection import GroupShuffleSplit
     splitter = GroupShuffleSplit(n_splits=1, test_size=test_size, random_state=seed)
-    return next(splitter.split(df, groups=df['id']))
+    return next(splitter.split(df, groups=df['grupo']))
 
 
 def comparables(train, test):
@@ -259,10 +276,10 @@ def evaluate(df, seed=42, folds=5, control_agency=False):
     mae, levels = score(train, test)
 
     from sklearn.model_selection import GroupKFold
-    n_folds = min(folds, df['id'].nunique())
+    n_folds = min(folds, df['grupo'].nunique())
     fake = placebo(df, seed)
     cv = []
-    for a, b in GroupKFold(n_splits=n_folds).split(df, groups=df['id']):
+    for a, b in GroupKFold(n_splits=n_folds).split(df, groups=df['grupo']):
         fold = score(df.iloc[a], df.iloc[b])[0]
         y = fake.iloc[b]['precio_m2'].to_numpy()
         fold['placebo_entorno'] = float(np.mean(np.abs(y - boosting(fake.iloc[a], fake.iloc[b], env, seed))))

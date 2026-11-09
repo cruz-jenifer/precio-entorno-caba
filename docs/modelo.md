@@ -2,6 +2,52 @@
 
 Este documento responde la pregunta analítica del capstone: ¿la información sobre delitos registrados mejora la predicción del **precio publicado por m² cubierto**, frente a un modelo que solo usa características inmobiliarias y ubicación?
 
+## Resultados con la base ampliada · 8 de noviembre de 2026
+
+**Datos:**
+- **Avisos:** 3.806 departamentos en venta válidos, sumando a las inmobiliarias y Clarín los 2.272 avisos de Zonaprop (48 barrios, con autorización). Antes eran 1.516.
+- **Pines:** 3.381 avisos tienen pin para el cruce por radio, con coordenadas tratadas como aproximadas. Antes eran 1.122.
+- **Delitos:** los de 2025, la ventana de 12 meses anterior a las capturas.
+- **Partición:** 758 avisos de prueba y validación cruzada de 5 pliegues.
+- **Datos guardados:** en `data/processed/ampliado/`.
+
+**Cambio de método: posibles duplicados.** Una misma propiedad puede estar publicada por una inmobiliaria y en Zonaprop. Los avisos de fuentes distintas con mismo barrio, ambientes, m² cubiertos redondeados y precio redondeado a miles ahora comparten grupo en la partición y en la validación cruzada (columna `grupo`). Así una copia no queda en entrenamiento y la otra en prueba. Son 444 avisos en 220 grupos.
+
+Cada celda muestra el MAE en USD/m² de la partición de prueba y el de la validación cruzada, separados por una barra. La última columna dice si el entorno mejora al modelo inmobiliario en los 5 pliegues y si le gana al placebo en los 5.
+
+| Especificación | Inmobiliario | Con delitos | Placebo (CV) | ¿Mejora en todos? / ¿Gana al placebo? |
+| --- | --- | --- | --- | --- |
+| Cruce por barrio | 560 / 525 | 560 / 525 | 525 | No / No |
+| Cruce por barrio + control por inmobiliaria | 561 / 521 | 560 / 524 | 523 | No / No |
+| Pines aproximados | 522 / 482 | 522 / 476 | 493 | Sí / Sí |
+| Pines aproximados + control | 519 / 481 | 521 / 476 | 492 | Sí / Sí |
+| + transporte y gastronomía (OSM) | 524 / 475 | 519 / 472 | 483 | No / Sí |
+| + transporte y gastronomía + control | 521 / 475 | 514 / 471 | 483 | No / Sí |
+| + puntos de interés completos | 521 / 472 | 520 / 468 | 477 | No / No |
+| **+ puntos de interés completos + control** | **514 / 469** | **514 / 467** | 476 | No / No |
+
+**Lectura:**
+1. **Con el cruce por barrio, los delitos no aportan nada.** El MAE de validación cruzada es el mismo con delitos y con placebo (525). Con la base chica había una mejora aparente que ya se explicaba por el placebo; con la base ampliada, ni eso.
+2. **Con pines aproximados y sin puntos de interés, los delitos a 500 m mejoran unos 5 a 6 USD/m²** en la validación cruzada, en los 5 pliegues y por encima del placebo. Es alrededor del 1 % del error. En la partición de prueba no mejoran.
+3. **Al sumar los puntos de interés, el aporte desaparece.** Con la especificación final, los delitos bajan el MAE de 469 a 467 en la validación cruzada. La mejora cambia de signo entre pliegues, no le gana al placebo y en la partición de prueba es nula (514 en los dos modelos). Igual que con la base chica, el aporte inicial de los delitos parece medir actividad urbana y cercanía a servicios.
+4. **La ubicación sí mejora la predicción.** Con control por inmobiliaria, el modelo inmobiliario baja de 481 a 469 USD/m² en la validación cruzada al sumar la distancia a transporte, parques y hospitales, y la cantidad de escuelas y gastronomía cerca. Es alrededor del 19 % de la mediana de 2.411 USD/m².
+5. **Comparación con la base chica:**
+   - **Validación cruzada:** el error del mejor modelo baja de 502 a 469.
+   - **Partición de prueba:** sube de 488 a 514. Ahora tiene 758 avisos en vez de 304 y una composición distinta: Zonaprop aporta hasta 50 avisos por barrio, también en los barrios del sur, donde el precio por m² es más variable.
+   - **Cuál pesa más:** la validación cruzada promedia 5 particiones, así que es la referencia más estable.
+
+**Conclusión:** la base ampliada confirma la del 7 de noviembre. No hay evidencia de que los delitos registrados mejoren la predicción del precio publicado por m². La ubicación respecto de transporte, parques y servicios, en cambio, sí la mejora.
+
+**Para reproducirlo:**
+
+```powershell
+python -m precio_entorno.consolidar data/raw/inmobiliarias-20261107 data/raw/clarin-20261108 data/raw/zonaprop-venta-piloto-20261108 data/raw/zonaprop-venta-20261108 data/raw/zonaprop-venta-20261108-reintento --salida data/raw/venta-consolidada-20261108
+```
+
+```powershell
+python -m precio_entorno.modelo data/raw/venta-consolidada-20261108/avisos.json --catalogo inmobiliarias-autorizadas --pines-aproximados --control-inmobiliaria --osm data/raw/osm-20261107 data/processed/poi-badata --salida data/processed/ampliado/modelo-pines-aproximados-poi-control
+```
+
 ## Resultados · 7 de noviembre de 2026
 
 **Datos:**

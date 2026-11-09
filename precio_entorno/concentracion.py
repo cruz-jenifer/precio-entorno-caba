@@ -26,7 +26,10 @@ LIMITACIONES = [
     'Los pines de hechos pueden ser puntos de referencia compartidos. Los radios de 250 m son '
     'especialmente sensibles a esa imprecisión y al pin aproximado del aviso.',
     'Robo incluye fuerza o violencia según la categoría de la fuente; estos datos no permiten '
-    'aislar todos los robos con violencia contra personas. Hurto se informa por separado.',
+    'aislar todos los robos con violencia contra personas. Hurto se informa por separado. '
+    'Ambos incluyen los subtipos automotor.',
+    'Día (06–19:59 h) y noche (20–05:59 h) duran 14 y 10 horas. Los conteos no se normalizan '
+    'por duración ni por circulación; sin horario no se asigna a ninguna de esas franjas.',
     'Los radios son distancias en línea recta y se superponen: no se suman. Un círculo en el '
     'borde de CABA solo cuenta registros publicados de CABA.',
 ]
@@ -96,12 +99,13 @@ class CrimeIndex:
                 raise ValueError(f'{path.name}: faltan columnas del Mapa del Delito.')
             self.sources.append({'archivo': path.name, 'sha256': sha256(content).hexdigest(),
                                  'url': SOURCE_URL})
+            names = {name: key(name) for name in rows[0]} if rows else {}
             for raw in rows:
                 self.quality['filas_leidas'] += 1
                 if None in raw:
                     self.quality['descartadas'] += 1
                     continue
-                row = {key(k): v for k, v in raw.items()}
+                row = {names[k]: v for k, v in raw.items()}
                 try:
                     day = crime_date(value(row, 'fecha'))
                     year, month = int(day[:4]), int(day[5:7])
@@ -135,6 +139,8 @@ class CrimeIndex:
                     self.quality['robos_hurtos_sin_horario'] += count
                 self.events.append(Event(year, month, key(kind), band, count, lon, lat))
         self.years = sorted(self.months)
+        if not self.years:
+            raise ValueError('No hay registros válidos con fecha y barrio en las fuentes locales.')
         self._grids = {}
 
     def grids(self, kind='todos', band='todas'):

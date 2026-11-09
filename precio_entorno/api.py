@@ -74,7 +74,7 @@ def create_app(demo_path=None, real_path=None, entorno_dir=None, raw_dir=None, w
     def layers():
         marker = entorno_dir / 'resumen.json'
         stamp = marker.stat().st_mtime if marker.exists() else None
-        if cache.get('stamp') != stamp:
+        if 'layers' not in cache or cache.get('stamp') != stamp:
             cache.update(stamp=stamp, layers=entorno.load(entorno_dir) if stamp else None)
         return cache['layers']
 

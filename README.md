@@ -2,6 +2,10 @@
 
 Prototipo local de búsqueda inmobiliaria. Una persona ingresa sus preferencias, compara barrios, guarda una búsqueda y recibe una alerta cuando aparece un aviso que coincide. Los delitos registrados se muestran como contexto y se analizan por separado para el capstone.
 
+El [plan de entrega del capstone](docs/plan-capstone.md) reúne el cronograma de la profesora, las evidencias del repositorio y los pendientes para Analytics, Inference y la defensa comercial.
+
+La [guía del flujo de trabajo](docs/flujo-de-trabajo.md) conecta la operación del producto con Analytics, Inference y el seguimiento en Trello.
+
 ## Ejecutar en Windows
 
 Desde la carpeta `precio-entorno-caba`, en PowerShell:
@@ -28,6 +32,7 @@ Abrí http://127.0.0.1:8000. La API corre solo en la computadora local y su docu
 - **Mapa de la ciudad:** cada barrio tiene un tono según cuántos avisos encajan. Al pasar el cursor por un barrio en la lista, se resalta en el mapa, y al revés.
 - **Ficha del barrio:** al elegir un barrio, el mapa se acerca y la lista pasa a ser su ficha, con el entorno, los avisos que encajan y el botón **Crear alerta**. Los botones sobre el mapa encienden y apagan cada capa.
 - **Datos de ejemplo y reales:** el selector de arriba a la derecha cambia de base. En los datos de ejemplo, una franja avisa que los avisos y los delitos son ficticios.
+- **Registros cerca del aviso:** en datos reales, **Ver registros cerca** abre radios de 250, 500 y 1.000 m para avisos con pin preciso. Se separan robos y hurtos, día y noche, con comparación anual y persistencia. Se usan los CSV anuales oficiales locales y se muestra la advertencia de revisión del informe ejecutivo de 2025. Ver [metodología y límites](docs/mapa-registros.md).
 - **Celular:** el mapa ocupa la pantalla y la lista sube desde abajo.
 
 El diseño está descripto en [docs/ui.md](docs/ui.md).

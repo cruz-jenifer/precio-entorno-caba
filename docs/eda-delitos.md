@@ -1,5 +1,7 @@
 # Informe exploratorio · Delitos registrados en CABA, 2024–2025
 
+**Actualización del mapa, 9/11/2026.** La interfaz ahora analiza [radios alrededor de cada inmueble y persistencia entre años](mapa-registros.md). Los totales por barrio de este informe se conservan como auditoría descriptiva. La [ficha oficial de 2025](https://data.buenosaires.gob.ar/ar/dataset/6976d312-54e9-4398-b721-1504aedcce89/resource/66c0f0f6-e682-403d-abbe-47227d1966fe) advierte que el informe ejecutivo está en revisión por errores detectados. Las comparaciones entre archivos están sujetas a revisión.
+
 Fuente: Mapa del Delito de CABA, [Buenos Aires Data](https://data.buenosaires.gob.ar/dataset/delitos). Unidad: hecho registrado. Período: 1 de enero de 2024 a 31 de diciembre de 2025. Unidad geográfica: barrio (48) y comuna (15). También se usan las coordenadas de cada hecho.
 
 | Archivo | Publicado | SHA-256 |
@@ -119,11 +121,11 @@ Hay una fila por barrio y mes con cobertura en el archivo: **1.152 filas** (48 b
 
 ## 7. Implicancias para el cruce y el modelo
 
-1. **Ventana temporal.** Para avisos capturados en 2026, la ventana previa disponible es 2025, o los últimos 12 meses publicados. Queda un desfase de entre 1 y 2 años que hay que documentar. Si una ventana cruza de 2024 a 2025, el corte entre archivos de la sección 3 puede sesgar los conteos. Por eso es preferible usar un solo año, y 2025 es el más cercano.
+1. **Ventana temporal.** Para avisos capturados en 2026, 2025 es el año previo publicado. El mapa lo contrasta con 2024 para observar persistencia, manteniendo separados los conteos de cada año y el desfase respecto del aviso. El corte entre archivos de la sección 3 y la revisión del informe ejecutivo de 2025 limitan la interpretación. No se presenta la comparación como evidencia de cambio del riesgo individual.
 2. **Variables por barrio y variable `barrio`.** Una variable de delitos por barrio vale lo mismo para todos los avisos del barrio. Si el modelo inmobiliario ya incluye el barrio, el modelo con entorno no puede mejorar el error. Para medir un aporte real hay dos opciones:
    - usar variables que cambien dentro del barrio, como los hechos en un radio alrededor del pin cuando la precisión del aviso lo permita;
    - que el modelo inmobiliario use comuna o coordenadas en lugar de barrio.
-3. **Cruce por coordenadas.** Todas las filas válidas tienen un pin dentro de CABA. Hoy la app guarda solo el barrio, así que el cruce por radio requiere conservar latitud y longitud en el dataset analítico. También requiere revisar los puntos compartidos de la sección 1.
+3. **Cruce por coordenadas.** Todas las filas válidas de estas ediciones tienen un pin dentro del rectángulo aproximado de CABA. La app conserva latitud, longitud y precisión informada del aviso y habilita radios de 250, 500 y 1.000 m si la precisión es de hasta 100 m. Los pines compartidos de la sección 1 siguen siendo una limitación; no se reemplazan ubicaciones faltantes por centroides de barrio.
 4. **Tipos con descartes altos.** Lesiones y amenazas pierden entre el 7 % y el 19 % de sus filas por falta de barrio. Conviene construir las variables del modelo con robos y hurtos, que casi no tienen descartes, y tratar lesiones y amenazas como secundarias.
 5. **Normalización.** Para comparar barrios hace falta la superficie o la población de cada uno, que estos archivos no traen. El dataset de barrios de Buenos Aires Data, con sus geometrías, permitiría calcular hechos por km². Mientras tanto, las proporciones (con arma, nocturnos, por tipo) son más comparables que los conteos.
 6. **Lenguaje.** Los resultados se presentan como hechos registrados, con su período y unidad geográfica. No se construye un puntaje de seguridad.

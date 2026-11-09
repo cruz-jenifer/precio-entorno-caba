@@ -793,5 +793,13 @@ button, input, select { font: inherit; color: inherit; }
 .tabla-registros caption { text-align: left; font-size: var(--t-chico); padding: 0.5rem 0; }
 .radio-elegido { background: var(--jacaranda-tinte); }
 .huella-fuente { overflow-wrap: anywhere; }
-.control-flotante .fuente { max-width: 19rem; margin: 0.25rem 0; }
+.capa-controles { max-width: 100%; }
+.control-flotante { flex-wrap: wrap; max-width: 100%; }
+.control-flotante label { display: inline-flex; align-items: center; gap: 0.375rem; max-width: 100%; }
+.control-flotante select { max-width: 100%; min-width: 0; }
+.control-flotante .fuente { flex-basis: 100%; max-width: 28rem; margin: 0.25rem 0; }
 .ficha > .avisos { display: block; overflow-x: auto; }
+
+@media (max-width: 820px) {
+  .capa-controles { max-height: 28dvh; overflow-y: auto; }
+}

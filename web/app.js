@@ -235,16 +235,18 @@ function renderAnalisisDelitos() {
   const filas = d.resumen_radios.map((r) => `<tr${r.radio_m === Number(estado.delitos.radio) ? ' class="radio-elegido"' : ''}>
     <th scope="row">${r.anio} · ${numero.format(r.radio_m)} m · ${r.tipo === 'robo' ? 'Robo' : 'Hurto'}</th>
     <td>${numero.format(r.diurno)}</td><td>${numero.format(r.nocturno)}</td><td>${numero.format(r.sin_dato)}</td><td>${numero.format(r.total)}</td></tr>`).join('');
-  const maximo = Math.max(1, ...d.resumen_radios.map((r) => r.total));
-  const series = d.resumen_radios.filter((r) => r.radio_m === Number(estado.delitos.radio));
+  const series = d.resumen_radios.filter((r) => r.radio_m === Number(estado.delitos.radio)
+    && (estado.delitos.tipo === 'todos' || r.tipo === estado.delitos.tipo));
+  const valor = (r) => estado.delitos.franja === 'todas' ? r.total : r[estado.delitos.franja];
+  const maximo = Math.max(1, ...series.map(valor));
   const barras = series.map((r) => `<div class="serie-registros"><span>${r.anio} · ${r.tipo === 'robo' ? 'Robo' : 'Hurto'}</span>
-    <div class="barra-registros" aria-hidden="true"><i style="width:${r.total / maximo * 100}%"></i></div><strong>${numero.format(r.total)}</strong></div>`).join('');
+    <div class="barra-registros" aria-hidden="true"><i style="width:${valor(r) / maximo * 100}%"></i></div><strong>${numero.format(valor(r))}</strong></div>`).join('');
   return `<section class="analisis-delitos" aria-live="polite"><h2>Registros y contexto</h2>
     <p class="nota"><strong>Los registros no indican tu probabilidad de sufrir un delito.</strong> Más peatones y actividad pueden concentrar más eventos. Existe subregistro.</p>
     ${d.revision_2025 ? `<p class="revision-fuente">${esc(d.revision_2025)} <a href="${esc(d.revision_url)}" target="_blank" rel="noopener">Ficha oficial</a></p>` : ''}
     <p class="fuente">${esc(d.unidad)} Día: 06–19:59 h. Noche: 20–05:59 h. Sin horario se informa aparte.</p>
     ${d.inmueble ? `<h3>Alrededor del aviso ${esc(d.inmueble.id)}</h3><p class="fuente">Precisión informada del pin: ${d.inmueble.precision_m} m. Los círculos pueden cruzar límites de barrio.</p>
-      <figure class="comparacion-registros"><figcaption>Hechos registrados a ${numero.format(Number(estado.delitos.radio))} m · comparación anual</figcaption>${barras}</figure>
+      <figure class="comparacion-registros"><figcaption>Hechos registrados a ${numero.format(Number(estado.delitos.radio))} m · ${esc(estado.delitos.tipo)} · horario ${esc(estado.delitos.franja)}</figcaption>${barras}</figure>
       <details><summary>Los tres radios · día y noche, por año y tipo</summary><div class="tabla-registros"><table class="avisos"><caption>Conteos acumulativos sin filtros de tipo ni franja; no sumar los radios.</caption>
       <thead><tr><th>Año · radio · tipo</th><th>Día</th><th>Noche</th><th>Sin hora</th><th>Total</th></tr></thead><tbody>${filas}</tbody></table></div></details>`
       : '<p class="nota">Elegí «Ver registros cerca» en un aviso con pin preciso para comparar radios de 250, 500 y 1.000 m. Esta vista general usa celdas, no totales por barrio.</p>'}
@@ -423,6 +425,17 @@ function encuadrar(nombre, inmediato = false) {
   mapa.fitBounds(nombre ? limites(nombre) : limitesCiudad(), { padding: relleno, duration: duracion });
 }
 
+function encuadrarPin(pin) {
+  const dlat = 1100 / 111320;
+  const dlon = dlat / Math.cos(pin.lat * Math.PI / 180);
+  const alto = mapa.getContainer().clientHeight;
+  const controles = document.querySelector('.mapa-arriba').getBoundingClientRect().height;
+  mapa.fitBounds([[pin.lon - dlon, pin.lat - dlat], [pin.lon + dlon, pin.lat + dlat]], {
+    padding: { top: Math.min(controles + 25, alto * 0.3), bottom: celular() ? alto * 0.44 : 50, left: 30, right: 45 },
+    duration: reducido ? 0 : 500,
+  });
+}
+
 /* Capas del barrio elegido */
 
 function claveCapa(clave) {
@@ -535,29 +548,6 @@ function renderControles() {
 
 function muestra(color, etiqueta) {
   return `<li><span class="chip-muestra" style="background:${color}"></span>${esc(etiqueta)}</li>`;
-}
-
-/* Cortes por quintiles de las celdas a la vista, para que cada tono reúna una parte parecida. */
-function cortesQuintiles(valores) {
-  const orden = [...valores].sort((a, b) => a - b);
-  const cortes = [0.2, 0.4, 0.6, 0.8].map((q) => orden[Math.min(orden.length - 1, Math.floor(q * orden.length))]);
-  return [...new Set(cortes)].filter((c) => c < orden.at(-1));
-}
-
-function pasoDelito(hechos, cortes) {
-  const paso = cortes.filter((c) => hechos > c).length;
-  return cortes.length >= 4 ? paso : Math.round((paso * 4) / Math.max(1, cortes.length));
-}
-
-function rangosDelitos(maximo, cortes) {
-  const grupos = new Map();
-  for (let n = 1; n <= maximo; n += 1) {
-    const paso = pasoDelito(n, cortes);
-    if (!grupos.has(paso)) grupos.set(paso, []);
-    grupos.get(paso).push(n);
-  }
-  return [...grupos].map(([paso, ns]) => [DELITOS[paso],
-    ns.length === 1 ? `${ns[0]} ${plural(ns[0], 'hecho', 'hechos')}` : `${ns[0]} a ${ns.at(-1)} hechos`]);
 }
 
 function renderLeyenda() {
@@ -702,6 +692,13 @@ function enteroDe(texto) {
 }
 
 async function cambiarContexto() {
+  // Invalida antes de los awaits para no mostrar un resultado de la base anterior.
+  estado.pedidoDelitos += 1;
+  estado.delitosDatos = null;
+  estado.delitos = { anio: '', tipo: 'todos', franja: 'todas', radio: '500', inmueble: '' };
+  estado.avisos = [];
+  for (const id of ['delitos', 'radios', 'inmueble']) mapa.getSource(id)?.setData(VACIO);
+  renderPanel();
   sincronizarControles();
   guardar();
   try {
@@ -709,9 +706,6 @@ async function cambiarContexto() {
     await cargarBarrios();
     if (estado.seleccionado) {
       await cargarAvisos();
-      estado.delitosDatos = null;
-      estado.delitos = { anio: '', tipo: 'todos', franja: 'todas', radio: '500', inmueble: '' };
-      estado.pedidoDelitos += 1;
       await actualizarCapas();
     }
     renderPanel();
@@ -806,7 +800,7 @@ function conectarEventos() {
       renderChips(); renderPanel();
       await actualizarCapas();
       const pin = estado.delitosDatos?.inmueble;
-      if (pin) mapa.flyTo({ center: [pin.lon, pin.lat], zoom: 14.5, duration: reducido ? 0 : 500 });
+      if (pin) { if (celular()) plegarPanel(false); encuadrarPin(pin); }
       return;
     }
     const fila = e.target.closest('[data-barrio]');
@@ -828,6 +822,7 @@ function conectarEventos() {
     const clave = chip.dataset.capa;
     if (estado.capas.has(clave)) estado.capas.delete(clave); else estado.capas.add(clave);
     chip.setAttribute('aria-pressed', estado.capas.has(clave));
+    renderPanel();
     actualizarCapas();
   });
   $('#capa-controles').addEventListener('change', (e) => {

@@ -166,6 +166,74 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(page.status_code, 200)
         self.assertIn('Precio y Entorno CABA', page.text)
 
+    def test_concentration_preserves_demo_separation_and_validates_filters(self):
+        demo = self.get('/api/delitos/concentracion', barrio='Caballito', modo='demo')
+        self.assertFalse(demo['disponible'])
+        self.assertIn('ficticios', demo['motivo'])
+        data = self.get('/api/delitos/concentracion', barrio='Caballito', radio=250, anio=2025)
+        self.assertTrue(data['disponible'])
+        self.assertEqual(data['anios'], [2025])
+        self.assertIsNone(data['inmueble'])
+        self.assertEqual(data['resumen_radios'], [])
+        self.assertEqual(data['radios']['features'], [])
+        # La vista anual incluye también el registro cercano al límite de Almagro.
+        self.assertEqual(sum(f['properties']['hechos'] for f in data['celdas']['features']), 4)
+        for params in ({'radio': 750}, {'franja': 'madrugada'}, {'tipo': 'Vialidad'}, {'anio': 2026}):
+            response = self.client.get('/api/delitos/concentracion', params={'barrio': 'Caballito', **params})
+            self.assertEqual(response.status_code, 422)
+        self.assertEqual(self.client.get('/api/delitos/concentracion', params={
+            'barrio': 'Caballito', 'inmueble': 'inexistente'}).status_code, 404)
+
+    def test_concentration_uses_annual_sources_precise_listing_and_refreshes_cache(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            raw = root / 'raw'
+            raw.mkdir()
+            first = raw / 'delitos_2024.csv'
+            first.write_bytes(CRIMES.replace(b'2025-', b'2024-'))
+            store = Store(root / 'real.sqlite3')
+            listing = {'id': 'pin', 'neighborhood': 'Caballito', 'price': 100_000, 'covered_area': 45,
+                       'rooms': 2, 'url': 'https://example.invalid/pin', 'captured_at': '2026-11-09',
+                       'currency': 'USD', 'total_area_m2': 50, 'latitude': -34.615, 'longitude': -58.445,
+                       'location_accuracy_m': 50}
+            store.ingest([listing, dict(listing, id='sin-precision', location_accuracy_m=None)], source='prueba')
+            client = TestClient(create_app(real_path=store.path, demo_path=root / 'demo.sqlite3', raw_dir=raw,
+                                          entorno_dir=Path(self.temp.name) / 'entorno'))
+            params = {'barrio': 'Caballito', 'inmueble': 'pin', 'radio': 1000, 'tipo': 'robo', 'franja': 'diurno'}
+            result = client.get('/api/delitos/concentracion', params=params).json()
+            self.assertTrue(result['disponible'])
+            self.assertEqual(result['inmueble']['precision_m'], 50)
+            self.assertEqual(len(result['radios']['features']), 3)
+            self.assertEqual(sum(f['properties']['seleccionado'] for f in result['radios']['features']), 1)
+            self.assertEqual(sum(c['properties']['hechos'] for c in result['celdas']['features']), 1)
+            self.assertEqual(len(result['resumen_radios']), 6)
+            (raw / 'delitos_2025.csv').write_bytes(CRIMES)
+            refreshed = client.get('/api/delitos/concentracion', params=params).json()
+            self.assertEqual(refreshed['anios'], [2024, 2025])
+            self.assertEqual(len(refreshed['fuentes']), 2)
+            self.assertEqual(len(refreshed['resumen_radios']), 12)
+            bad_pin = client.get('/api/delitos/concentracion', params=dict(params, inmueble='sin-precision')).json()
+            self.assertFalse(bad_pin['disponible'])
+            self.assertEqual(client.get('/api/delitos/concentracion', params=dict(params, barrio='Almagro')).status_code, 404)
+            found = client.get('/api/barrios/Caballito/avisos', params={'modo': 'real'}).json()['avisos']
+            self.assertEqual({i['id']: i['pin_utilizable'] for i in found}, {'pin': True, 'sin-precision': False})
+
+    def test_concentration_refuses_changed_import_and_handles_missing_layers(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            (root / 'delitos.csv').write_bytes(CRIMES + b'\n')
+            app = create_app(real_path=self.real, raw_dir=root, entorno_dir=root / 'missing',
+                             demo_path=root / 'demo.sqlite3')
+            client = TestClient(app)
+            response = client.get('/api/delitos/concentracion', params={'barrio': 'Caballito'})
+            self.assertEqual(response.status_code, 200)
+            self.assertFalse(response.json()['disponible'])
+            self.assertIn('no es el mismo archivo', response.json()['motivo'])
+            (root / 'delitos.csv').write_bytes(CRIMES)
+            response = client.get('/api/delitos/concentracion', params={'barrio': 'Caballito'})
+            self.assertFalse(response.json()['disponible'])
+            self.assertIn('capas', response.json()['motivo'])
+
 
 if __name__ == '__main__':
     unittest.main()

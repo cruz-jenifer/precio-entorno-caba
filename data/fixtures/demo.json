@@ -1,0 +1,35 @@
+{
+  "initial": [
+    {"id": "demo-001", "neighborhood": "Caballito", "price": 104000, "covered_area": 46, "rooms": 2},
+    {"id": "demo-002", "neighborhood": "Caballito", "price": 115000, "covered_area": 44, "rooms": 2},
+    {"id": "demo-003", "neighborhood": "Almagro", "price": 98000, "covered_area": 43, "rooms": 2},
+    {"id": "demo-004", "neighborhood": "Almagro", "price": 102000, "covered_area": 47, "rooms": 2},
+    {"id": "demo-005", "neighborhood": "Villa Crespo", "price": 109000, "covered_area": 41, "rooms": 2},
+    {"id": "demo-006", "neighborhood": "Villa Crespo", "price": 89000, "covered_area": 34, "rooms": 1}
+  ],
+  "new": [
+    {"id": "demo-007", "neighborhood": "Caballito", "price": 103000, "covered_area": 48, "rooms": 2},
+    {"id": "demo-008", "neighborhood": "Caballito", "price": 117000, "covered_area": 50, "rooms": 2},
+    {"id": "demo-009", "neighborhood": "Almagro", "price": 105000, "covered_area": 46, "rooms": 2}
+  ],
+  "alquiler": {
+    "initial": [
+      {"id": "demo-alq-001", "neighborhood": "Caballito", "price": 780000, "currency": "ARS", "expenses": 95000, "covered_area": 45, "rooms": 2},
+      {"id": "demo-alq-002", "neighborhood": "Caballito", "price": 850000, "currency": "ARS", "expenses": 110000, "covered_area": 48, "rooms": 2},
+      {"id": "demo-alq-003", "neighborhood": "Almagro", "price": 690000, "currency": "ARS", "expenses": 80000, "covered_area": 42, "rooms": 2},
+      {"id": "demo-alq-004", "neighborhood": "Almagro", "price": 720000, "currency": "ARS", "expenses": null, "covered_area": 44, "rooms": 2},
+      {"id": "demo-alq-005", "neighborhood": "Villa Crespo", "price": 760000, "currency": "ARS", "expenses": 90000, "covered_area": 41, "rooms": 2},
+      {"id": "demo-alq-006", "neighborhood": "Palermo", "price": 900, "currency": "USD", "expenses": 120000, "covered_area": 50, "rooms": 2}
+    ],
+    "new": [
+      {"id": "demo-alq-007", "neighborhood": "Caballito", "price": 790000, "currency": "ARS", "expenses": 100000, "covered_area": 46, "rooms": 2},
+      {"id": "demo-alq-008", "neighborhood": "Caballito", "price": 990000, "currency": "ARS", "expenses": 130000, "covered_area": 52, "rooms": 2},
+      {"id": "demo-alq-009", "neighborhood": "Almagro", "price": 700000, "currency": "ARS", "expenses": 85000, "covered_area": 43, "rooms": 2}
+    ]
+  },
+  "context": [
+    {"neighborhood": "Caballito", "period": "Ejemplo ficticio", "kind": "Hurto", "time_band": "Tarde", "count": 12},
+    {"neighborhood": "Almagro", "period": "Ejemplo ficticio", "kind": "Robo", "time_band": "Noche", "count": 9},
+    {"neighborhood": "Villa Crespo", "period": "Ejemplo ficticio", "kind": "Hurto", "time_band": "Mañana", "count": 7}
+  ]
+}

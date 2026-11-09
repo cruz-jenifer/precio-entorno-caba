@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="es-AR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Precio y Entorno CABA</title>
+  <meta name="description" content="Compará barrios de CABA según tu presupuesto, mirá su entorno en el mapa y creá alertas por avisos nuevos.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,100..900&display=swap" rel="stylesheet">
+  <link href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet">
+  <link href="styles.css" rel="stylesheet">
+</head>
+<body>
+  <header class="barra">
+    <div class="barra-fila">
+      <a class="marca" href="./">Precio y Entorno CABA</a>
+      <div class="barra-extremo">
+        <button class="boton-texto" id="abrir-alertas" type="button">Mis alertas</button>
+        <div class="segmentado segmentado-chico" role="radiogroup" aria-label="Datos de trabajo">
+          <button type="button" role="radio" data-modo="demo" aria-checked="true">Ejemplo</button>
+          <button type="button" role="radio" data-modo="real" aria-checked="false">Reales</button>
+        </div>
+      </div>
+    </div>
+    <form class="filtros" id="filtros" aria-label="Qué estás buscando">
+      <div class="segmentado" role="radiogroup" aria-label="Operación">
+        <button type="button" role="radio" data-operacion="venta" aria-checked="true">Comprar</button>
+        <button type="button" role="radio" data-operacion="alquiler" aria-checked="false">Alquilar</button>
+      </div>
+      <label class="campo">
+        <span class="campo-etiqueta" id="etiqueta-presupuesto">Hasta</span>
+        <select id="moneda" aria-label="Moneda" hidden>
+          <option value="ARS">ARS</option>
+          <option value="USD">USD</option>
+        </select>
+        <span class="campo-unidad" id="moneda-fija">USD</span>
+        <input id="presupuesto" type="text" inputmode="numeric" autocomplete="off" aria-labelledby="etiqueta-presupuesto">
+      </label>
+      <label class="campo">
+        <span class="campo-etiqueta">Desde</span>
+        <input id="superficie" type="text" inputmode="numeric" autocomplete="off" class="corto">
+        <span class="campo-unidad">m² cubiertos</span>
+      </label>
+      <label class="campo">
+        <select id="ambientes">
+          <option value="1">1 ambiente</option>
+          <option value="2" selected>2 ambientes</option>
+          <option value="3">3 ambientes</option>
+          <option value="4">4 ambientes</option>
+          <option value="5">5 ambientes</option>
+        </select>
+      </label>
+      <div class="importa">
+        <button class="boton-filtro" id="abrir-importa" type="button" aria-expanded="false" aria-controls="importa">
+          Lo que me importa
+        </button>
+        <div class="importa-panel" id="importa" hidden>
+          <p class="importa-ayuda">Suma datos a cada barrio y enciende esas capas en el mapa. No se combinan en un puntaje.</p>
+          <fieldset class="importa-opciones" id="preferencias"></fieldset>
+          <label class="importa-nivel" id="nivel-campo">
+            Nivel de las escuelas
+            <select id="nivel">
+              <option value="inicial">Inicial</option>
+              <option value="primario" selected>Primario</option>
+              <option value="secundario">Secundario</option>
+            </select>
+          </label>
+        </div>
+      </div>
+    </form>
+  </header>
+
+  <p class="franja-demo" id="franja-demo">Datos de ejemplo. Los avisos y los delitos son ficticios. El mapa y el entorno son datos abiertos reales.</p>
+
+  <main class="vista">
+    <section class="panel" id="panel" aria-label="Barrios">
+      <button class="panel-asa" id="panel-asa" type="button" aria-expanded="false">Ver lista</button>
+      <div class="panel-contenido" id="contenido" aria-live="polite"></div>
+    </section>
+    <section class="mapa" aria-label="Mapa de CABA">
+      <div id="mapa" class="mapa-lienzo"></div>
+      <div class="mapa-arriba">
+        <p class="mapa-pista" id="mapa-pista">Elegí un barrio para ver subte, plazas, ruido y más en el mapa.</p>
+        <div class="capas" id="capas" role="group" aria-label="Capas del mapa" hidden></div>
+        <div class="capa-controles" id="capa-controles"></div>
+      </div>
+      <div class="leyenda" id="leyenda" aria-live="polite"></div>
+    </section>
+  </main>
+
+  <dialog class="dialogo" id="dialogo-alertas" aria-labelledby="titulo-alertas">
+    <div class="dialogo-cabeza">
+      <h2 id="titulo-alertas">Mis alertas</h2>
+      <button class="boton-texto" type="button" data-cerrar>Cerrar</button>
+    </div>
+    <div id="alertas-contenido"></div>
+  </dialog>
+
+  <dialog class="dialogo" id="dialogo-fuentes" aria-labelledby="titulo-fuentes">
+    <div class="dialogo-cabeza">
+      <h2 id="titulo-fuentes">Fuentes del entorno</h2>
+      <button class="boton-texto" type="button" data-cerrar>Cerrar</button>
+    </div>
+    <div id="fuentes-contenido"></div>
+  </dialog>
+
+  <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

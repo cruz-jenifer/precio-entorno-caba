@@ -1,0 +1,8 @@
+id-mapa,Fecha,franja_horaria,tipo_delito,barrio,cantidad
+1,2024-01-01,0,Robo,CABALLITO,2
+1,2024-01-01,0,Robo,CABALLITO,2
+2,2024-01-02,0,Robo,CABALLITO,3
+3,2024-01-03,23,Hurto,ALMAGRO,0
+4,01/02/2024,NULL,Hurto,CABALLITO,1
+5,2024-02-02,11,Robo,NULL,1
+6,2024-02-02,11,Robo,VILLA GRAL. MITRE,1

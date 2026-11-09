@@ -1,0 +1,34 @@
+{
+  "actor": "expanditumarca/real-estate-lead-generator-market-analysis-zonaprop",
+  "limits": {
+    "maxListingDetails": 50,
+    "maxTotalUsd": 1
+  },
+  "searchInputs": [
+    {
+      "operationMode": "scrape-urls",
+      "ubicacion": "caballito",
+      "operacion": "venta",
+      "tipo": "departamentos",
+      "maxPages": 1,
+      "enableProxies": false,
+      "proxyType": "none"
+    },
+    {
+      "operationMode": "scrape-urls",
+      "ubicacion": "almagro",
+      "operacion": "venta",
+      "tipo": "departamentos",
+      "maxPages": 1,
+      "enableProxies": false,
+      "proxyType": "none"
+    }
+  ],
+  "detailInputTemplate": {
+    "operationMode": "property-scrape",
+    "mode": "scrape-single",
+    "url": "<URL_AUTORIZADA_DEL_AVISO>",
+    "enableProxies": false,
+    "proxyType": "none"
+  }
+}

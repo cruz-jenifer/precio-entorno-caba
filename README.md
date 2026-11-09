@@ -1,0 +1,285 @@
+# Precio y Entorno CABA
+
+Prototipo local de búsqueda inmobiliaria. Una persona ingresa sus preferencias, compara barrios, guarda una búsqueda y recibe una alerta cuando aparece un aviso que coincide. Los delitos registrados se muestran como contexto y se analizan por separado para el capstone.
+
+## Ejecutar en Windows
+
+Desde la carpeta `precio-entorno-caba`, en PowerShell:
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+.\.venv\Scripts\python.exe -m streamlit run app.py
+```
+
+Abrir la dirección local que indique Streamlit. La primera carga crea la base en `data/local/demo.sqlite3` y agrega el lote inicial de avisos ficticios.
+
+### Interfaz web
+
+La interfaz para quien busca departamento es una página propia, con la lista de barrios a la izquierda y el mapa de CABA a la derecha. Usa las mismas bases que Streamlit, que queda para importar datos y probar la actualización.
+
+```powershell
+.\.venv\Scripts\python.exe -m precio_entorno.api
+```
+
+Abrí http://127.0.0.1:8000. La API corre solo en la computadora local y su documentación está en http://127.0.0.1:8000/api/docs. El mapa necesita las capas de `data/processed/entorno/`, que se generan con `python -m precio_entorno.entorno`.
+
+- **Filtros:** la barra de arriba elige comprar o alquilar, el presupuesto, la superficie, los ambientes y lo que te importa del entorno. Los cambios se aplican al escribir.
+- **Mapa de la ciudad:** cada barrio tiene un tono según cuántos avisos encajan. Al pasar el cursor por un barrio en la lista, se resalta en el mapa, y al revés.
+- **Ficha del barrio:** al elegir un barrio, el mapa se acerca y la lista pasa a ser su ficha, con el entorno, los avisos que encajan y el botón **Crear alerta**. Los botones sobre el mapa encienden y apagan cada capa.
+- **Datos de ejemplo y reales:** el selector de arriba a la derecha cambia de base. En los datos de ejemplo, una franja avisa que los avisos y los delitos son ficticios.
+- **Celular:** el mapa ocupa la pantalla y la lista sube desde abajo.
+
+El diseño está descripto en [docs/ui.md](docs/ui.md).
+
+## Recorrido de la demo
+
+1. Mantener los filtros iniciales y comparar Caballito, Almagro y Villa Crespo.
+2. Elegir Caballito y guardar la búsqueda.
+3. Importar el lote nuevo. Aparece una alerta para el aviso que coincide.
+4. Importar el mismo lote de nuevo. La alerta anterior sigue disponible y no se genera otra.
+
+Los precios, avisos y conteos de delitos de la demo son ficticios. Las alertas se ven en la app. La actualización automática y el correo quedan para la integración real.
+
+## Importar archivos autorizados
+
+1. Abrí **Datos reales**. Esta opción usa `data/local/real.sqlite3`. La demo usa `data/local/demo.sqlite3` y tiene sus propias búsquedas y alertas.
+2. En **Importá datos locales**, indicá el nombre de un único catálogo autorizado, seleccioná el CSV o JSON de departamentos vigentes en venta y confirmá el acceso. Revisá las filas incorporadas, duplicadas y descartadas, y los faltantes e inválidos por campo.
+3. Compará barrios con tus filtros, elegí uno y guardá la búsqueda. Importá un lote posterior del mismo catálogo. Cada ID nuevo compatible genera una alerta por búsqueda. Volver a importar ese ID conserva la primera observación y la alerta existente. Los lotes agregan avisos al historial local. La app aún no actualiza precios ni da de baja avisos ausentes de una captura posterior.
+4. Cargá el CSV oficial del [Mapa del Delito de CABA](https://data.buenosaires.gob.ar/dataset/delitos). Cada archivo válido reemplaza el contexto anterior y queda identificado por nombre y SHA-256. Elegí barrio y mes para ver los hechos registrados por tipo y franja. La suma usa la columna de cantidad. Solo se muestra cero si hay filas válidas que lo respaldan. Un barrio y mes sin filas válidas figura sin cobertura observada.
+
+### Formato del catálogo
+
+El CSV lleva encabezados y admite coma, punto y coma o tabulación. Para decimales, usá punto o coma sin separador de miles. En un CSV separado por comas, entrecomillá los decimales escritos con coma. El JSON en UTF-8 admite una lista de objetos o un objeto con una lista `listings`.
+
+| Campo requerido | Alias admitidos | Validación |
+| --- | --- | --- |
+| `listing_id` | `id` | Identificador estable dentro del catálogo |
+| `url` | `enlace` | Enlace HTTP o HTTPS sin credenciales |
+| `captured_at` | `fecha_captura` | Fecha o fecha y hora ISO 8601 |
+| `price` | `precio` | Importe publicado entre USD 10.000 y 10.000.000 |
+| `currency` | `moneda` | USD, U$S o US$ |
+| `covered_area_m2` | `covered_area`, `superficie_cubierta` | Superficie cubierta entre 10 y 2.000 m² |
+| `rooms` | `ambientes` | Entero entre 1 y 20 |
+| `neighborhood` | `barrio` | Barrio de CABA |
+
+Además, el precio por m² cubierto debe quedar entre USD 200 y 20.000. Un importe escrito con separador de miles, como `105.000`, se lee como 105 y se descarta por inválido. Los campos opcionales son `total_area_m2` (`superficie_total`, entre 10 y 10.000 m²), `latitude` (`latitud`, `lat`), `longitude` (`longitud`, `lon`) y `location_accuracy_m` (`precision_m`). Si incluís `source` o `fuente`, debe coincidir con el catálogo indicado. Prepará el archivo solo con departamentos residenciales en venta. La app cuenta un pin como utilizable si ambas coordenadas caen en el rectángulo aproximado de CABA y el catálogo declara una precisión de hasta 100 m. En esta etapa el cruce se hace por barrio.
+
+El cargador de delitos admite encabezados como `id-mapa`, `fecha`, `barrio`, `tipo_delito`, `franja_horaria` y `cantidad`, y sus variantes `id_mapa`, `tipo`, `franja` y `cantidad_registrada`. Conserva la fecha del hecho y muestra las franjas faltantes como «Sin dato». El resumen corresponde a las filas válidas del archivo cargado.
+
+Los archivos `data/fixtures/avisos_prueba.csv` y `data/fixtures/delitos_prueba.csv` son ficticios. Las pruebas los cargan en bases temporales. Si querés probar el formulario con esos archivos, usá una copia de la carpeta del proyecto para mantener la base real reservada al catálogo autorizado.
+
+## Antes del piloto real
+
+Confirmar el acceso a un único catálogo. La prioridad es Zonaprop con autorización, con la API oficial de Mercado Libre o un catálogo cedido por una inmobiliaria como alternativas. Después, probar hasta 50 avisos de Caballito y Almagro con tope de USD 5 en una sola cuenta, dentro del presupuesto total de USD 25. Medir cuántos avisos quedan aptos, los duplicados, la calidad de los pines y el costo por aviso usable. Cargar el CSV oficial y documentar su cobertura. Para el capstone, preparar entre 700 y 2.000 registros válidos y unas diez variables interpretables por dataset después de limpiar.
+
+### Piloto Zonaprop con Apify
+
+El piloto usa [Expandí tu Marca para Zonaprop](https://apify.com/expanditumarca/real-estate-lead-generator-market-analysis-zonaprop). Desde PowerShell, ejecutá el dry-run local sin token ni solicitudes a Apify.
+
+```powershell
+python -m precio_entorno.run_pilot --dry-run
+```
+
+El [archivo de preparación](docs/apify-piloto-input.json) contiene dos búsquedas de departamentos en venta y la plantilla del detalle. El actor no admite filtrar por ambientes en la búsqueda. El piloto toma hasta 25 enlaces únicos por barrio y conserva los avisos de dos ambientes después de consultar el detalle con `scrape-single`. Puede quedar por debajo de 50 avisos aptos. Los proxies quedan desactivados y una corrida fallida detiene el proceso.
+
+El presupuesto autorizado para el piloto es USD 5 en una sola cuenta. El dry-run permite reproducir esa configuración con `--budget-usd 5`. Para un actor en modalidad FREE, el cliente verifica que el tope mensual de Apify de la cuenta elegida sea igual o inferior al presupuesto. Los límites enviados por corrida y el costo informado se registran por separado.
+
+La ejecución real requiere autorización de Zonaprop para consultar su catálogo con este actor y un token de Apify en el entorno (`APIFY_TOKEN`) o en `.env`. El `.env` puede tener varias cuentas, cada una con un tope de USD 5, en líneas `APIFY_TOKEN`, `APIFY_TOKEN_2`, etc., o como tokens sueltos. Cada corrida usa una sola cuenta. Si hay más de una, elegila con `--account`, según el orden del archivo. La suma de todas las cuentas no debe superar los USD 25. Los términos generales del portal restringen el uso de herramientas de búsqueda externas. El comando verifica el esquema, la tarifa y el límite aplicable antes de crear una corrida.
+
+```powershell
+python -m precio_entorno.run_pilot --execute --authorized-direct-access --budget-usd 5 --account 1 --output data/raw/piloto-zonaprop-cuenta1
+```
+
+Usá una carpeta `--output` nueva en cada corrida. La de la primera prueba, `data/raw/piloto-zonaprop/`, conserva el registro de los HTTP 403.
+
+La ejecución escribe en `data/raw/piloto-zonaprop/` los resultados crudos limitados a campos inmobiliarios, el JSON adaptado, el resumen de calidad y un registro con IDs, estados y costos informados. Si la carpeta ya existe, se detiene para evitar una segunda corrida accidental. Ante una interrupción, usá `corridas.json` y Apify Console para recuperar el dataset existente.
+
+Cargá `avisos.json` desde **Datos reales** con el catálogo `zonaprop`. Se conservan precio, moneda y coordenadas cuando están disponibles. El cruce se hace por barrio y los pines sin precisión declarada quedan como aproximados. También podés cargar el CSV o JSON de un catálogo autorizado desde el mismo formulario.
+
+### Zonaprop con el actor de igolaizola
+
+Zonaprop autorizó por escrito la consulta automatizada. Desde el 8 de noviembre de 2026, sus avisos se obtienen con el actor [igolaizola/zonaprop-scraper](https://apify.com/igolaizola/zonaprop-scraper) y entran al catálogo consolidado `inmobiliarias-autorizadas` con el prefijo `zonaprop:`. Sin `--ejecutar`, el comando solo muestra el plan y el costo estimado:
+
+```powershell
+python -m precio_entorno.zonaprop_apify --barrios Caballito Almagro --max-avisos 25
+```
+
+```powershell
+python -m precio_entorno.zonaprop_apify --barrios Caballito Almagro --max-avisos 25 --cuenta 1 --tope-usd 0.5 --ejecutar --autorizacion-confirmada
+```
+
+- **Costo:** la tarifa es de USD 0,001 por aviso y USD 0,001 por ficha de detalle. Antes de cada corrida, el comando verifica que la tarifa no haya subido. Cada corrida lleva `maxTotalChargeUsd`, y el total de una ejecución no puede superar los USD 5 de la cuenta.
+- **Privacidad:** el actor devuelve el nombre, los correos y los teléfonos del anunciante. El adaptador nunca los escribe: solo guarda los campos del contrato en `avisos.json`, junto con el registro de costos en `registro.json`.
+- **Piloto del 8 de noviembre de 2026:**
+  - **Captura:** 25 departamentos en venta por barrio en Caballito y Almagro, con ficha, en la cuenta 1 de Apify, por unos USD 0,05.
+  - **Validación:** pasaron 49 de 50 avisos. El que falta no tenía superficie cubierta.
+  - **Datos:** todos traen coordenadas con visibilidad «exacta» según Zonaprop, y 42 traen expensas. La mediana es de 2.423 USD/m².
+  - **Ubicación:** `data/raw/zonaprop-venta-piloto-20261108/`. Los avisos ya están cargados en `data/local/real.sqlite3`.
+- **Captura completa del 8 de noviembre de 2026:** se corrieron los 48 barrios oficiales en venta y en alquiler, con hasta 50 avisos con ficha por barrio. El comando rotó entre cuentas antes de que alguna se acercara a USD 5. Montserrat, Núñez y Nueva Pompeya se buscan como «Monserrat», «Nuñez» y «Pompeya», que son los nombres que reconoce Zonaprop; con `--barrios todos`, el comando ya los usa.
+
+  | Operación | Leídos | Nuevos en la base | Barrios | Costo aproximado | Carpetas |
+  | --- | ---: | ---: | ---: | ---: | --- |
+  | Venta | 2.359 | 2.223 | 48 | USD 4,75 | `data/raw/zonaprop-venta-20261108/` y `-reintento/` |
+  | Alquiler | 2.142 | 2.042 | 48 | USD 3,90 | `data/raw/zonaprop-alquiler-20261108/` y `-reintento/` |
+
+  En venta, 49 avisos ya estaban cargados por el piloto. Los descartados no tenían superficie o tenían valores fuera de rango. En alquiler entraron 1.797 avisos en pesos y 245 en dólares. Con las cuatro cuentas, el gasto de Apify del mes quedó en USD 18,43 de USD 25.
+
+### Exportaciones de EcomScrape
+
+El [input de EcomScrape](docs/apify-ecomscrape-input.json) limita la búsqueda a 25 resultados por barrio y desactiva los proxies y reintentos. El actor anterior recibió HTTP 403 en ambos barrios. La corrida de EcomScrape queda pendiente de que Zonaprop habilite el acceso directo desde Apify.
+
+Si ya tenés una exportación autorizada de este actor, podés convertirla localmente. Usá la fecha efectiva de captura en ISO 8601. El archivo adaptado excluye datos del anunciante y se carga en **Datos reales** con el catálogo `zonaprop`.
+
+```powershell
+python -m precio_entorno.ecomscrape_export data/raw/ecomscrape.json --captured-at 2026-11-07 --output data/raw/avisos-ecomscrape.json
+```
+
+## Comprar o alquilar
+
+Al entrar, la app pregunta **¿Qué querés hacer?: Comprar o Alquilar**. Cada operación tiene su propio catálogo, su base, sus búsquedas y sus alertas, en la demo y en los datos reales:
+
+| Operación | Catálogo | Base real | Precio |
+| --- | --- | --- | --- |
+| Comprar | `inmobiliarias-autorizadas` | `data/local/real.sqlite3` | Precio publicado en USD |
+| Alquilar | `inmobiliarias-alquiler` | `data/local/real-alquiler.sqlite3` | Alquiler mensual publicado en ARS o en USD, sin expensas |
+
+- **Moneda:** en alquiler se elige la moneda de la búsqueda. La comparación y las alertas usan solo los avisos publicados en esa moneda, sin convertir pesos a dólares.
+- **Expensas:** se muestran cuando la inmobiliaria las publica.
+- **Captura de alquileres de inmobiliarias:** del 7 de noviembre de 2026. Trajo 440 avisos de RE/MAX, Century 21 y Migliorisi, de los que 394 son válidos: 269 en pesos y 125 en dólares, en 37 barrios.
+- **Captura de Mob:** del 8 de noviembre de 2026, en `data/raw/mob-alquiler-20261108/`. Mob, un portal de alquileres de dueños, autorizó la lectura de su sitio. Se leyeron 871 departamentos en 417 pedidos, sin bloqueos, y 835 pasaron la validación: 503 en pesos y 332 en dólares, en 31 barrios. Los otros 36 se descartaron, sobre todo por superficie faltante.
+- **Base de alquiler:** suma 3.271 avisos, 2.042 de ellos de Zonaprop, con los 48 barrios cubiertos. La base de venta tiene 3.807 avisos.
+
+```powershell
+python -m precio_entorno.inmobiliarias --operacion alquiler --autorizacion-confirmada
+```
+
+```powershell
+python -m precio_entorno.inmobiliarias --sitios mob --operacion alquiler --max-avisos 1300 --autorizacion-confirmada
+```
+
+Mob no publica ventas: en `--operacion venta` el sitio se saltea sin hacer pedidos. El servidor solo entrega los primeros 20 avisos de cada listado, así que el adaptador recorre las páginas de listado de Capital Federal del sitemap. Una captura completa tarda unos 21 minutos. El detalle está en [docs/datos.md](docs/datos.md).
+
+## Mapa del entorno
+
+En **1. Qué estás buscando**, la pregunta **¿Qué te importa del entorno?** permite elegir subte, plazas y parques, escuelas de un nivel, salud, ruido y riesgo hídrico. Cada elección suma columnas descriptivas a la comparación de barrios. Las capas no se combinan en un puntaje y el orden de la tabla sigue siendo el de las coincidencias.
+
+Después de elegir un barrio, el mapa abre centrado en él con las mismas capas encendidas. Los botones de **Capas del mapa** encienden o apagan cada una: estaciones de subte por línea, plazas y parques, escuelas del nivel elegido, CeSAC y hospitales, ruido diurno o nocturno, áreas de prevención por riesgo hídrico y delitos registrados. Al pasar el cursor por un elemento se ve su detalle. Debajo del mapa están la leyenda, la advertencia de cada capa, la ficha del barrio y las fuentes.
+
+- **Ruido:** nivel exterior típico de cada celda de 100 m según el Mapa de Ruido 2025. El mapa oficial cubre sobre todo calles y veredas. Los cortes de 70 dBA de día y 65 dBA de noche son descriptivos.
+- **Delitos:** hechos registrados por celda de 200 m en el mes y el tipo elegidos. La capa lee el CSV cargado en la base desde `data/raw/` y verifica que su SHA-256 coincida. En la demo no se mapean, porque sus delitos son ficticios.
+- **Unidad geográfica:** el barrio oficial de CABA. Las columnas describen el barrio, no un aviso, porque los pines de los avisos no declaran su precisión.
+
+Las capas se generan una vez con los archivos de `data/raw/badata-entorno/` y `data/raw/badata-poi/`. El proceso tarda alrededor de un minuto:
+
+```powershell
+python -m precio_entorno.entorno
+```
+
+El detalle de cada fuente está en [docs/datos.md](docs/datos.md#capas-del-entorno-buenos-aires-data).
+
+## Captura de inmobiliarias autorizadas
+
+RE/MAX, Century 21 y Migliorisi autorizaron la lectura de sus sitios. Sus avisos forman un único catálogo consolidado, `inmobiliarias-autorizadas`. El ID de cada aviso lleva el prefijo de su inmobiliaria, por ejemplo `remax:…`.
+
+```powershell
+python -m precio_entorno.inmobiliarias --max-avisos 600 --autorizacion-confirmada
+```
+
+- **Acceso educado:** el cliente usa Scrapling sin cabeceras de sigilo, sin suplantar la huella del navegador y sin proxies. Se identifica como proyecto académico, respeta robots.txt, espera 3 segundos entre pedidos y se detiene ante un bloqueo, un desafío o una respuesta 429.
+- **Solo campos del contrato:** nunca copia datos de agentes ni de contacto.
+- **Salida:** escribe `avisos.json` y `registro.json` en una carpeta nueva de `data/raw/`. Cargá `avisos.json` en **Datos reales** con el catálogo `inmobiliarias-autorizadas`.
+- **Autorizaciones:** guardalas por escrito fuera de Git.
+
+El piloto del 7 de noviembre de 2026 capturó 50 avisos por inmobiliaria en `data/raw/inmobiliarias-piloto-consolidado/`: 138 de 150 pasan la validación y no hubo duplicados entre inmobiliarias. RE/MAX y Century 21 traen coordenadas sin precisión declarada; Migliorisi no trae coordenadas.
+
+## Puntos de interés con Apify
+
+`python -m precio_entorno.osm_apify` muestra el plan de extracción de OpenStreetMap: categorías, cuenta de Apify y tope de gasto de cada corrida. Agregá `--ejecutar` para correrlo. Cada corrida usa una sola cuenta, verifica la tarifa vigente y respeta un tope de puntos y de USD. La extracción del 7 de noviembre de 2026 costó USD 9,09 y está en `data/raw/osm-20261107/`. Parques, escuelas y hospitales se completaron con datasets oficiales gratuitos de Buenos Aires Data, que se convierten con `python -m precio_entorno.badata_poi`. El modelo usa ambas fuentes:
+
+```powershell
+python -m precio_entorno.modelo data/raw/inmobiliarias-20261107/avisos.json --catalogo inmobiliarias-autorizadas --pines-aproximados --osm data/raw/osm-20261107 data/processed/poi-badata
+```
+
+Con esos puntos de interés, el modelo inmobiliario alcanza su mejor error (488 USD/m² en la partición de prueba) y los delitos registrados ya no aportan. El detalle está en [docs/datos.md](docs/datos.md) y [docs/modelo.md](docs/modelo.md).
+
+## Informe exploratorio de avisos
+
+El [informe de avisos](docs/eda-avisos.md) describe la calidad de la captura, la composición del catálogo, los precios publicados por barrio y ambientes, y la oferta compatible según el presupuesto. Para regenerarlo:
+
+```powershell
+python -m precio_entorno.eda_avisos data/raw/inmobiliarias-20261107
+```
+
+## Informe exploratorio de delitos
+
+El [informe](docs/eda-delitos.md) analiza los CSV oficiales de 2024 y 2025 por tipo, mes, franja y barrio. Todavía no hay datos publicados de 2026. Para regenerar sus tablas y gráficos con todos los `data/raw/delitos_20*.csv`:
+
+```powershell
+python -m precio_entorno.eda_delitos
+```
+
+## Evaluación del modelo
+
+El [pipeline del modelo](docs/modelo.md) cruza los avisos con los delitos de los 12 meses previos a cada captura, por barrio y en un radio de 500 m cuando el pin lo permite. Compara el MAE en USD/m² de la mediana de comparables, un modelo inmobiliario y el mismo modelo con entorno, con la misma partición por aviso, y lo contrasta con un placebo. Con los 1.516 avisos de las inmobiliarias, el cruce por barrio no muestra aporte de los delitos registrados. Con pines aproximados, el pequeño aporte inicial desaparece al sumar transporte, parques, hospitales, escuelas y gastronomía cercanos. El detalle está en [docs/modelo.md](docs/modelo.md).
+
+```powershell
+python -m precio_entorno.modelo data/raw/<carpeta>/avisos.json --catalogo zonaprop
+```
+
+## Datos reales en la app y validación
+
+La base `data/local/real.sqlite3` tiene cargado el catálogo consolidado y el Mapa del Delito de 2025. Al 8 de noviembre de 2026 suma 1.535 avisos, de los que 18 son de Clarín Inmuebles. Para generar alertas reales:
+1. Guardá una búsqueda.
+2. Corré una captura posterior en una carpeta nueva.
+3. Importá su `avisos.json` en **Datos reales**.
+
+Cada ID nuevo que coincida genera una alerta, y reimportar el mismo lote no genera ninguna.
+
+### Actualización automática
+
+La tarea de Windows **PrecioEntornoCABA\Actualizar avisos** corre cada 2 días a las 9:00. Ejecuta [scripts/actualizar.cmd](scripts/actualizar.cmd), que llama a `python -m precio_entorno.actualizar --operacion venta` y después a `--operacion alquiler`, las dos con `--autorizacion-confirmada`. Para cada operación:
+- **Captura:** toma los 200 avisos más recientes de cada sitio. En Migliorisi solo pide el detalle de los avisos nuevos. En alquiler también incluye Mob, que lee la página general de Capital Federal y los listados de departamentos por barrio hasta juntar 200 avisos.
+- **Importación:** guarda el lote en `data/local/real.sqlite3`, donde se generan las alertas.
+- **Historial:** agrega una línea a `data/local/actualizaciones.jsonl` con avisos nuevos y alertas. La salida completa queda en `data/local/actualizar.log`.
+
+Las alertas se ven en la app, en **Datos reales**. Para administrar la tarea desde PowerShell:
+
+```powershell
+schtasks /Query /TN "PrecioEntornoCABA\Actualizar avisos"
+```
+
+```powershell
+schtasks /Change /TN "PrecioEntornoCABA\Actualizar avisos" /DISABLE
+```
+
+```powershell
+schtasks /Delete /TN "PrecioEntornoCABA\Actualizar avisos" /F
+```
+
+### Alertas por correo con Make
+
+Si `MAKE_WEBHOOK_URL` está en el entorno o en `.env`, cada actualización con alertas nuevas las envía a ese webhook de Make. La URL tiene que ser `https` en un dominio `*.make.com`. Por cada alerta viajan la búsqueda, el aviso, el barrio, el precio, la superficie, los ambientes y el enlace, sin datos personales. Si el envío falla, se reintenta una vez y el resultado queda en `actualizaciones.jsonl`, sin detener la actualización.
+
+El escenario **"Precio y Entorno CABA - Alertas"** (Make, región us2) está activo desde el 7 de noviembre de 2026. Recibe el webhook, recorre `alertas` y, por cada una, envía un correo con Gmail y agrega una fila en la planilla de Google Sheets "Precio y Entorno CABA - Alertas (venta y alquiler)". La planilla tiene operación, precio, moneda, expensas y los datos del aviso, más `valoracion` y `motivo` para la validación con la inmobiliaria. La primera planilla, "Precio y Entorno CABA - Alertas", quedó sin uso y solo tiene una fila de prueba. Las conexiones de Google se autorizan desde un navegador que permita ventanas emergentes, y la de Gmail vence el 6 de mayo de 2027. Para probarlo con una alerta ficticia, sin capturar ni importar:
+
+```powershell
+python -m precio_entorno.actualizar --probar-make
+```
+
+La tarea corre solo con la sesión de Windows iniciada. Si una inmobiliaria retira el permiso o empieza a bloquear, quitá su sitio con `--sitios` en `scripts/actualizar.cmd` o deshabilitá la tarea. El [protocolo de validación](docs/validacion-inmobiliaria.md) y su [planilla](docs/plantillas/registro-validacion.csv) guían la prueba de dos semanas con una inmobiliaria: tiempo ahorrado, alertas útiles, costo operativo y disposición a pagar.
+
+## Organización
+
+La [arquitectura técnica](docs/arquitectura.md) describe en detalle el stack, los módulos y sus dependencias, el esquema de la base con sus relaciones, la captura, Apify, Make, GitHub y los pendientes técnicos.
+
+- `app.py` contiene la interfaz local.
+- `precio_entorno/` contiene la lógica de importación, filtros, persistencia y alertas.
+- `data/fixtures/` contiene los lotes de demo y los CSV ficticios de prueba.
+- `data/raw/` y `data/processed/` reservan espacio para las dos fuentes y sus salidas.
+- `docs/` describe alcance, esquema, metodología y próximos hitos.
+- `tests/` verifica la validación, la cobertura y el recorrido de alertas.
+
+```powershell
+.\.venv\Scripts\python.exe -m unittest discover -s tests -v
+```

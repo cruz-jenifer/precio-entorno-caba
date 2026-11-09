@@ -1,0 +1,6 @@
+id;enlace;fecha_captura;precio;moneda;superficie_cubierta;superficie_total;ambientes;barrio;latitud;longitud;precision_m
+av-1;https://example.invalid/av-1;2026-11-01;105000;USD;42,5;45;2;CABALLITO;-34,62;-58,44;70
+av-1;https://example.invalid/av-1;2026-11-01;105000;USD;42,5;45;2;Caballito;-34,62;-58,44;70
+av-2;https://example.invalid/av-2;2026-11-01;99000;USD;45;;2;Almagro;-34,61;-58,42;
+av-3;https://example.invalid/av-3;2026-11-01;;USD;45;;2;Caballito;;;
+av-4;https://example.invalid/av-4;2026-11-01;99000;ARS;45;;2;Caballito;;;

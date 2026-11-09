@@ -1,0 +1,12 @@
+{
+  "urls": [
+    "https://www.zonaprop.com.ar/departamentos-venta-caballito.html",
+    "https://www.zonaprop.com.ar/departamentos-venta-almagro.html"
+  ],
+  "max_items_per_url": 25,
+  "max_retries_per_url": 0,
+  "ignore_url_failures": false,
+  "proxy": {
+    "useApifyProxy": false
+  }
+}

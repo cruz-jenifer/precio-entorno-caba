@@ -1,0 +1,14 @@
+{
+  "url": "https://www.zonaprop.com.ar/propiedades/clasificado/aviso-ficticio-12345678.html",
+  "scraped_at": "2026-11-07T12:00:00Z",
+  "precio": 105000,
+  "moneda": "USD",
+  "m2_cub": 42.5,
+  "m2_tot": 49,
+  "ambientes": 2,
+  "barrio": "Caballito",
+  "operacion": "Venta",
+  "latitud": -34.62,
+  "longitud": -58.44,
+  "vendedor_email": "ficticio@example.invalid"
+}

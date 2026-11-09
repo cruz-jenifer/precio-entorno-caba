@@ -1,0 +1,10 @@
+.env
+.venv/
+__pycache__/
+.pytest_cache/
+data/raw/*
+!data/raw/README.md
+data/local/
+data/processed/*
+!data/processed/README.md
+.claude/settings.local.json

@@ -15,6 +15,18 @@ RE/MAX, Century 21 y Migliorisi autorizaron la lectura de sus sitios y se tratan
 - **Barrios:** las subzonas comerciales con un único barrio oficial se asignan a ese barrio, como Palermo Hollywood a Palermo. Las ambiguas (Congreso, Centro, Parque Centenario) quedan sin barrio y se descartan.
 - **Precios de relleno:** valores como 888.888 se tratan como precio no publicado.
 - **Coordenadas:** RE/MAX y Century 21 traen coordenadas sin precisión declarada, así que el cruce es por barrio salvo en el análisis de sensibilidad del modelo. Migliorisi no publica coordenadas.
+- **Datos del edificio y la unidad (opcionales, desde el 9 de noviembre de 2026):** un dato inválido se informa y queda vacío, pero el aviso no se descarta.
+
+  | Campo | Alias | Rango | Century 21 | Migliorisi | Zonaprop |
+  | --- | --- | --- | --- | --- | --- |
+  | `age_years` | `antiguedad` | 0 a 200 años, al momento de la captura | Sale de `construction_year`. Un año futuro (en construcción) cuenta como 0. | Sale de "Antigüedad N años" en la ficha. "A estrenar" cuenta como 0. | Sale de la característica `CFT5`. El 27 % declara 0, que puede ser el valor por defecto. |
+  | `condition` | `estado` | a estrenar, en construcción, excelente, muy bueno, bueno, regular, reciclado, a reciclar | Sale de `property_condition`. «Nuevo» cuenta como a estrenar y «De pozo» como en construcción. Una etiqueta desconocida queda vacía. | No lo publica como campo. | No lo publica. |
+  | `garages` | `cocheras` | 0 a 10 | Sale de `garage`. | — | Sale de `CFT7`. El listado la omite cuando es 0; se completa con la ficha. |
+  | `floor` | `piso` | 0 a 80. "PB" cuenta como 0. | Sale del número inicial de `addr_floor`. | — | — |
+
+  - **RE/MAX:** su búsqueda no publica estos campos.
+  - **Zonaprop, captura del 8 de noviembre:** la antigüedad y las cocheras se tomaron releyendo los resultados de esas mismas corridas en Apify (`--releer`), sin correr el actor de nuevo. Quedaron en `data/raw/zonaprop-venta-20261108-edificio/`: 2.359 avisos, 2.218 con antigüedad. La relectura generó unos USD 0,04 de uso de plataforma en las cuentas 1 y 4, y ningún evento del actor. Apify conserva esos resultados solo por un tiempo limitado, que depende del plan, así que no siempre se puede repetir con capturas viejas.
+  - **Descripciones:** el estado que aparece solo en el texto del aviso no se lee, porque las descripciones no se guardan.
 
 #### Zonaprop (con Apify)
 
@@ -24,6 +36,7 @@ Zonaprop autorizó por escrito la consulta automatizada. Sus avisos se obtienen 
   - Precio y moneda salen de `pricing`.
   - Ambientes, superficie total, superficie cubierta y expensas salen de las características `CFT1`, `CFT100`, `CFT101` y `CFT6`.
   - Las expensas solo se toman si están en pesos.
+  - Antigüedad y cocheras salen de `CFT5` y `CFT7` (ver la tabla de datos del edificio).
 - **Barrio:** se recorre la jerarquía de ubicación de Zonaprop (subbarrio → barrio → ciudad) hasta encontrar un barrio oficial. Caballito Sur y Parque Rivadavia se asignan a Caballito, y Almagro Norte y Almagro Sur a Almagro. Solo se aceptan avisos cuya jerarquía llega a Capital Federal.
 - **Coordenadas:** vienen de la geolocalización de la ficha. Zonaprop la marca con visibilidad «EXACT», pero no informa la precisión en metros.
 - **Fuera del registro:** el actor devuelve el nombre, los correos y los teléfonos del anunciante, además de la descripción y las fotos. Nada de eso se guarda. En el piloto, el crudo quedó en una carpeta temporal fuera del proyecto y se borró después de adaptarlo.

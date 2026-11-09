@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from precio_entorno.eda_colab import DELITOS_FILES, ENTORNO_FILES, SALE_COLUMNS, build
+from precio_entorno.eda_colab import BUILDING_FIELDS, DELITOS_FILES, ENTORNO_FILES, SALE_COLUMNS, build
 
 
 def make_db(path, rows):
@@ -44,8 +44,15 @@ class EdaColabTests(unittest.TestCase):
             (d / 'entorno' / name).write_text('{}', encoding='utf-8')
         for name in DELITOS_FILES:
             (d / 'delitos' / name).write_text('barrio\nAlmagro\n', encoding='utf-8')
+        edificio = d / 'captura-edificio'
+        edificio.mkdir()
+        aviso = {'listing_id': 'a:1', 'url': 'https://example.invalid/a1', 'captured_at': '2026-11-09T00:00:00',
+                 'price': 100000, 'currency': 'USD', 'covered_area_m2': 40, 'rooms': 2, 'neighborhood': 'Caballito',
+                 'age_years': 50, 'condition': 'A reciclar', 'garages': 0, 'floor': 'x'}
+        nuevo = dict(aviso, listing_id='c:9', age_years=0)   # Aviso que no está en la base del modelo.
+        (edificio / 'avisos.json').write_text(json.dumps([aviso, nuevo]), encoding='utf-8')
         self.out, self.meta = build(d / 'dataset_modelo.csv', d / 'venta.sqlite3', d / 'alquiler.sqlite3',
-                                    d / 'entorno', d / 'delitos', d / 'salida' / 'bundle.zip')
+                                    d / 'entorno', d / 'delitos', d / 'salida' / 'bundle.zip', building=[edificio])
 
     def test_bundle_has_expected_files_and_no_contacts(self):
         with zipfile.ZipFile(self.out) as z:
@@ -58,7 +65,12 @@ class EdaColabTests(unittest.TestCase):
             venta = pd.read_csv(z.open('venta.csv'))
             alquiler = pd.read_csv(z.open('alquiler.csv'))
             meta = json.loads(z.read('meta.json'))
-        self.assertEqual(list(venta.columns), SALE_COLUMNS + ['url'])
+        self.assertEqual(list(venta.columns), SALE_COLUMNS + list(BUILDING_FIELDS) + ['url'])
+        self.assertEqual(len(venta), 2)   # La muestra es la del modelo: el aviso nuevo no se suma.
+        fila = venta.set_index('id').loc['a:1']
+        self.assertEqual((fila['age_years'], fila['condition'], fila['garages']), (50, 'a reciclar', 0))
+        self.assertTrue(pd.isna(fila['floor']))
+        self.assertEqual(meta['edificio']['con_antiguedad'], 1)
         self.assertEqual(venta.set_index('id').loc['a:1', 'url'], 'https://example.invalid/a:1')
         self.assertTrue(pd.isna(venta.set_index('id').loc['b:2', 'url']))
         self.assertEqual(alquiler['agency'].unique().tolist(), ['mob'])

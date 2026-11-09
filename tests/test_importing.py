@@ -55,6 +55,34 @@ class ImportTests(unittest.TestCase):
             import_listings(self.store, payload.replace(b'example.invalid/10', b'example.invalid/20').replace(b': 10,', b': 20,'), 'avisos.json', 'B')
         self.assertEqual(len(self.store.listings()), 1)
 
+    def test_building_fields_are_optional_and_validated(self):
+        base = {'url': 'https://example.invalid/x', 'captured_at': '2026-11-09', 'price': 105000, 'currency': 'USD',
+                'covered_area_m2': 42, 'rooms': 2, 'neighborhood': 'Caballito'}
+        rows = [dict(base, listing_id='a', age_years=40, condition='A reciclar', garages=1, floor=3),
+                dict(base, listing_id='b', antiguedad=0, estado='A estrenar', piso='0'),
+                dict(base, listing_id='c', age_years=-1, condition='otro', garages=1.5, floor=200),
+                dict(base, listing_id='d')]
+        report = import_listings(self.store, json.dumps(rows).encode(), 'avisos.json', 'A')
+        self.assertEqual((report.added, report.discarded), (4, 0))   # Un dato opcional inválido no descarta el aviso.
+        self.assertEqual({k: report.invalid[k] for k in ('age_years', 'condition', 'garages', 'floor')},
+                         {'age_years': 1, 'condition': 1, 'garages': 1, 'floor': 1})
+        got = {l['id']: (l['age_years'], l['condition'], l['garages'], l['floor']) for l in self.store.listings()}
+        self.assertEqual(got, {'a': (40, 'a reciclar', 1, 3), 'b': (0, 'a estrenar', None, 0),
+                               'c': (None, None, None, None), 'd': (None, None, None, None)})
+
+    def test_old_database_gets_building_columns(self):
+        import sqlite3
+        from contextlib import closing
+        old = self.path.with_name('vieja.sqlite3')
+        with closing(sqlite3.connect(old)) as db, db:
+            db.execute('CREATE TABLE listing_details (listing_id TEXT PRIMARY KEY, source TEXT NOT NULL, url TEXT NOT NULL, '
+                       'captured_at TEXT NOT NULL, currency TEXT NOT NULL, total_area_m2 REAL, latitude REAL, '
+                       'longitude REAL, location_accuracy_m REAL)')
+        Store(old)
+        with closing(sqlite3.connect(old)) as db:
+            columns = {row[1] for row in db.execute('PRAGMA table_info(listing_details)')}
+        self.assertTrue({'expenses', 'age_years', 'condition', 'garages', 'floor'} <= columns)
+
     def test_implausible_prices_and_areas_are_discarded(self):
         base = dict(url='https://example.invalid/x', captured_at='2026-11-01', currency='USD',
                     rooms=2, neighborhood='Caballito')

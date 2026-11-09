@@ -98,7 +98,28 @@ def record(agency, local_id, url, captured_at, operation='venta', **fields):
     return {'listing_id': f'{agency}:{local_id}', 'source': CATALOGS[operation], 'agency': agency,
             'url': url, 'captured_at': captured_at, **{k: fields.get(k) for k in (
                 'price', 'currency', 'covered_area_m2', 'total_area_m2', 'rooms',
-                'neighborhood', 'latitude', 'longitude', 'expenses')}}
+                'neighborhood', 'latitude', 'longitude', 'expenses') + OPTIONAL_FIELDS}}
+
+
+# Campos opcionales del edificio y la unidad. Solo los traen algunas fuentes.
+OPTIONAL_FIELDS = ('age_years', 'condition', 'garages', 'floor')
+
+
+def age_from_year(year, captured_at):
+    """Antigüedad en años al momento de la captura. Un año futuro (en construcción) es 0."""
+    year = number(year)
+    if not year or year < 1850:
+        return None
+    return max(0, int(captured_at[:4]) - int(year))
+
+
+def floor_number(text):
+    """Piso de la unidad: '9', '9°F' → 9; 'PB' o 'Planta baja' → 0. Lo demás queda sin dato."""
+    text = str(text or '').strip()
+    if re.match(r'(pb|planta\s*baja)\b', text, re.I):
+        return 0
+    m = re.match(r'(\d{1,2})(?!\d)', text)
+    return int(m.group(1)) if m else None
 
 
 # ---------------------------------------------------------------- Cliente educado
@@ -265,7 +286,11 @@ def parse_century21(page, captured_at, operation='venta'):
             currency=item.get('currency_id'), covered_area_m2=covered,
             total_area_m2=total if total and covered and total >= covered else None,
             rooms=item.get('rooms'), neighborhood=name,
-            latitude=coordinate(item.get('geo_lat')), longitude=coordinate(item.get('geo_lon'))))
+            latitude=coordinate(item.get('geo_lat')), longitude=coordinate(item.get('geo_lon')),
+            age_years=age_from_year(item.get('construction_year'), captured_at),
+            condition=item.get('property_condition') or None,
+            garages=item.get('garage') if isinstance(item.get('garage'), int) else None,
+            floor=floor_number(item.get('addr_floor'))))
     count = re.search(r'"count":\s*(\d+)', text)
     return out, skipped, int(count.group(1)) if count else 0
 
@@ -325,13 +350,15 @@ def parse_migliorisi_detail(page, path, code, title, captured_at, operation='ven
     is_operation = word in upper
     name = barrio(parts[upper.index(word) + 1]) if is_operation and upper.index(word) + 1 < len(parts) else None
     expenses = re.search(r'Expensas\s*\$\s*([\d.]+)', text)
+    age = re.search(r'Antig(?:u|ü)edad\s*:?\s*(?:(\d{1,3})\s*a(?:ñ|n)os?|(a\s*estrenar))', text, re.I)
     listing = record(
         'migliorisi', code, MIG_BASE + path, captured_at, operation,
         price=local_number(price.group(2)) if price else None,
         currency='USD' if price and price.group(1) in ('U$S', 'USD') else ('ARS' if price else None),
         covered_area_m2=covered, total_area_m2=covered + sum(extra) if covered and extra else covered,
         rooms=int(rooms.group(1)) if rooms else None, neighborhood=name,
-        expenses=local_number(expenses.group(1)) if expenses and operation == 'alquiler' else None)
+        expenses=local_number(expenses.group(1)) if expenses and operation == 'alquiler' else None,
+        age_years=(0 if age.group(2) else int(age.group(1))) if age else None)
     return listing, is_operation, title.upper().startswith('DEPARTAMENTO')
 
 

@@ -7,7 +7,7 @@ from pathlib import Path
 
 from precio_entorno.importing import parse_listings
 from precio_entorno.inmobiliarias import CATALOG
-from precio_entorno.zonaprop_apify import adapt, adapt_all, check_pricing, run
+from precio_entorno.zonaprop_apify import adapt, adapt_all, check_pricing, reread, run
 
 CAPTURED = '2026-11-08T12:00:00+00:00'
 
@@ -48,6 +48,8 @@ class FakeClient:
             return {'data': {'id': 'run1'}}
         if path.startswith('datasets/'):
             return self.items
+        if path.startswith('actor-runs/'):
+            return {'data': {'id': path.split('/')[1], 'defaultDatasetId': 'ds1'}}
         event = {'eventTieredPricingUsd': {'FREE': {'tieredEventPriceUsd': self.unit}}}
         return {'data': {'pricingInfos': [{'pricingModel': 'PAY_PER_EVENT', 'pricingPerEvent': {
             'actorChargeEvents': {'apify-default-dataset-item': event, 'fetch-detail': event}}}]}}
@@ -69,6 +71,47 @@ class ZonapropTests(unittest.TestCase):
         text = json.dumps(listing)
         for word in ('Anunciante', 'example.invalid', '0000-0000', 'P-1'):
             self.assertNotIn(word, text)
+
+    def test_age_and_garages(self):
+        item = zp_item(20)
+        item['features'] += [{'feature': {'feature_id': 'CFT5'}, 'value': '0'},
+                             {'feature': {'feature_id': 'CFT7'}, 'value': '1'}]
+        listing, _ = adapt(item, CAPTURED, 'venta')
+        self.assertEqual((listing['age_years'], listing['garages'], listing['condition'], listing['floor']),
+                         (0, 1, None, None))
+        valid, _ = parse_listings(json.dumps([listing]).encode(), 'avisos.json', CATALOG)
+        self.assertEqual((valid[0]['age_years'], valid[0]['garages']), (0, 1))
+        detail = zp_item(22)
+        detail['_details']['features'] = [{'feature': {'feature_id': 'CFT7'}, 'value': '0'},
+                                          {'feature': {'feature_id': 'CFT1'}, 'value': '9'},
+                                          {'feature': {'feature_id': '1000102'}}]
+        self.assertEqual((adapt(detail, CAPTURED, 'venta')[0]['garages'],
+                          adapt(detail, CAPTURED, 'venta')[0]['rooms']), (0, 3))   # El listado tiene prioridad.
+        item['features'][-2]['value'] = 'A estrenar'
+        self.assertIsNone(adapt(item, CAPTURED, 'venta')[0]['age_years'])
+
+    def test_reread_uses_existing_runs_without_new_runs(self):
+        old = zp_item(21)
+        new = zp_item(21, pricing={'amount': 110000, 'currency': 'USD', 'operation': 'Venta'})
+        new['features'] = new['features'] + [{'feature': {'feature_id': 'CFT5'}, 'value': '40'}]
+        with tempfile.TemporaryDirectory() as temp:
+            d = Path(temp)
+            regs = []
+            for name, cuenta in (('a', 1), ('b', 2)):
+                (d / name).mkdir()
+                (d / name / 'registro.json').write_text(json.dumps({
+                    'captura': CAPTURED, 'operacion': 'venta',
+                    'corridas': [{'barrio': 'Caballito', 'cuenta': cuenta, 'run_id': f'r{name}'}]}), encoding='utf-8')
+                regs.append(d / name / 'registro.json')
+            clients = {1: FakeClient([old]), 2: FakeClient([new])}
+            listings, log = reread(regs, clients, d / 'salida')
+            saved = (d / 'salida' / 'avisos.json').read_text(encoding='utf-8')
+        self.assertEqual([(x['listing_id'], x['price'], x['age_years'], x['captured_at']) for x in listings],
+                         [('zonaprop:21', 110000, 40, CAPTURED)])
+        self.assertEqual(log['con_antiguedad'], 1)
+        for client in clients.values():
+            self.assertFalse([c for c in client.calls if c[0].endswith('/runs')])
+        self.assertNotIn('example.invalid', saved)
 
     def test_scope_and_neighborhoods(self):
         cases = [

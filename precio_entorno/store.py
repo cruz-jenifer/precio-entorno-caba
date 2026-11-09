@@ -3,6 +3,10 @@ from contextlib import closing
 from pathlib import Path
 
 
+# Columnas opcionales de listing_details: un aviso que no las trae se guarda sin dato.
+OPTIONAL_DETAILS = ('expenses', 'age_years', 'condition', 'garages', 'floor')
+
+
 class Store:
     def __init__(self, path: Path):
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -17,7 +21,7 @@ class Store:
                     listing_id TEXT PRIMARY KEY REFERENCES listings(id), source TEXT NOT NULL,
                     url TEXT NOT NULL, captured_at TEXT NOT NULL, currency TEXT NOT NULL,
                     total_area_m2 REAL, latitude REAL, longitude REAL, location_accuracy_m REAL,
-                    expenses REAL
+                    expenses REAL, age_years INTEGER, condition TEXT, garages INTEGER, floor INTEGER
                 );
                 CREATE TABLE IF NOT EXISTS crime_file (
                     id INTEGER PRIMARY KEY CHECK (id = 1), filename TEXT NOT NULL, digest TEXT NOT NULL
@@ -36,9 +40,13 @@ class Store:
                     PRIMARY KEY (search_id, listing_id)
                 );
             """)
-            # Bases creadas antes de sumar alquileres: se agregan las columnas nuevas.
+            # Bases creadas antes de sumar alquileres o los datos del edificio: se agregan las columnas nuevas.
             for table, column, kind in (('searches', 'currency', "TEXT NOT NULL DEFAULT 'USD'"),
-                                        ('listing_details', 'expenses', 'REAL')):
+                                        ('listing_details', 'expenses', 'REAL'),
+                                        ('listing_details', 'age_years', 'INTEGER'),
+                                        ('listing_details', 'condition', 'TEXT'),
+                                        ('listing_details', 'garages', 'INTEGER'),
+                                        ('listing_details', 'floor', 'INTEGER')):
                 if column not in {row['name'] for row in db.execute(f'PRAGMA table_info({table})')}:
                     db.execute(f'ALTER TABLE {table} ADD COLUMN {column} {kind}')
             db.commit()
@@ -72,10 +80,12 @@ class Store:
                 if source is not None:
                     db.execute("""
                         INSERT INTO listing_details (listing_id, source, url, captured_at, currency,
-                            total_area_m2, latitude, longitude, location_accuracy_m, expenses)
+                            total_area_m2, latitude, longitude, location_accuracy_m, expenses,
+                            age_years, condition, garages, floor)
                         VALUES (:id, :source, :url, :captured_at, :currency, :total_area_m2,
-                            :latitude, :longitude, :location_accuracy_m, :expenses)
-                    """, dict(item, source=source, expenses=item.get('expenses')))
+                            :latitude, :longitude, :location_accuracy_m, :expenses,
+                            :age_years, :condition, :garages, :floor)
+                    """, {**{k: None for k in OPTIONAL_DETAILS}, **item, 'source': source})
                 new_listings += 1
                 # Una búsqueda solo recibe avisos publicados en su misma moneda.
                 new_alerts += db.execute("""

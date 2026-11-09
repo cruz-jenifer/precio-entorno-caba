@@ -19,6 +19,8 @@ from pathlib import Path
 
 import pandas as pd
 
+from precio_entorno.importing import parse_listings
+
 ROOT = Path(__file__).resolve().parents[1]
 MODEL_DATASET = ROOT / 'data/processed/ampliado/modelo-pines-aproximados-poi-control/dataset_modelo.csv'
 SALE_DB = ROOT / 'data/local/real.sqlite3'
@@ -35,6 +37,9 @@ RENT_COLUMNS = ['id', 'agency', 'captured_at', 'price', 'currency', 'covered_are
                 'neighborhood', 'expenses', 'latitude', 'longitude', 'url']
 ENTORNO_FILES = ('resumen.json', 'barrios.geojson', 'fuentes.json')
 DELITOS_FILES = ('barrio_anio.csv', 'barrio_mes.csv', 'franja_categoria.csv')
+# Capturas posteriores con datos del edificio (antigüedad, estado, cocheras, piso).
+BUILDING_FIELDS = ('age_years', 'condition', 'garages', 'floor')
+BUILDING_CAPTURES = sorted(ROOT.glob('data/raw/*-edificio'))
 
 
 def read_db(path):
@@ -47,26 +52,46 @@ def read_db(path):
     return df
 
 
-def sale_table(model_dataset, sale_db):
-    """Avisos de venta del modelo, con la URL pública de la base de la app."""
+def building_table(folders, catalog='inmobiliarias-autorizadas'):
+    """Datos del edificio por ID de aviso, validados como en la app. Gana la captura más reciente."""
+    frames = []
+    for folder in folders:
+        listings, _ = parse_listings((Path(folder) / 'avisos.json').read_bytes(), 'avisos.json', catalog)
+        frames.append(pd.DataFrame(listings, columns=['id', 'captured_at', *BUILDING_FIELDS]))
+    if not frames:
+        return pd.DataFrame(columns=['id', *BUILDING_FIELDS])
+    df = pd.concat(frames).sort_values('captured_at')
+    return df.drop_duplicates('id', keep='last')[['id', *BUILDING_FIELDS]]
+
+
+def sale_table(model_dataset, sale_db, building=()):
+    """Avisos de venta del modelo, con la URL pública y, si hay, los datos del edificio.
+
+    Los datos del edificio se unen por ID: la muestra sigue siendo la del modelo, y un
+    aviso que ya no estaba publicado en la captura posterior queda sin dato.
+    """
     df = pd.read_csv(model_dataset)[SALE_COLUMNS]
     urls = read_db(sale_db)[['id', 'url']] if Path(sale_db).exists() else pd.DataFrame(columns=['id', 'url'])
-    return df.merge(urls, on='id', how='left')
+    return df.merge(building_table(building), on='id', how='left').merge(urls, on='id', how='left')
 
 
 def rent_table(rent_db):
     return read_db(rent_db)[RENT_COLUMNS]
 
 
-def build(model_dataset=MODEL_DATASET, sale_db=SALE_DB, rent_db=RENT_DB, entorno=ENTORNO, delitos=DELITOS, out=OUT):
+def build(model_dataset=MODEL_DATASET, sale_db=SALE_DB, rent_db=RENT_DB, entorno=ENTORNO, delitos=DELITOS, out=OUT,
+          building=BUILDING_CAPTURES):
     out = Path(out)
     out.parent.mkdir(parents=True, exist_ok=True)
-    sale, rent = sale_table(model_dataset, sale_db), rent_table(rent_db)
+    sale, rent = sale_table(model_dataset, sale_db, building), rent_table(rent_db)
     meta = {
         'aviso': 'Precios de publicación, no tasaciones ni precios de cierre. Datos reales del catálogo autorizado.',
         'venta': {'avisos': len(sale), 'origen': str(Path(model_dataset).relative_to(ROOT))
                   if Path(model_dataset).is_relative_to(ROOT) else Path(model_dataset).name},
         'alquiler': {'avisos': len(rent), 'por_moneda': rent['currency'].value_counts().to_dict()},
+        'edificio': {'capturas': [Path(f).name for f in building],
+                     'con_antiguedad': int(sale['age_years'].notna().sum()),
+                     'con_estado': int(sale['condition'].notna().sum())},
         'delitos': 'Mapa del Delito de CABA, hechos registrados por barrio (2024 y 2025).',
         'captura': sorted(set(sale['captured_at'].str[:10]) | set(rent['captured_at'].str[:10])),
     }

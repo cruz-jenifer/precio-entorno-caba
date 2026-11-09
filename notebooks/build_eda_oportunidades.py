@@ -42,7 +42,8 @@ del 7 al 9 de noviembre de 2026) y Mapa del Delito de CABA (hechos registrados p
 entorno de BA Data y OpenStreetMap.
 
 **Límites que hay que tener presentes en todo el notebook:**
-- Son precios publicados, no de cierre. Un aviso barato puede estar a refaccionar: no hay fotos ni descripción.
+- Son precios publicados, no de cierre. No hay fotos ni descripción: la antigüedad y el estado solo los publican
+  algunas fuentes (sección 3 bis).
 - Hay una sola captura: no se puede medir tiempo publicado ni bajas de precio.
 - Zonaprop trae hasta 50 avisos por barrio: la muestra está **balanceada por barrio**, no es proporcional al mercado.
 - Las coordenadas son aproximadas (ninguna fuente declara la precisión).
@@ -359,6 +360,88 @@ md(r"""
 > parecidos**, no contra la mediana del barrio. (2) Mostrar el **costo mensual** (expensas) cuando exista y
 > marcar "expensas no informadas" cuando no. (3) Mostrar la proporción descubierta ("incluye 12 m² de balcón")
 > para que el USD/m² no engañe.
+""")
+
+# ---------------------------------------------------------------- 3b. Antigüedad y estado
+md(r"""
+## 3 bis. Antigüedad y estado del edificio
+
+Son los dos datos que más pueden explicar por qué un aviso pide menos que sus pares. Se unen por ID de aviso:
+- **Zonaprop** publica la antigüedad (y las cocheras) en sus características. Se tomó de los mismos resultados
+  de la captura del 8 de noviembre de 2026, sin una corrida nueva. No publica el estado.
+- **Century 21** publica antigüedad y estado, y **Migliorisi** solo antigüedad. Se tomaron en una captura
+  posterior (9 de noviembre), así que quedan sin dato los avisos que ya no estaban publicados.
+- **RE/MAX** no publica ninguno de los dos en su búsqueda.
+
+El **estado** solo está para Century 21: lo que se diga del estado vale para ese subconjunto.
+En Zonaprop, el 27 % de los avisos declara antigüedad 0. Puede incluir avisos que dejaron el valor por defecto,
+así que "a estrenar" es algo menos preciso en esa fuente.
+""")
+
+code(r"""
+TIENE_EDIFICIO = 'age_years' in venta.columns and venta['age_years'].notna().any()
+if not TIENE_EDIFICIO:
+    print('El paquete no trae datos del edificio: regeneralo con una captura *-edificio.')
+else:
+    cob = venta.groupby('agency').agg(avisos=('id', 'size'), con_antiguedad=('age_years', lambda s: s.notna().mean()),
+                                      con_estado=('condition', lambda s: s.notna().mean()))
+    display(cob.sort_values('avisos', ascending=False).style.format({'con_antiguedad': '{:.0%}', 'con_estado': '{:.0%}'}))
+    print(f"Con antigüedad: {venta['age_years'].notna().sum():,} avisos · con estado: {venta['condition'].notna().sum():,}".replace(',', '.'))
+""")
+
+code(r"""
+if TIENE_EDIFICIO:
+    ORDEN_ESTADO = ['a estrenar', 'en construcción', 'excelente', 'muy bueno', 'bueno', 'regular', 'reciclado', 'a reciclar']
+    venta['antiguedad'] = pd.cut(venta['age_years'], [-1, 0, 10, 30, 50, 70, 300],
+                                 labels=['a estrenar', '1–10', '11–30', '31–50', '51–70', '71+'])
+    con_edad = venta.dropna(subset=['age_years'])
+    t_edad = con_edad.groupby('antiguedad', observed=True)['rel_barrio'].agg(
+        mediana='median', p25=lambda s: s.quantile(.25), p75=lambda s: s.quantile(.75), n='size')
+    con_estado = venta.dropna(subset=['condition'])
+    t_estado = con_estado.groupby('condition')['rel_barrio'].agg(
+        mediana='median', p25=lambda s: s.quantile(.25), p75=lambda s: s.quantile(.75), n='size')
+    t_estado = t_estado.reindex([e for e in ORDEN_ESTADO if e in t_estado.index])
+
+    fig, axes = plt.subplots(1, 2, figsize=(13, 4.2), sharey=True)
+    for ax, (titulo, t) in zip(axes, [('Antigüedad (años)', t_edad), ('Estado declarado (Century 21)', t_estado)]):
+        x = np.arange(len(t))
+        ax.vlines(x, t['p25'], t['p75'], color=CORDON, lw=6)
+        ax.plot(x, t['mediana'], color=JACARANDA, lw=2, marker='o', ms=6, mec='white', mew=1.5)
+        ax.axhline(1, color=GRIS, lw=1, ls='--')
+        ax.set_xticks(x, [f'{i}\nn={n}' for i, n in zip(t.index.astype(str), t['n'])], fontsize=8)
+        ax.set_title(titulo, fontsize=10)
+    axes[0].set_ylabel('USD/m² / mediana del barrio'); axes[0].yaxis.set_major_formatter(pct)
+    fig.suptitle('Precio por m² relativo al barrio según antigüedad y estado', x=.01, ha='left', fontweight='semibold')
+    plt.tight_layout(); plt.show()
+
+    rho, p = spearmanr(con_edad['age_years'], con_edad['rel_barrio'])
+    print(f'Antigüedad vs. USD/m² relativo al barrio: rho = {rho:+.2f} (p = {p:.1e}, n = {len(con_edad)})')
+    # ¿Cambia con la fuente? Cada fuente por separado.
+    display(con_edad.groupby(['agency', 'antiguedad'], observed=True)['rel_barrio'].median().unstack().style.format('{:.0%}'))
+""")
+
+md(r"""
+**Lectura.**
+- **La antigüedad es la variable que más mueve el USD/m² dentro de un barrio** de todo el EDA (rho −0,51 en los
+  2.937 avisos con dato, contra −0,37 de la proporción cubierta). Hasta los 10 años, un departamento pide
+  alrededor de 16 % más que la mediana de su barrio; de 11 a 30 años, casi la mediana; con más de 30 años, entre
+  13 % y 15 % menos. Entre los dos grupos hay unos 30 puntos de diferencia, más que entre muchos barrios.
+- **El salto está alrededor de los 30 años**, no es una pendiente pareja: pasados los 30, tener 40 o 70 años
+  cambia poco.
+- **El patrón se repite en las tres fuentes** (rho −0,48 en Zonaprop, −0,56 en Century 21 y −0,66 en
+  Migliorisi), así que no es un efecto de una inmobiliaria. En Century 21 y Migliorisi la caída sigue después de
+  los 70 años; en Zonaprop, no.
+- **El estado ordena el precio en el mismo sentido:** de a estrenar (+19 %) a bueno (−19 %) y a reciclar (−26 %).
+  *Reciclado* vuelve cerca de la mediana: el reciclado recupera buena parte del valor. Hay pocos casos de
+  reciclado y a reciclar (13 y 12), así que esos dos puntos son orientativos.
+- Antigüedad y estado están muy relacionados (lo nuevo suele declararse a estrenar o excelente), pero el estado
+  agrega información en los edificios viejos: un 50 años "muy bueno" no pide lo mismo que uno "a reciclar".
+
+> **Para la app · preferencias y comparación.** (1) Un filtro de antigüedad (*a estrenar / hasta 10 años / hasta
+> 30 / cualquiera*) y de estado cuando la fuente lo publique, marcando "sin dato" en vez de excluir. (2) Comparar
+> cada aviso contra avisos **de antigüedad parecida**: "pide 10 % menos que departamentos de 40 a 60 años del
+> barrio" es más justo que compararlo con todo el barrio. (3) Mostrar qué fuentes no publican antigüedad para
+> que la persona sepa que falta el dato.
 """)
 
 # ---------------------------------------------------------------- 4. Presupuesto
@@ -683,14 +766,71 @@ display(por_barrio.sort_values('oportunidades', ascending=False).head(12).style.
 code(r"""
 cols_op = ['id', 'neighborhood', 'agency', 'price', 'covered_area', 'total_area_m2', 'rooms', 'precio_m2',
            'usd_m2_esperado', 'brecha_modelo', 'mediana_comparables', 'z_comparables', 'n_comparables', 'expenses', 'url']
+if TIENE_EDIFICIO:
+    cols_op[-1:-1] = ['age_years', 'condition']
 oportunidades = m[m['oportunidad']].sort_values('brecha_modelo')[cols_op]
-display(oportunidades.head(20).drop(columns='url').style.format({
-    'price': '{:,.0f}', 'precio_m2': '{:,.0f}', 'usd_m2_esperado': '{:,.0f}', 'mediana_comparables': '{:,.0f}',
-    'brecha_modelo': '{:+.0%}', 'z_comparables': '{:+.1f}', 'expenses': '{:,.0f}'}).hide(axis='index'))
+tabla_op = oportunidades.head(20).drop(columns='url')
+formatos = {'price': '{:,.0f}', 'precio_m2': '{:,.0f}', 'usd_m2_esperado': '{:,.0f}', 'mediana_comparables': '{:,.0f}',
+            'brecha_modelo': '{:+.0%}', 'z_comparables': '{:+.1f}', 'expenses': '{:,.0f}', 'age_years': '{:.0f}'}
+display(tabla_op.style.format({k: v for k, v in formatos.items() if k in tabla_op}, na_rep='').hide(axis='index'))
 
 oportunidades.to_csv(SALIDA / 'oportunidades_venta.csv', index=False)
 m[m['para_revisar']][cols_op + ['revisar']].to_csv(SALIDA / 'avisos_para_revisar.csv', index=False)
 print('Guardado en', SALIDA)
+""")
+
+md(r"""
+### ¿Las oportunidades son edificios viejos o a reciclar?
+
+Se vuelve a estimar el modelo sumando **antigüedad y estado** como variables (vacías donde la fuente no las
+publica) y se compara, en el subconjunto que sí tiene antigüedad, cuántas oportunidades sobreviven.
+""")
+
+code(r"""
+if TIENE_EDIFICIO:
+    m['cond_code'] = m['condition'].map({e: i for i, e in enumerate(ORDEN_ESTADO)})
+    feats_ed = feats + ['age_years', 'cond_code']
+    oof2 = np.zeros(len(m))
+    for tr, te in GroupKFold(n_splits=5).split(m, groups=m['grupo']):
+        mod = HistGradientBoostingRegressor(max_iter=500, learning_rate=.05, min_samples_leaf=20,
+                                            categorical_features=cat_idx, random_state=42)
+        mod.fit(m.iloc[tr][feats_ed], y_log.iloc[tr])
+        oof2[te] = mod.predict(m.iloc[te][feats_ed])
+    m['brecha_modelo_ed'] = m['precio_m2'] / np.exp(oof2) - 1
+    sub = m[m['age_years'].notna()]
+    mae1 = (sub['precio_m2'] - sub['usd_m2_esperado']).abs().mean()
+    mae2 = (sub['precio_m2'] - np.exp(oof2[m['age_years'].notna().to_numpy()])).abs().mean()
+    print(f'Avisos con antigüedad: {len(sub)} · MAE sin edificio {mae1:,.0f} → con edificio {mae2:,.0f} USD/m²')
+
+    op_ed = ((sub['brecha_modelo_ed'] <= UMBRAL_BRECHA) & (sub['z_comparables'] <= UMBRAL_Z) &
+             (sub['n_comparables'] >= MIN_COMPARABLES) & (sub['revisar'] == '') & ~sub['copia'])
+    antes, despues = int(sub['oportunidad'].sum()), int(op_ed.sum())
+    print(f'Oportunidades en ese subconjunto: {antes} sin edificio → {despues} con edificio '
+          f'({despues - antes:+d}); siguen siendo oportunidad {int((sub["oportunidad"] & op_ed).sum())} de {antes}')
+    comp = pd.DataFrame({
+        'oportunidades': sub[sub['oportunidad']]['age_years'].describe()[['count', '25%', '50%', '75%']],
+        'resto': sub[~sub['oportunidad']]['age_years'].describe()[['count', '25%', '50%', '75%']]})
+    comp.index = ['avisos', 'antigüedad P25', 'antigüedad mediana', 'antigüedad P75']
+    display(comp.style.format('{:.0f}'))
+    est = pd.crosstab(sub['condition'], sub['oportunidad'], normalize='columns').reindex(
+        [e for e in ORDEN_ESTADO if e in set(sub['condition'].dropna())])
+    est.columns = ['resto', 'oportunidades'][:len(est.columns)]
+    display(est.style.format('{:.0%}'))
+""")
+
+md(r"""
+**Lectura.** En los 2.937 avisos con antigüedad (todas las fuentes salvo RE/MAX), sumar antigüedad y estado al
+modelo **baja el error de 443 a 381 USD/m² (−14 %)**: es la mejora más grande que se consiguió con cualquier
+variable. Y cambia las oportunidades:
+- **De 63 oportunidades en ese subconjunto, 26 dejan de serlo** al tener en cuenta el edificio (y aparecen 5
+  nuevas: quedan 42). No eran avisos baratos: eran edificios viejos comparados con avisos nuevos.
+- Las oportunidades sin control de edificio tenían una antigüedad mediana de **46 años, contra 16 del resto**.
+  En las de Century 21, el 56 % se declaraba en estado "bueno" (contra 10 % del resto).
+- 7 declaran 0 años. Una es de Century 21 y está en construcción (de pozo, que suele pedir menos). Las otras 6
+  son de Zonaprop, y algunas piden precios difíciles de creer para algo a estrenar (unos USD 810/m² en
+  Agronomía): es probable que sea el 0 por defecto. Conviene marcarlas para revisar.
+- **Para la alerta:** 4 de cada 10 oportunidades se explicaban por la antigüedad. Con el dato disponible para
+  el 77 % de la base, el criterio de oportunidad tiene que usarlo. RE/MAX (15 % de la base) sigue sin dato.
 """)
 
 code(r"""
@@ -722,8 +862,9 @@ md(r"""
   Zonaprop) es el tipo de aviso que conviene verificar antes de alertar.
 - Las oportunidades se reparten de forma parecida entre fuentes (Zonaprop, RE/MAX, Century 21, Migliorisi), así
   que no parecen un artefacto de una sola fuente.
-- **Lo que el modelo no ve:** estado, antigüedad, piso, orientación, cochera, amenities. Un aviso barato puede
-  estar a refaccionar. Por eso la etiqueta tiene que decir *"por debajo de avisos comparables"*, no *"ganga"*.
+- **Lo que este modelo no ve:** la antigüedad y el estado (el control de más abajo los suma y muestra cuánto
+  cambia la lista); orientación, luminosidad y amenities no están en la base. Un aviso barato puede estar a
+  reciclar. Por eso la etiqueta tiene que decir *"por debajo de avisos comparables"*, no *"ganga"*.
 
 > **Para la app · alertas.** (1) Priorizar en el correo de Make los avisos nuevos con brecha ≤ −20 % y la frase
 > *"pide 24 % menos por m² que avisos parecidos del barrio (mediana USD 2.450/m², 31 comparables)"*.
@@ -869,9 +1010,11 @@ resumen = pd.DataFrame([
     ('Comparación', 'La mediana del barrio es inestable con muestras chicas y hay mucha dispersión interna', 'Mostrar P25–P75 y una nota de confianza de la muestra', '§1–2'),
     ('Comparación', 'Hay barrios con entorno parecido y 10–35 % menos de USD/m²', 'Sección “Parecidos y más accesibles”, descrita capa por capa', '§6'),
     ('Comparación', 'Dentro del barrio, proporción descubierta, tamaño y ambientes mueven el USD/m²; la ubicación fina casi no', 'Comparar contra avisos de tamaño parecido; mostrar m² descubiertos', '§3'),
+    ('Preferencias / comparación', 'La antigüedad es lo que más mueve el USD/m² dentro del barrio (rho −0,51): hasta 10 años +16 %, más de 30 años −13 a −15 %', 'Filtro de antigüedad y comparar contra avisos de antigüedad parecida', '§3 bis'),
     ('Comparación', 'Expensas faltan en >50 % y varían mucho', 'Mostrar costo mensual o “expensas no informadas”', '§3'),
     ('Mapa', 'El total de delitos sigue a la actividad urbana, no al precio', 'Delitos como contexto con tipo y franja; nunca para ordenar', '§5'),
     ('Búsqueda / alerta', '76 propiedades (2 %) quedan ≥20 % por debajo de lo esperado y de sus comparables', 'Alertas priorizadas y filtro “solo por debajo de comparables”', '§7'),
+    ('Búsqueda / alerta', 'Con antigüedad, 26 de 63 oportunidades dejan de serlo: eran edificios viejos', 'Incluir la antigüedad en el criterio de la alerta', '§7'),
     ('Búsqueda / alerta', 'Parte de los “baratos” son errores de carga', 'Excluirlos de la alerta o marcarlos para revisar', '§7'),
     ('Comprar / Alquilar', 'Alquileres en USD son otro segmento; la relación precio/alquiler varía por barrio', '“Comprar acá equivale a X años de alquiler”', '§8'),
     ('Aviso', 'Hay posibles duplicados entre fuentes con precios distintos', 'Agrupar duplicados y mostrar la diferencia de precio', '§9'),
@@ -889,8 +1032,9 @@ md(r"""
 - **Historia de cada aviso:** guardar `primera_vez_visto` y `ultima_vez_visto` en cada actualización programada
   (ya corre cada 2 días). Con eso se mide **tiempo publicado** y **bajas de precio**, dos señales de oportunidad
   mucho más fuertes que el precio de una sola captura.
-- **Atributos del aviso:** antigüedad, piso, cochera y estado ("a refaccionar") explican parte de la brecha que hoy
-  el modelo atribuye a "oportunidad".
+- **Antigüedad de RE/MAX y estado de Zonaprop:** la antigüedad ya está para el 77 % de la base. Falta RE/MAX,
+  que no la publica en su búsqueda (habría que leer cada ficha), y el estado fuera de Century 21.
+  Las próximas capturas de Zonaprop ya guardan la antigüedad.
 - **Validación con la inmobiliaria:** revisar una muestra de las oportunidades de la sección 7 para estimar
   cuántas son reales.
 

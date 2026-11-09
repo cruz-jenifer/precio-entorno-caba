@@ -30,6 +30,7 @@ ACCOUNT_LIMIT_USD = 5.0
 OPERATIONS = {'venta': ('sale', 'Venta'), 'alquiler': ('rent', 'Alquiler')}
 # Códigos de características de Zonaprop.
 AMBIENTES, SUP_TOTAL, SUP_CUBIERTA, EXPENSAS = 'CFT1', 'CFT100', 'CFT101', 'CFT6'
+ANTIGUEDAD, COCHERAS = 'CFT5', 'CFT7'   # Zonaprop no publica estado ni piso como característica.
 # Subbarrios de Zonaprop que caen en un único barrio oficial.
 ZONAPROP_SUBZONES = {'almagro_sur': 'Almagro', 'parque_rivadavia': 'Caballito', 'parque_centenario': None,
                      'pompeya': 'Nueva Pompeya'}
@@ -57,12 +58,17 @@ def payload(barrio, operation, max_items):
 
 
 def features(item):
-    """{código: valor} de las características del aviso."""
+    """{código: valor} de las características del aviso.
+
+    El listado omite algunos códigos cuando valen 0 (por ejemplo, cocheras); la ficha
+    (`_details`) los trae, así que completa con ella lo que falta.
+    """
     out = {}
-    for entry in item.get('features') or []:
-        feature = entry.get('feature') or {}
-        if feature.get('feature_id') is not None:
-            out[str(feature['feature_id'])] = entry.get('value')
+    entries = (item.get('features') or []) + ((item.get('_details') or {}).get('features') or [])
+    for entry in entries:
+        feature = (entry or {}).get('feature') or {}
+        if feature.get('feature_id') is not None and 'value' in entry:
+            out.setdefault(str(feature['feature_id']), entry.get('value'))
     return out
 
 
@@ -95,6 +101,12 @@ def listing_url(value):
     if parts.scheme == 'https' and parts.netloc in ('www.zonaprop.com.ar', 'zonaprop.com.ar'):
         return parts._replace(query='', fragment='').geturl()
     return None
+
+
+def whole(value):
+    """Entero no negativo escrito sin decimales ('0', '15'). Lo demás queda sin dato."""
+    text = str(value if value is not None else '').strip()
+    return int(text) if re.fullmatch(r'\d{1,3}', text) else None
 
 
 def ars_amount(text):
@@ -130,7 +142,8 @@ def adapt(item, captured_at, operation):
         covered_area_m2=covered, total_area_m2=total if total and covered and total >= covered else None,
         rooms=int(rooms) if rooms else None, neighborhood=zonaprop_barrio(location),
         latitude=coordinate(geo.get('latitude')), longitude=coordinate(geo.get('longitude')),
-        expenses=ars_amount(feats.get(EXPENSAS)))
+        expenses=ars_amount(feats.get(EXPENSAS)),
+        age_years=whole(feats.get(ANTIGUEDAD)), garages=whole(feats.get(COCHERAS)))
     return listing, None if listing['neighborhood'] else 'barrio_ambiguo'
 
 
@@ -198,6 +211,37 @@ def run(accounts, out, barrios, operation, max_items, cap_usd, margin_usd=0.25):
     return listings, log
 
 
+def reread(registros, clients, out):
+    """Vuelve a adaptar los resultados de corridas ya hechas, sin correr el actor.
+
+    Lee el dataset de cada corrida registrada (no genera eventos cobrables) y conserva la
+    fecha de captura original. `clients` es {número de cuenta: ApifyClient}. Si un aviso
+    aparece en más de un registro, gana el último.
+    """
+    out.mkdir(parents=True, exist_ok=False)
+    by_id, log = {}, {'actor': ACTOR, 'releido_de': [], 'corridas': [],
+                      'nota': 'Relectura de datasets existentes, sin corridas nuevas del actor.'}
+    for path in registros:
+        source = json.loads(Path(path).read_text(encoding='utf-8'))
+        log['releido_de'].append(Path(path).parent.name)
+        for entry in source['corridas']:
+            client = clients[entry['cuenta']]
+            run_ = client.request(f"actor-runs/{entry['run_id']}")['data']
+            items = client.request(f"datasets/{run_['defaultDatasetId']}/items",
+                                   params={'format': 'json', 'clean': 'true'})
+            batch, skipped = adapt_all(items, source['captura'], source['operacion'])
+            by_id.update((x['listing_id'], x) for x in batch)
+            log['corridas'].append({'barrio': entry['barrio'], 'run_id': entry['run_id'], 'avisos': len(batch),
+                                    'omitidos': skipped})
+            print(f"{entry['barrio']}: {len(batch)} avisos", flush=True)
+    listings = list(by_id.values())
+    log['avisos'] = len(listings)
+    log['con_antiguedad'] = sum(x['age_years'] is not None for x in listings)
+    write_json(out / 'avisos.json', listings)
+    write_json(out / 'registro.json', log)
+    return listings, log
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument('--barrios', nargs='+', default=list(PILOT_BARRIOS),
@@ -212,7 +256,19 @@ def main():
     parser.add_argument('--ejecutar', action='store_true', help='Sin esta opción solo muestra el plan')
     parser.add_argument('--autorizacion-confirmada', action='store_true',
                         help='Confirma que Zonaprop autorizó por escrito la consulta automatizada')
+    parser.add_argument('--releer', type=Path, nargs='+', metavar='REGISTRO',
+                        help='Vuelve a adaptar corridas ya hechas a partir de sus registro.json, sin costo de actor')
     args = parser.parse_args()
+    if args.releer:
+        if not args.salida:
+            parser.exit(1, 'Error: --releer necesita --salida.\n')
+        try:
+            tokens = apify_tokens()
+            listings, log = reread(args.releer, {n: ApifyClient(t) for n, t in enumerate(tokens, 1)}, args.salida)
+        except (ValueError, RuntimeError, OSError, KeyError) as error:
+            parser.exit(1, f'Error: {error}\n')
+        print(f"Avisos: {len(listings)} · con antigüedad: {log['con_antiguedad']}")
+        return
     if args.barrios == ['todos']:
         args.barrios = [SEARCH_NAMES.get(name, name) for name in CABA_BARRIOS]
     estimate = len(args.barrios) * (0.001 + args.max_avisos * 2 * 0.001)

@@ -50,12 +50,14 @@ function leerGuardado() {
 
 const guardado = leerGuardado();
 const estado = {
-  modo: guardado.modo || 'demo',
+  modo: guardado.modo || 'real',
   operacion: guardado.operacion || 'venta',
   moneda: guardado.moneda || 'USD',
   presupuesto: guardado.presupuesto || 110000,
   superficie: guardado.superficie || 40,
   ambientes: guardado.ambientes || 2,
+  ambientesOMas: Boolean(guardado.ambientesOMas),
+  verTodos: false,
   prefs: new Set(guardado.prefs || ['subte', 'verdes']),
   nivel: guardado.nivel || 'primario',
   ruido: 'diurno',
@@ -77,13 +79,14 @@ function guardar() {
   const { modo, operacion, moneda, presupuesto, superficie, ambientes, nivel } = estado;
   try {
     localStorage.setItem('precio-entorno-filtros', JSON.stringify(
-      { modo, operacion, moneda, presupuesto, superficie, ambientes, nivel, prefs: [...estado.prefs] }));
+      { modo, operacion, moneda, presupuesto, superficie, ambientes, ambientesOMas: estado.ambientesOMas, nivel, prefs: [...estado.prefs] }));
   } catch { /* Sin almacenamiento local: los filtros vuelven a los valores iniciales. */ }
 }
 
 function consulta(extra = {}) {
   const { modo, operacion, presupuesto, superficie, ambientes, moneda } = estado;
-  return new URLSearchParams({ modo, operacion, presupuesto, superficie, ambientes, moneda, ...extra });
+  return new URLSearchParams({ modo, operacion, presupuesto, superficie, ambientes, moneda,
+    ambientes_o_mas: estado.ambientesOMas, ...extra });
 }
 
 async function api(ruta, opciones) {
@@ -127,21 +130,23 @@ function lineaEntorno(e) {
 function renderLista() {
   const con = estado.barrios.filter((b) => b.coincidencias > 0);
   const sin = estado.barrios.filter((b) => !b.coincidencias);
+  const total = estado.barrios.reduce((s, b) => s + b.avisos, 0);
+  const encajan = con.reduce((s, b) => s + b.coincidencias, 0);
   const titulo = con.length
     ? `${con.length} ${plural(con.length, 'barrio tiene', 'barrios tienen')} avisos que encajan`
     : 'Ningún aviso encaja con estos filtros';
   const nota = con.length
-    ? `Precios publicados en ${estado.moneda}, no tasaciones. Elegí un barrio para ver su entorno en el mapa.`
+    ? `${numero.format(encajan)} de ${numero.format(total)} avisos en ${estado.moneda} encajan con tu búsqueda. Precios publicados, no tasaciones. Elegí un barrio para ver su entorno en el mapa.`
     : 'Probá subir el presupuesto, bajar la superficie mínima o cambiar los ambientes. Igual podés elegir un barrio para ver su entorno.';
   const filas = con.map((b) => `
     <li><button class="fila" type="button" data-barrio="${esc(b.barrio)}">
       <span class="fila-nombre">${esc(b.barrio)}</span>
-      <span class="fila-cuenta">${b.coincidencias} ${plural(b.coincidencias, 'aviso', 'avisos')}</span>
+      <span class="fila-cuenta">${b.coincidencias} de ${b.avisos} ${plural(b.avisos, 'aviso', 'avisos')}</span>
       <span class="fila-mediana">Mediana ${dinero(b.mediana, estado.moneda)}</span>
       <span></span>
       ${b.entorno ? `<span class="fila-entorno">${esc(lineaEntorno(b.entorno))}</span>` : ''}
     </button></li>`).join('');
-  const compactos = sin.map((b) => `<li><button type="button" data-barrio="${esc(b.barrio)}">${esc(b.barrio)}</button></li>`).join('');
+  const compactos = sin.map((b) => `<li><button type="button" data-barrio="${esc(b.barrio)}">${esc(b.barrio)} · ${b.avisos}</button></li>`).join('');
   $('#contenido').innerHTML = `
     <h1 class="titulo-lista">${titulo}</h1>
     <p class="nota">${nota}</p>
@@ -178,7 +183,7 @@ function renderFicha() {
     );
   }
   const alquiler = estado.operacion === 'alquiler';
-  const visibles = estado.avisos.slice(0, 25);
+  const visibles = estado.verTodos ? estado.avisos : estado.avisos.slice(0, 25);
   const filas = visibles.map((a) => `<tr>
       <td>${dinero(a.precio, a.moneda)}</td>
       <td>${a.superficie} m²</td>
@@ -187,7 +192,7 @@ function renderFicha() {
       <td>${a.enlace ? `<a href="${esc(a.enlace)}" target="_blank" rel="noopener">Ver aviso</a>` : 'Ejemplo'}</td>
     </tr>`).join('');
   const resumen = b.coincidencias
-    ? `${b.coincidencias} ${plural(b.coincidencias, 'aviso encaja', 'avisos encajan')} con tu búsqueda. Mediana ${dinero(b.mediana, estado.moneda)}.`
+    ? `${b.coincidencias} de ${b.avisos} ${plural(b.avisos, 'aviso', 'avisos')} en ${estado.moneda} ${plural(b.coincidencias, 'encaja', 'encajan')} con tu búsqueda. Mediana ${dinero(b.mediana, estado.moneda)}.`
     : 'Ningún aviso encaja con tu búsqueda por ahora. Podés crear la alerta igual.';
   $('#contenido').innerHTML = `
     <article class="ficha">
@@ -195,7 +200,9 @@ function renderFicha() {
       <h1 class="titulo-barrio">${esc(b.barrio)}</h1>
       ${e ? `<p class="ficha-sub">Comuna ${e.comuna}, ${numero.format(Math.round(e.area_ha))} ha</p>` : ''}
       <p class="ficha-resumen">${resumen}</p>
-      <button class="boton-primario" type="button" id="crear-alerta">Crear alerta para ${esc(b.barrio)}</button>
+      ${estado.ambientesOMas
+        ? '<p class="nota">Para crear una alerta, elegí una cantidad exacta de ambientes.</p>'
+        : `<button class="boton-primario" type="button" id="crear-alerta">Crear alerta para ${esc(b.barrio)}</button>`}
       <p class="estado" id="estado-alerta" role="status"></p>
       ${ficha.length ? `<h2>Entorno</h2>
         <dl class="hechos">${ficha.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join('')}</dl>
@@ -206,7 +213,7 @@ function renderFicha() {
           <thead><tr><th>Precio publicado</th><th>Cubierta</th><th>Amb.</th>${alquiler ? '<th>Expensas</th>' : ''}<th><span hidden>Enlace</span></th></tr></thead>
           <tbody>${filas}</tbody>
         </table>
-        ${estado.avisos.length > visibles.length ? `<p class="fuente">Se muestran los ${visibles.length} más baratos de ${estado.avisos.length}.</p>` : ''}
+        ${estado.avisos.length > visibles.length ? `<p class="fuente">Se muestran los ${visibles.length} más baratos de ${estado.avisos.length}. <button class="boton-texto" type="button" id="ver-todos">Ver todos</button></p>` : ''}
         <p class="fuente">${estado.modo === 'demo' ? 'Avisos ficticios de ejemplo.' : 'Precios de publicación del catálogo autorizado, no tasaciones ni precios de cierre.'}</p>` : ''}
     </article>`;
 }
@@ -565,6 +572,7 @@ async function seleccionar(nombre) {
     mapa.setFeatureState({ source: 'barrios', id: estado.seleccionado }, { sel: false });
   }
   estado.seleccionado = nombre;
+  estado.verTodos = false;
   estado.avisos = [];
   estado.delitosDatos = null;
   popup.remove();
@@ -614,7 +622,7 @@ function sincronizarControles() {
   $('#etiqueta-presupuesto').textContent = alquiler ? 'Hasta por mes' : 'Hasta';
   $('#presupuesto').value = numero.format(estado.presupuesto);
   $('#superficie').value = estado.superficie;
-  $('#ambientes').value = String(estado.ambientes);
+  $('#ambientes').value = `${estado.ambientes}${estado.ambientesOMas ? '+' : ''}`;
   $('#nivel').value = estado.nivel;
   $('#franja-demo').hidden = estado.modo !== 'demo';
   $('#preferencias').innerHTML = `<legend hidden>Lo que me importa</legend>${PREFERENCIAS.map((p) => `
@@ -685,7 +693,11 @@ function conectarEventos() {
     if (valor) { estado.superficie = valor; recargar(); }
   });
   $('#superficie').addEventListener('blur', (e) => { e.target.value = estado.superficie; });
-  $('#ambientes').addEventListener('change', (e) => { estado.ambientes = Number(e.target.value); recargar(); });
+  $('#ambientes').addEventListener('change', (e) => {
+    estado.ambientes = parseInt(e.target.value, 10);
+    estado.ambientesOMas = e.target.value.endsWith('+');
+    recargar();
+  });
   $('#filtros').addEventListener('submit', (e) => e.preventDefault());
 
   const importa = $('#importa');
@@ -727,6 +739,7 @@ function conectarEventos() {
     if (e.target.closest('#volver')) { seleccionar(null); return; }
     if (e.target.closest('[data-fuentes]')) { abrirFuentes(); return; }
     if (e.target.closest('#crear-alerta')) crearAlerta(e.target.closest('#crear-alerta'));
+    if (e.target.closest('#ver-todos')) { estado.verTodos = true; renderFicha(); }
   });
   $('#contenido').addEventListener('mouseover', (e) => {
     const fila = e.target.closest('.fila');

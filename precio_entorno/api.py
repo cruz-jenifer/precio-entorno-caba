@@ -112,14 +112,15 @@ def create_app(demo_path=None, real_path=None, entorno_dir=None, raw_dir=None, w
 
     @app.get('/api/barrios')
     def neighborhoods(modo: Mode = 'demo', operacion: Operation = 'venta', presupuesto: int = Query(110_000, ge=1),
-                      superficie: int = Query(40, ge=1), ambientes: int = Query(2, ge=1), moneda: str = 'USD'):
+                      superficie: int = Query(40, ge=1), ambientes: int = Query(2, ge=1), moneda: str = 'USD',
+                      ambientes_o_mas: bool = False):
         check_currency(operacion, moneda)
         listings = store_for(modo, operacion).listings()
         summary = (layers() or {}).get('resumen', {})
         rows = []
         for name in OFFICIAL:
             own = [i for i in listings if i['neighborhood'] == name and (i.get('currency') or 'USD') == moneda]
-            found = [i['price'] for i in own if matches(i, presupuesto, superficie, ambientes, moneda)]
+            found = [i['price'] for i in own if matches(i, presupuesto, superficie, ambientes, moneda, ambientes_o_mas)]
             rows.append({'barrio': name, 'comuna': (summary.get(name) or {}).get('comuna'),
                          'avisos': len(own), 'coincidencias': len(found),
                          'mediana': int(median(found)) if found else None, 'entorno': summary.get(name)})
@@ -129,11 +130,11 @@ def create_app(demo_path=None, real_path=None, entorno_dir=None, raw_dir=None, w
     @app.get('/api/barrios/{barrio}/avisos')
     def listings_for(barrio: str, modo: Mode = 'demo', operacion: Operation = 'venta',
                      presupuesto: int = Query(110_000, ge=1), superficie: int = Query(40, ge=1),
-                     ambientes: int = Query(2, ge=1), moneda: str = 'USD'):
+                     ambientes: int = Query(2, ge=1), moneda: str = 'USD', ambientes_o_mas: bool = False):
         check_barrio(barrio)
         check_currency(operacion, moneda)
         found = [i for i in store_for(modo, operacion).listings()
-                 if i['neighborhood'] == barrio and matches(i, presupuesto, superficie, ambientes, moneda)]
+                 if i['neighborhood'] == barrio and matches(i, presupuesto, superficie, ambientes, moneda, ambientes_o_mas)]
         found.sort(key=lambda i: (i['price'], -i['covered_area']))
         return {'avisos': [{
             'id': i['id'], 'precio': i['price'], 'moneda': i.get('currency') or 'USD',

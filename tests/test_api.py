@@ -66,6 +66,12 @@ class ApiTests(unittest.TestCase):
         self.assertTrue(all(a['enlace'] is None for a in listings))
         self.assertEqual(self.get('/api/barrios/Almagro/avisos', presupuesto=99_000)['avisos'][0]['id'], 'demo-003')
 
+    def test_rooms_or_more_widens_matches(self):
+        exact = sum(r['coincidencias'] for r in self.get('/api/barrios', ambientes=1, presupuesto=10**9)['barrios'])
+        rows = self.get('/api/barrios', ambientes=1, presupuesto=10**9, superficie=1, ambientes_o_mas='true')['barrios']
+        self.assertEqual(sum(r['coincidencias'] for r in rows), sum(r['avisos'] for r in rows))
+        self.assertGreaterEqual(sum(r['coincidencias'] for r in rows), exact)
+
     def test_rentals_compare_in_the_chosen_currency(self):
         self.assertEqual(self.get('/api/estado', operacion='alquiler')['monedas'], ['ARS', 'USD'])
         rows = self.get('/api/barrios', operacion='alquiler', presupuesto=800_000, moneda='ARS')['barrios']

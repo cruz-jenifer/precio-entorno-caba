@@ -2,10 +2,14 @@ from collections import defaultdict
 from statistics import median
 
 
-def matches(item, budget, min_area, rooms, currency='USD'):
-    """Un aviso encaja si está en la moneda de la búsqueda y cumple presupuesto, superficie y ambientes."""
+def matches(item, budget, min_area, rooms, currency='USD', or_more=False):
+    """Un aviso encaja si está en la moneda de la búsqueda y cumple presupuesto, superficie y ambientes.
+
+    Con `or_more`, los ambientes son un mínimo en lugar de una cantidad exacta.
+    """
+    rooms_ok = item['rooms'] >= rooms if or_more else item['rooms'] == rooms
     return ((item.get('currency') or 'USD') == currency and item['price'] <= budget
-            and item['covered_area'] >= min_area and item['rooms'] == rooms)
+            and item['covered_area'] >= min_area and rooms_ok)
 
 
 def compare_neighborhoods(listings, budget, min_area, rooms, currency='USD'):

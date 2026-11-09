@@ -121,7 +121,42 @@ Faltantes e inválidos de los 4.007 leídos, por campo:
 
 - **Dentro de una fuente:** el ID lleva el prefijo de la inmobiliaria (`remax:…`, `zonaprop:…`) y la carga usa
   `INSERT OR IGNORE`. Un aviso ya cargado no se vuelve a insertar ni genera otra alerta, como mostró la
-  reimportación.
+  reimportación. Si vuelve a aparecer con otro precio publicado, se actualiza el precio y se agrega una fila a
+  `listing_prices` (sección 4 bis).
+
+## 4 bis. Vigencia: avisos vendidos, reservados o retirados
+
+Un aviso que deja de publicarse **no se borra**: cambia su `status` en `listings`. La base guarda además
+`last_seen` (última captura en la que apareció) y `status_at` (cuándo cambió el estado).
+
+| Estado | Cuándo | ¿Cuenta en medianas, búsqueda y mapa? |
+| --- | --- | --- |
+| `activo` | Apareció en la última captura o nunca se verificó su ausencia | Sí |
+| `no_visto` | Faltó en **un** barrido completo de su fuente | Sí, puede ser una falla pasajera del sitio |
+| `baja` | Faltó en **dos** barridos completos seguidos | No. En Mis alertas figura como «Ya no está publicado» |
+| `reservado` | Definido para fuentes que lo publiquen; hoy ninguna lo informa | No |
+
+- **Ausencia no es baja.** La actualización de cada dos días lee los avisos **más recientes** con un tope, así
+  que un aviso que falta pudo quedar fuera de la ventana. Solo un **barrido completo** (se leyeron todas las
+  páginas de la fuente sin cortar por el tope) puede cambiar vigencias. Cada captura escribe `vistos.json` con
+  `barrido_completo` y los IDs vistos por sitio.
+- **Fuentes con barrido completo:** Remax, Century 21 y Migliorisi. En Migliorisi, los avisos ya conocidos cuentan
+  como vistos sin pedir su ficha. Mob y Clarín no permiten recorrer todo el listado, y Zonaprop se lee con Apify por
+  barrio con un tope: sus avisos no cambian de vigencia con esta regla (fase 2: verificación selectiva).
+- **Freno de seguridad:** si en un barrido falta más del 30 % de los avisos vigentes de la fuente, se supone una
+  falla del sitio o del lector y no se cambia nada (`aplicado: false` en el historial).
+- **Reaparición:** un aviso dado de baja que vuelve a aparecer pasa a `activo` y se vuelve a comparar con las
+  búsquedas.
+- **Precio:** si cambia, se guarda en `listing_prices` (precio, moneda y fecha) y se vuelve a comparar con las
+  búsquedas: una baja de precio puede hacerlo entrar en un presupuesto y genera una alerta (una sola vez por
+  búsqueda). Una captura más vieja que `last_seen` no cambia nada. Son **precios publicados**, no de cierre: una
+  baja indica que el aviso dejó de publicarse, no que se vendió a ese precio.
+- **Cómo correrlo:** `python -m precio_entorno.actualizar --autorizacion-confirmada --barrido-completo` recorre
+  hasta 20.000 avisos por inmobiliaria. No usa Apify, pero tarda más por la pausa entre pedidos. Conviene una vez por
+  semana; el resto de las corridas siguen siendo de recientes. La primera vez en Migliorisi pide la ficha de cada
+  aviso que no está en la base.
+- **Bases existentes:** al abrirlas se agregan las columnas nuevas, `last_seen` toma la fecha de captura y cada
+  aviso recibe su primer precio en `listing_prices`.
 - **Entre fuentes:** la misma propiedad puede estar publicada por dos inmobiliarias. Se marcan como posibles
   duplicados los avisos de **distintas inmobiliarias** con el mismo barrio y la misma cantidad de ambientes, los
   mismos m² cubiertos redondeados y el mismo precio redondeado a miles. En esta captura son **221 grupos con 446
@@ -147,6 +182,7 @@ Faltantes e inválidos de los 4.007 leídos, por campo:
 | --- | --- |
 | Validación de campos, rangos y monedas | `tests/test_importing.py` (`test_implausible_prices_and_areas_are_discarded`, `test_building_fields_are_optional_and_validated`) |
 | Reimportación sin filas nuevas ni alertas | `tests/test_importing.py` (`test_csv_validates_and_alerts_only_once`), `tests/test_actualizar.py`, `tests/test_etl_reporte.py` |
+| Vigencia: dos barridos para la baja, freno de seguridad, reaparición, historial de precios y migración | `tests/test_vigencia.py` |
 | Delitos: cobertura, faltantes y reimportación | `tests/test_importing.py` (`test_crime_counts_coverage_and_reimport`) |
 | Grupos de posibles duplicados entre fuentes | `tests/test_consolidar.py` (`test_duplicate_groups_only_join_different_sources`) |
 | Reporte de la corrida y lote inválido | `tests/test_etl_reporte.py` |

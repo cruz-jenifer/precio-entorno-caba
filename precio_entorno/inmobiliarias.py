@@ -12,6 +12,7 @@ lleva el prefijo de su inmobiliaria.
 import argparse
 import gzip
 import html as html_lib
+import inspect
 import json
 import re
 import time
@@ -228,7 +229,8 @@ def parse_remax(payload, captured_at, operation='venta'):
     return out, skipped, data.get('totalPages', 0)
 
 
-def scrape_remax(client, captured_at, max_listings, page_size=100, known=frozenset(), operation='venta'):
+def scrape_remax(client, captured_at, max_listings, page_size=100, known=frozenset(), operation='venta',
+                 sweep=None):
     listings, skipped, page = [], Counter(), 0
     landing = OPERATION_SETTINGS[operation]['remax_landing']
     while len(listings) < max_listings:
@@ -239,6 +241,10 @@ def scrape_remax(client, captured_at, max_listings, page_size=100, known=frozens
         page += 1
         if page >= pages or not batch and not why:
             break
+    if sweep is not None:
+        # Completo si se leyeron todas las páginas sin cortar por el tope. Los avisos que Remax marca como no
+        # activos se omiten, así que cuentan como no vistos.
+        sweep['completo'] = bool(pages) and page >= pages and len(listings) <= max_listings
     return listings[:max_listings], skipped
 
 
@@ -295,7 +301,7 @@ def parse_century21(page, captured_at, operation='venta'):
     return out, skipped, int(count.group(1)) if count else 0
 
 
-def scrape_century21(client, captured_at, max_listings, known=frozenset(), operation='venta'):
+def scrape_century21(client, captured_at, max_listings, known=frozenset(), operation='venta', sweep=None):
     listings, skipped, page, total = [], Counter(), 1, None
     params = dict(C21_PARAMS, op=OPERATION_SETTINGS[operation]['c21_op'])
     while len(listings) < max_listings:
@@ -306,6 +312,8 @@ def scrape_century21(client, captured_at, max_listings, known=frozenset(), opera
         if not batch and not why or (page * 16 >= total):
             break
         page += 1
+    if sweep is not None:
+        sweep['completo'] = bool(total) and page * 16 >= total and len(listings) <= max_listings
     return listings[:max_listings], skipped
 
 
@@ -362,19 +370,23 @@ def parse_migliorisi_detail(page, path, code, title, captured_at, operation='ven
     return listing, is_operation, title.upper().startswith('DEPARTAMENTO')
 
 
-def scrape_migliorisi(client, captured_at, max_listings, known=frozenset(), operation='venta'):
+def scrape_migliorisi(client, captured_at, max_listings, known=frozenset(), operation='venta', sweep=None):
     """Recorre las `max_listings` fichas más recientes del listado. Solo pide el detalle de las que no están
-    en `known`. Las conocidas cuentan dentro de la ventana: si no, cada corrida bajaría a avisos más viejos."""
-    listings, skipped, page, last, examined = [], Counter(), 1, 1, 0
+    en `known`. Las conocidas cuentan dentro de la ventana: si no, cada corrida bajaría a avisos más viejos.
+    Las conocidas no se devuelven, pero se anotan como vistas en `sweep`."""
+    listings, skipped, page, last, examined, cut = [], Counter(), 1, 1, 0, False
     op_path = OPERATION_SETTINGS[operation]['mig_path']
     while page <= last and examined < max_listings:
         cards, last = parse_migliorisi_list(client.get(MIG_SEARCH.format(op=op_path, page=page)))
         for path, code, title in cards:
             if examined >= max_listings:
+                cut = True
                 break
             examined += 1
             if f'migliorisi:{code}' in known:
                 skipped['ya_conocido'] += 1
+                if sweep is not None:
+                    sweep['vistos'].add(f'migliorisi:{code}')
                 continue
             listing, is_operation, is_flat = parse_migliorisi_detail(
                 client.get(MIG_BASE + path), path, code, title, captured_at, operation)
@@ -385,6 +397,8 @@ def scrape_migliorisi(client, captured_at, max_listings, known=frozenset(), oper
                 skipped['barrio_ambiguo'] += 1
             listings.append(listing)
         page += 1
+    if sweep is not None:
+        sweep['completo'] = page > last and not cut
     return listings, skipped
 
 
@@ -607,16 +621,24 @@ def possible_duplicates(listings):
 
 
 def run_capture(sites, max_listings, out, client=None, known=frozenset(), echo=print, operation='venta'):
-    """Captura cada sitio en una carpeta nueva y devuelve los avisos y el registro."""
+    """Captura cada sitio en una carpeta nueva y devuelve los avisos y el registro.
+
+    Además escribe `vistos.json`: por sitio, si el barrido fue completo (se recorrió toda la fuente, no solo
+    los más recientes) y los IDs vistos. Solo un barrido completo permite dar de baja los avisos que faltan.
+    """
     out.mkdir(parents=True, exist_ok=False)
     captured_at = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
     client = client or PoliteClient()
     listings, log = [], {'catalogo': CATALOGS[operation], 'operacion': operation, 'captura': captured_at,
                          'user_agent': USER_AGENT, 'sitios': {}}
+    seen = {}
     for site in sites:
         before, start = dict(client.log), time.monotonic()
+        sweep = {'completo': False, 'vistos': set()}
         try:
             kwargs = {'known': known, 'operation': operation} if operation != 'venta' else {'known': known}
+            if 'sweep' in inspect.signature(SITES[site]).parameters:
+                kwargs['sweep'] = sweep
             batch, skipped = SITES[site](client, captured_at, max_listings, **kwargs)
             status = 'completo'
         except Blocked as error:
@@ -624,11 +646,16 @@ def run_capture(sites, max_listings, out, client=None, known=frozenset(), echo=p
         except (RuntimeError, ValueError, KeyError) as error:
             batch, skipped, status = [], Counter(), f'error: {error}'
         listings += batch
+        complete = status == 'completo' and sweep['completo']
+        seen[site] = {'barrido_completo': complete,
+                      'ids': sorted(sweep['vistos'] | {item['listing_id'] for item in batch})}
         log['sitios'][site] = {'estado': status, 'avisos': len(batch), 'omitidos': dict(skipped),
+                               'barrido_completo': complete,
                                'pedidos': client.log['pedidos'] - before.get('pedidos', 0),
                                'segundos': round(time.monotonic() - start)}
         (out / 'avisos.json').write_text(json.dumps(listings, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
-        echo(f"{site}: {status} · {len(batch)} avisos")
+        (out / 'vistos.json').write_text(json.dumps(seen, ensure_ascii=False) + '\n', encoding='utf-8')
+        echo(f"{site}: {status} · {len(batch)} avisos" + (' · barrido completo' if complete else ''))
     log['posibles_duplicados_entre_inmobiliarias'] = possible_duplicates(listings)
     log['respuestas_http'] = {k: v for k, v in client.log.items() if k.startswith('http_')}
     log['robots_no_disponible'] = [k.split(':', 1)[1] for k in client.log if k.startswith('robots_no_disponible:')]

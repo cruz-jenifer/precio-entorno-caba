@@ -337,7 +337,9 @@ if alerts:
     for a in alerts:
         row = {'Búsqueda': a['search_id'], 'Aviso': a['id'], 'Barrio': a['neighborhood'],
                'Precio publicado': money(a['price'], a['currency']),
-               'Superficie cubierta (m²)': a['covered_area'], 'Ambientes': a['rooms']}
+               'Superficie cubierta (m²)': a['covered_area'], 'Ambientes': a['rooms'],
+               'Vigencia': {'baja': 'Ya no está publicado', 'reservado': 'Reservado',
+                            'no_visto': 'No visto en el último barrido'}.get(a.get('status'), 'Publicado')}
         if operation == 'alquiler':
             row['Expensas'] = money(a.get('expenses'), 'ARS')
         if not demo:

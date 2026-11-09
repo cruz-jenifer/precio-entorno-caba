@@ -274,6 +274,7 @@ def create_app(demo_path=None, real_path=None, entorno_dir=None, raw_dir=None, w
             'alertas': [{'busqueda': a['search_id'], 'id': a['id'], 'barrio': a['neighborhood'],
                          'precio': a['price'], 'moneda': a['currency'], 'superficie': a['covered_area'],
                          'ambientes': a['rooms'], 'expensas': a.get('expenses'),
+                         'estado': a.get('status') or 'activo',
                          'enlace': a.get('url') if modo == 'real' else None} for a in store.alerts()],
         }
 

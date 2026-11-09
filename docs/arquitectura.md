@@ -249,7 +249,8 @@ erDiagram
 Las líneas continuas son claves foráneas declaradas, con `PRAGMA foreign_keys = ON`. Las punteadas son relaciones que se resuelven por consulta, sin clave foránea.
 
 **Reglas que viven en la base:**
-- **Deduplicación por ID:** `INSERT OR IGNORE` en `listings`. Un aviso ya cargado no se actualiza, así que no hay historial de precios.
+- **Deduplicación por ID:** `INSERT OR IGNORE` en `listings`. Si un aviso ya cargado reaparece con otro precio, se actualiza `price` y se agrega una fila a `listing_prices`.
+- **Vigencia:** `status` (`activo`, `no_visto`, `reservado`, `baja`), `status_at` y `last_seen` en `listings`. Solo un barrido completo de una fuente marca bajas, y hacen falta dos seguidos. `Store.listings()` devuelve solo los vigentes. Detalle en `docs/etl.md`, sección 4 bis.
 - **Alertas al importar:** por cada aviso nuevo, un `INSERT … SELECT` busca en `searches` las búsquedas que cumplen todo esto:
   - mismo barrio;
   - presupuesto mayor o igual al precio;

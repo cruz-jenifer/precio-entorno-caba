@@ -68,6 +68,8 @@ class Report:
     duplicates: int = 0
     alerts: int = 0
     discarded: int = 0
+    price_changes: int = 0   # Avisos ya conocidos cuyo precio publicado cambió.
+    reactivated: int = 0     # Avisos dados de baja que volvieron a publicarse.
     missing: Counter = field(default_factory=Counter)
     invalid: Counter = field(default_factory=Counter)
 
@@ -138,7 +140,9 @@ def field_value(report, name, raw, parse):
 def import_listings(store, content, filename, source, operation='venta'):
     source = source.strip().casefold()
     listings, report = parse_listings(content, filename, source, operation)
-    report.added, report.alerts = store.ingest(listings, source=source)
+    stats = {}
+    report.added, report.alerts = store.ingest(listings, source=source, stats=stats)
+    report.price_changes, report.reactivated = stats['cambios_de_precio'], stats['reactivados']
     report.duplicates = len(listings) - report.added
     return report
 

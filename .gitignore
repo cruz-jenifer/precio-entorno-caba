@@ -8,3 +8,4 @@ data/local/
 data/processed/*
 !data/processed/README.md
 .claude/settings.local.json
+storage/

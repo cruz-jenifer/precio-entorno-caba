@@ -1,0 +1,10 @@
+# Además de .gitignore (que ya deja afuera .env y data/), el Actor solo necesita
+# .actor/ y precio_entorno/.
+.claude/
+docs/
+notebooks/
+scripts/
+tests/
+web/
+app.py
+skills-lock.json

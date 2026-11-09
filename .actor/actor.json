@@ -1,0 +1,27 @@
+{
+  "actorSpecification": 1,
+  "name": "precio-entorno-alertas",
+  "title": "Precio y Entorno CABA · Alertas",
+  "description": "Captura avisos de inmobiliarias autorizadas, descarta los ya vistos y devuelve los nuevos que cumplen cada búsqueda guardada.",
+  "version": "0.1",
+  "buildTag": "latest",
+  "dockerfile": "./Dockerfile",
+  "input": "./input_schema.json",
+  "storages": {
+    "dataset": {
+      "actorSpecification": 1,
+      "title": "Avisos nuevos por búsqueda",
+      "views": {
+        "resumen": {
+          "title": "Resumen",
+          "transformation": {
+            "fields": ["busqueda", "operacion", "cantidad", "descripcion", "avisos"]
+          },
+          "display": {
+            "component": "table"
+          }
+        }
+      }
+    }
+  }
+}

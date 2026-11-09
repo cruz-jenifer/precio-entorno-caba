@@ -204,7 +204,14 @@ function renderFicha() {
       <p class="ficha-resumen">${resumen}</p>
       ${estado.ambientesOMas
         ? '<p class="nota">Para crear una alerta, elegí una cantidad exacta de ambientes.</p>'
-        : `<button class="boton-primario" type="button" id="crear-alerta">Crear alerta para ${esc(b.barrio)}</button>`}
+        : `${estado.modo === 'real' ? `<div class="alerta-mail">
+            <label class="campo campo-mail"><span class="campo-etiqueta">Mail</span>
+              <input type="email" id="mail-alerta" autocomplete="email" inputmode="email" maxlength="254"
+                placeholder="Opcional, para recibir avisos nuevos"></label>
+            <p class="fuente">Si dejás tu mail, lo usamos solo para mandarte los avisos nuevos de esta búsqueda.
+              Cada correo trae un enlace para darte de baja.</p>
+          </div>` : ''}
+          <button class="boton-primario" type="button" id="crear-alerta">Crear alerta para ${esc(b.barrio)}</button>`}
       <p class="estado" id="estado-alerta" role="status"></p>
       ${ficha.length ? `<h2>Entorno</h2>
         <dl class="hechos">${ficha.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join('')}</dl>
@@ -850,18 +857,31 @@ function cambiarNivel(nivel) {
 
 async function crearAlerta(boton) {
   const salida = $('#estado-alerta');
+  const campoMail = $('#mail-alerta');
+  const email = campoMail ? campoMail.value.trim() : '';
+  if (campoMail && email && !campoMail.checkValidity()) {
+    salida.className = 'estado error';
+    salida.textContent = 'Revisá el mail: no parece una dirección válida.';
+    campoMail.focus();
+    return;
+  }
   boton.disabled = true;
   try {
-    const { creada } = await api(`/api/busquedas?${new URLSearchParams({ modo: estado.modo, operacion: estado.operacion })}`, {
+    const { creada, correo } = await api(`/api/busquedas?${new URLSearchParams({ modo: estado.modo, operacion: estado.operacion })}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ barrio: estado.seleccionado, presupuesto: estado.presupuesto,
-        superficie: estado.superficie, ambientes: estado.ambientes, moneda: estado.moneda }),
+        superficie: estado.superficie, ambientes: estado.ambientes, moneda: estado.moneda,
+        ...(email ? { email, consentimiento: true } : {}) }),
     });
-    salida.className = 'estado ok';
-    salida.textContent = creada
+    const local = creada
       ? 'Alerta creada. Cuando entre un aviso nuevo que encaje, lo vas a ver en Mis alertas.'
       : 'Ya tenías una alerta con estos mismos filtros.';
+    salida.className = correo && !correo.enviado ? 'estado error' : 'estado ok';
+    salida.textContent = !correo ? local
+      : correo.enviado ? `${local} También te vamos a escribir a ${email}.`
+        : `${local} No se activó el aviso por correo: ${correo.motivo}`;
+    if (correo && correo.enviado) campoMail.value = '';
   } catch (error) {
     salida.className = 'estado error';
     salida.textContent = `No se creó la alerta: ${error.message}`;

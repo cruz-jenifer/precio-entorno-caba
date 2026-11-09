@@ -363,14 +363,16 @@ def parse_migliorisi_detail(page, path, code, title, captured_at, operation='ven
 
 
 def scrape_migliorisi(client, captured_at, max_listings, known=frozenset(), operation='venta'):
-    """Recorre el listado. Solo pide el detalle de los avisos que no están en `known`."""
-    listings, skipped, page, last = [], Counter(), 1, 1
+    """Recorre las `max_listings` fichas más recientes del listado. Solo pide el detalle de las que no están
+    en `known`. Las conocidas cuentan dentro de la ventana: si no, cada corrida bajaría a avisos más viejos."""
+    listings, skipped, page, last, examined = [], Counter(), 1, 1, 0
     op_path = OPERATION_SETTINGS[operation]['mig_path']
-    while page <= last and len(listings) < max_listings:
+    while page <= last and examined < max_listings:
         cards, last = parse_migliorisi_list(client.get(MIG_SEARCH.format(op=op_path, page=page)))
         for path, code, title in cards:
-            if len(listings) >= max_listings:
+            if examined >= max_listings:
                 break
+            examined += 1
             if f'migliorisi:{code}' in known:
                 skipped['ya_conocido'] += 1
                 continue

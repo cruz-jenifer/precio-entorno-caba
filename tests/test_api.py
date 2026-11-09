@@ -89,6 +89,42 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(self.client.post('/api/busquedas', params={'operacion': 'alquiler'},
                                           json=dict(body, moneda='EUR')).status_code, 422)
 
+    def test_email_subscription_goes_only_to_make(self):
+        sent = []
+        root = Path(self.temp.name)
+        with tempfile.TemporaryDirectory() as temp:
+            real = Path(temp) / 'real.sqlite3'
+            client = TestClient(create_app(demo_path=root / 'demo.sqlite3', real_path=real,
+                                           entorno_dir=root / 'entorno', raw_dir=self.raw,
+                                           subscriptions_url='https://hook.us2.make.com/x',
+                                           post=lambda url, body: sent.append(body) or 200))
+            body = {'barrio': 'Boedo', 'presupuesto': 100_000, 'superficie': 35, 'ambientes': 2,
+                    'email': 'persona@example.com', 'consentimiento': True}
+            result = client.post('/api/busquedas', params={'modo': 'real'}, json=body).json()
+            self.assertEqual(result, {'creada': True, 'correo': {'enviado': True}})
+            alta, = sent
+            self.assertEqual((alta['tipo'], alta['email']), ('alta', 'persona@example.com'))
+            self.assertEqual({k: v for k, v in alta['busqueda'].items() if k != 'id'},
+                             {'operacion': 'venta', 'barrio': 'Boedo', 'presupuesto': 100_000, 'moneda': 'USD',
+                              'superficie': 35, 'ambientes': 2, 'ambientesOMas': False})
+            self.assertGreaterEqual(len(alta['busqueda']['id']), 12)  # Aleatorio: sirve de clave para la baja.
+            self.assertEqual(alta['descripcion'], 'Boedo · hasta USD 100.000 · 35 m² o más · 2 ambientes')
+            self.assertNotIn(b'persona@example.com', real.read_bytes())  # El mail no queda en la base local.
+            # Otra persona con los mismos filtros también se suscribe, con otro ID.
+            again = client.post('/api/busquedas', params={'modo': 'real'}, json=dict(body, email='otra@example.com'))
+            self.assertEqual(again.json(), {'creada': False, 'correo': {'enviado': True}})
+            self.assertNotEqual(sent[1]['busqueda']['id'], alta['busqueda']['id'])
+            bad = {'demo': ({'modo': 'demo'}, body), 'mail': ({'modo': 'real'}, dict(body, email='persona@')),
+                   'consentimiento': ({'modo': 'real'}, dict(body, consentimiento=False))}
+            for name, (params, payload) in bad.items():
+                with self.subTest(name):
+                    self.assertEqual(client.post('/api/busquedas', params=params, json=payload).status_code, 422)
+            self.assertEqual(len(sent), 2)
+            unset = TestClient(create_app(demo_path=root / 'demo.sqlite3', real_path=real, entorno_dir=root / 'entorno',
+                                          raw_dir=self.raw, subscriptions_url=None))
+            result = unset.post('/api/busquedas', params={'modo': 'real'}, json=body).json()
+            self.assertFalse(result['correo']['enviado'])
+
     def test_map_layers_are_cut_to_the_neighborhood(self):
         shapes = self.get('/api/mapa/barrios')
         self.assertEqual({f['properties']['barrio'] for f in shapes['features']}, {'Caballito', 'Almagro'})

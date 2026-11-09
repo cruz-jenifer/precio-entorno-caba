@@ -403,6 +403,10 @@ button, input, select { font: inherit; color: inherit; }
 .boton-primario:hover { background: var(--jacaranda-oscuro); }
 .boton-primario:disabled { background: var(--cordon); color: var(--asfalto-suave); cursor: default; }
 
+.alerta-mail { margin: 0 0 0.75rem; }
+.campo-mail { display: flex; width: 100%; }
+.campo-mail input { flex: 1; min-width: 0; width: auto; }
+
 .estado {
   margin: 0.5rem 0 0;
   font-size: var(--t-chico);

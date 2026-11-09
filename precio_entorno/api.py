@@ -5,6 +5,9 @@ Se ejecuta con `python -m precio_entorno.api` y sirve la página de `web/` en ht
 
 import argparse
 import math
+import re
+import secrets
+from datetime import datetime, timezone
 from hashlib import sha256
 from pathlib import Path
 from statistics import median
@@ -14,7 +17,7 @@ from fastapi import FastAPI, HTTPException, Query
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from . import concentracion, entorno
+from . import concentracion, entorno, make_webhook
 from .bases import REAL_BASE, ROOT, demo_base, open_store
 from .importing import BARRIOS, usable_pin
 from .matching import matches
@@ -26,12 +29,18 @@ CURRENCIES = {'venta': ('USD',), 'alquiler': ('ARS', 'USD')}
 OFFICIAL = sorted(set(BARRIOS.values()))
 
 
+EMAIL = re.compile(r'[^@\s<>"]+@[^@\s<>"]+\.[A-Za-z]{2,}')
+
+
 class SearchIn(BaseModel):
     barrio: str
     presupuesto: int = Field(ge=1)
     superficie: int = Field(ge=1)
     ambientes: int = Field(ge=1, le=20)
     moneda: str = 'USD'
+    # Opcional: aviso por correo. El mail se reenvía a Make y no se guarda en la base local.
+    email: str | None = Field(default=None, max_length=254)
+    consentimiento: bool = False
 
 
 def square(lon, lat, size_m):
@@ -53,7 +62,9 @@ def point_features(items, kind, bbox):
             for i in items if entorno.in_bbox(i['lon'], i['lat'], bbox)]
 
 
-def create_app(demo_path=None, real_path=None, entorno_dir=None, raw_dir=None, web_dir=None):
+def create_app(demo_path=None, real_path=None, entorno_dir=None, raw_dir=None, web_dir=None,
+               subscriptions_url=..., post=None):
+    """`subscriptions_url` es el webhook de altas de Make; por defecto se lee MAKE_BUSQUEDAS_WEBHOOK_URL."""
     entorno_dir = Path(entorno_dir or ROOT / 'data/processed/entorno')
     raw_dir = Path(raw_dir or ROOT / 'data/raw')
     web_dir = Path(web_dir or ROOT / 'web')
@@ -266,13 +277,41 @@ def create_app(demo_path=None, real_path=None, entorno_dir=None, raw_dir=None, w
                          'enlace': a.get('url') if modo == 'real' else None} for a in store.alerts()],
         }
 
+    def subscriptions_webhook():
+        if subscriptions_url is not ...:
+            return subscriptions_url
+        try:
+            return make_webhook.webhook_url(variable='MAKE_BUSQUEDAS_WEBHOOK_URL')
+        except ValueError:
+            return None
+
     @app.post('/api/busquedas')
     def save_search(search: SearchIn, modo: Mode = 'demo', operacion: Operation = 'venta'):
         check_barrio(search.barrio)
         check_currency(operacion, search.moneda)
+        email = (search.email or '').strip() or None
+        if email:
+            if modo != 'real':
+                raise HTTPException(422, 'El aviso por correo solo funciona con datos reales.')
+            if not EMAIL.fullmatch(email):
+                raise HTTPException(422, 'Revisá el mail: no parece una dirección válida.')
+            if not search.consentimiento:
+                raise HTTPException(422, 'Para recibir correos, aceptá el aviso de uso del mail.')
         created = store_for(modo, operacion).save_search(
             search.barrio, search.presupuesto, search.superficie, search.ambientes, search.moneda)
-        return {'creada': created}
+        result = {'creada': created, 'correo': None}
+        if email:
+            url = subscriptions_webhook()
+            if not url:
+                result['correo'] = {'enviado': False, 'motivo': 'El aviso por correo no está configurado.'}
+            else:
+                body = make_webhook.subscription(
+                    secrets.token_urlsafe(9), operacion, search.model_dump(), email,
+                    datetime.now(timezone.utc).replace(microsecond=0).isoformat())
+                sent = make_webhook.send(url, body, **({'post': post} if post else {}))
+                result['correo'] = ({'enviado': True} if sent['enviado'] else
+                                    {'enviado': False, 'motivo': 'Make no recibió el alta. Probá de nuevo más tarde.'})
+        return result
 
     if web_dir.exists():
         app.mount('/', StaticFiles(directory=web_dir, html=True), name='web')

@@ -60,3 +60,6 @@ class UpdateTests(unittest.TestCase):
         self.assertEqual([l['listing_id'] for l in listings], ['migliorisi:a2'])
         self.assertEqual(skipped['ya_conocido'], 1)
         self.assertFalse(any('/propiedad/ver/a1/' in c for c in calls))
+        # Las conocidas ocupan la ventana de recientes: con tope 1, no se baja a la ficha siguiente.
+        window, skipped = scrape_migliorisi(client, '2026-11-09', 1, known=frozenset({'migliorisi:a1'}))
+        self.assertEqual((window, skipped['ya_conocido']), ([], 1))

@@ -579,6 +579,219 @@ md(r"""
 > usarlos para ordenar barrios.
 """)
 
+# ---------------------------------------------------------------- 5 bis. Lineal y no lineal
+md(r"""
+## 5 bis. Correlaciones lineales y no lineales
+
+Hasta acá se usó Spearman, que mide si dos variables suben o bajan juntas aunque no lo hagan en línea recta.
+Esta sección lo compara con **Pearson**, que mide solo la parte **lineal** y es sensible a valores extremos, y
+dibuja cada relación con dos líneas:
+
+- **Recta de ajuste** (mínimos cuadrados): lo que resume Pearson.
+- **Curva suavizada** (LOWESS, regresión local ponderada): sigue la forma de los datos sin suponer una recta.
+  Muestra relaciones **no monótonas**, como una U, que ni Pearson ni Spearman captan bien.
+
+Cómo leer la tabla:
+- **Spearman bastante más fuerte que Pearson:** la relación es monótona pero curva, o hay extremos que la tapan.
+- **Pearson más fuerte que Spearman:** unos pocos valores extremos arrastran la recta.
+- **Ambos cerca de 0 pero la curva se dobla:** hay una relación no monótona; mirar el gráfico.
+
+Se analizan dos niveles por separado, porque responden preguntas distintas:
+1. **Por aviso** (hasta 3.806 avisos de venta): qué características se asocian con pedir más o menos que la
+   mediana del barrio. La variable de respuesta es el **USD/m² relativo a la mediana del barrio** (1 = mediana).
+2. **Por barrio** (48 barrios): qué rasgos del entorno acompañan al nivel de precio. La respuesta es el
+   **USD/m² mediano del barrio**. Con 48 puntos, cada barrio pesa mucho y los p-valores son orientativos.
+
+Cada variable informa su unidad, cuántos datos tiene (n) y qué parte falta. Las correlaciones describen
+asociaciones en precios de publicación; no son causales.
+""")
+
+code(r"""
+from scipy.stats import pearsonr
+
+def lowess(x, y, frac=.3, puntos=60):
+    # Regresión local ponderada con pesos tricúbicos, sin statsmodels. Devuelve la curva sobre una grilla de x.
+    x, y = np.asarray(x, float), np.asarray(y, float)
+    grilla = np.unique(np.quantile(x, np.linspace(.02, .98, puntos)))
+    k = min(max(int(frac * len(x)), 10), len(x))
+    curva = []
+    for g in grilla:
+        dist = np.abs(x - g)
+        h = np.partition(dist, k - 1)[k - 1] or 1e-9
+        w = np.clip(1 - (dist / h) ** 3, 0, None) ** 3
+        xm, ym = np.average(x, weights=w), np.average(y, weights=w)
+        var = np.sum(w * (x - xm) ** 2)
+        pendiente = np.sum(w * (x - xm) * (y - ym)) / var if var > 0 else 0
+        curva.append(ym + pendiente * (g - xm))
+    return grilla, np.array(curva)
+
+
+def tabla_correlaciones(datos, respuesta, variables):
+    # variables: {columna: (nombre, unidad)}. Pearson también sin el 1 % de extremos de cada lado de la respuesta.
+    filas = []
+    lo, hi = datos[respuesta].quantile([.01, .99])
+    for c, (nombre, unidad) in variables.items():
+        d = datos[[c, respuesta]].dropna()
+        r, p_r = pearsonr(d[c], d[respuesta])
+        rho, p_rho = spearmanr(d[c], d[respuesta])
+        sin_ext = d[d[respuesta].between(lo, hi)]
+        filas.append({'variable': nombre, 'unidad': unidad, 'n': len(d), 'faltante': 1 - len(d) / len(datos),
+                      'pearson': r, 'p_pearson': p_r, 'pearson_sin_extremos': pearsonr(sin_ext[c], sin_ext[respuesta])[0],
+                      'spearman': rho, 'p_spearman': p_rho, 'spearman_menos_pearson': rho - r})
+    return pd.DataFrame(filas).set_index('variable').sort_values('spearman')
+
+
+def mostrar_tabla(t):
+    return (t.style.format({'n': '{:,}', 'faltante': '{:.0%}', 'pearson': '{:+.2f}', 'p_pearson': '{:.1e}',
+                            'pearson_sin_extremos': '{:+.2f}', 'spearman': '{:+.2f}', 'p_spearman': '{:.1e}',
+                            'spearman_menos_pearson': '{:+.2f}'})
+            .bar(subset=['pearson', 'spearman'], align=0, color=[AZUL, NARANJA]))
+
+
+def dispersion(ax, datos, x, y, titulo, unidad, frac=.3, log_x=False, ylim=None, etiquetar=None):
+    d = datos[[x, y]].dropna()
+    muchos = len(d) > 200
+    ax.scatter(d[x], d[y], s=6 if muchos else 30, alpha=.18 if muchos else .9, color=GRIS if muchos else JACARANDA,
+               edgecolor='none' if muchos else 'white', linewidth=0 if muchos else 1.2, zorder=2)
+    pendiente, ordenada = np.polyfit(d[x], d[y], 1)
+    xs = np.linspace(d[x].min(), d[x].max(), 100)
+    ax.plot(xs, ordenada + pendiente * xs, color=NARANJA, lw=1.8, ls='--', label='Recta (Pearson)', zorder=3)
+    gx, gy = lowess(d[x], d[y], frac=frac)
+    ax.plot(gx, gy, color=JACARANDA if muchos else ASFALTO, lw=2.4, label='Curva suavizada (LOWESS)', zorder=4)
+    r, rho = pearsonr(d[x], d[y])[0], spearmanr(d[x], d[y])[0]
+    ax.set_title(f'{titulo}\nr = {r:+.2f} · rho = {rho:+.2f} · n = {len(d):,}'.replace(',', '.'), fontsize=9.5)
+    ax.set_xlabel(unidad, fontsize=8.5)
+    if log_x:
+        ax.set_xscale('log')
+    if ylim:
+        ax.set_ylim(*ylim)
+    for b in etiquetar or []:
+        if b in d.index:
+            ax.annotate(b, (d.loc[b, x], d.loc[b, y]), xytext=(4, 2), textcoords='offset points', fontsize=7)
+""")
+
+md(r"""
+### Por aviso: USD/m² relativo a la mediana del barrio
+""")
+
+code(r"""
+venta['expensas_m2'] = venta['expenses'] / venta['covered_area']
+VARS_AVISO = {
+    'covered_area': ('Superficie cubierta', 'm²'), 'rooms': ('Ambientes', 'cantidad'),
+    'm2_por_ambiente': ('m² por ambiente', 'm²'), 'ratio_cubierta': ('Cubierta / total', 'proporción 0–1'),
+    'age_years': ('Antigüedad', 'años'), 'garages': ('Cocheras', 'cantidad'), 'floor': ('Piso', 'número de piso'),
+    'expensas_m2': ('Expensas por m²', 'ARS por m² por mes'),
+    'dist_transporte_m': ('Distancia a subte/tren', 'metros'), 'dist_parque_m': ('Distancia a plaza o parque', 'metros'),
+    'gastronomia_500m': ('Gastronomía a 500 m', 'locales'), 'escuelas_500m': ('Escuelas a 500 m', 'establecimientos'),
+    'radio_delitos': ('Delitos registrados a 500 m (2025)', 'hechos'),
+}
+VARS_AVISO = {c: v for c, v in VARS_AVISO.items() if c in venta.columns}
+corr_aviso = tabla_correlaciones(venta, 'rel_barrio', VARS_AVISO)
+display(mostrar_tabla(corr_aviso))
+corr_aviso.to_csv(SALIDA / 'correlaciones_por_aviso.csv')
+""")
+
+code(r"""
+paneles = [('covered_area', 'Superficie cubierta', 'm² (escala log)', True),
+           ('ratio_cubierta', 'Cubierta / total', 'proporción', False),
+           ('age_years', 'Antigüedad', 'años', False),
+           ('dist_transporte_m', 'Distancia a subte/tren', 'metros', False),
+           ('gastronomia_500m', 'Gastronomía a 500 m', 'locales', False),
+           ('radio_delitos', 'Delitos registrados a 500 m (2025)', 'hechos', False)]
+fig, axes = plt.subplots(2, 3, figsize=(14, 8), sharey=True)
+for ax, (c, titulo, unidad, log_x) in zip(axes.flat, paneles):
+    dispersion(ax, venta, c, 'rel_barrio', titulo, unidad, frac=.25, log_x=log_x, ylim=(.3, 2.2))
+    ax.axhline(1, color=GRIS, lw=1, ls=':')
+for ax in axes[:, 0]:
+    ax.set_ylabel('USD/m² / mediana del barrio'); ax.yaxis.set_major_formatter(pct)
+axes[0, 0].legend(loc='upper right', fontsize=8)
+fig.suptitle('Por aviso: recta de Pearson y curva suavizada (cada punto gris es un aviso)', x=.01, ha='left',
+             fontweight='semibold')
+plt.tight_layout(); plt.savefig(SALIDA / 'dispersion_por_aviso.png', dpi=150); plt.show()
+""")
+
+md(r"""
+### Por barrio: USD/m² mediano del barrio
+""")
+
+code(r"""
+VARS_BARRIO = {
+    'gastronomia_mediana': ('Gastronomía a 500 m (mediana de sus avisos)', 'locales'),
+    'dist_transporte_mediana': ('Distancia a subte/tren (mediana de sus avisos)', 'metros'),
+    'subte_x_100ha': ('Estaciones de subte', 'por 100 ha'), 'verde_pct': ('Superficie verde', 'proporción del área'),
+    'escuelas_x_100ha': ('Escuelas', 'por 100 ha'), 'ruido_alto_noche': ('Ruido nocturno alto', 'proporción de celdas'),
+    'riesgo_hidrico': ('Riesgo hídrico', 'proporción del área'),
+    'delitos_2025_x_ha': ('Delitos registrados 2025', 'hechos por ha'),
+    'pct_con_arma_2025': ('Delitos con arma 2025', '% de los hechos'),
+}
+corr_barrio = tabla_correlaciones(bx, 'usd_m2', VARS_BARRIO)
+display(mostrar_tabla(corr_barrio))
+corr_barrio.to_csv(SALIDA / 'correlaciones_por_barrio.csv')
+""")
+
+code(r"""
+extremos = bx['usd_m2'].nlargest(2).index.tolist() + bx['usd_m2'].nsmallest(2).index.tolist()
+paneles = [('gastronomia_mediana', 'Gastronomía a 500 m', 'locales (mediana de los avisos)'),
+           ('pct_con_arma_2025', 'Delitos con arma 2025', '% de los hechos'),
+           ('delitos_2025_x_ha', 'Delitos registrados 2025', 'hechos por ha')]
+fig, axes = plt.subplots(1, 3, figsize=(14, 4.4), sharey=True)
+for ax, (c, titulo, unidad) in zip(axes, paneles):
+    dispersion(ax, bx, c, 'usd_m2', titulo, unidad, frac=.6, etiquetar=extremos)
+axes[0].set_ylabel('USD/m² mediano del barrio'); axes[0].yaxis.set_major_formatter(usd)
+axes[0].legend(loc='upper left', fontsize=8)
+fig.suptitle('Por barrio: recta de Pearson y curva suavizada (cada punto es un barrio)', x=.01, ha='left',
+             fontweight='semibold')
+plt.tight_layout(); plt.savefig(SALIDA / 'dispersion_por_barrio.png', dpi=150); plt.show()
+""")
+
+md(r"""
+**Lectura.** En la columna *Pearson sin extremos* se saca el 1 % más alto y el 1 % más bajo de la respuesta. Por
+barrio, eso deja afuera al más caro (Puerto Madero) y al más barato (Villa Lugano).
+
+**Por aviso**
+- **En las asociaciones fuertes, Pearson y Spearman coinciden.**
+  - **Antigüedad** (r −0,45; rho −0,52; n = 2.937, falta el 23 %) y **proporción cubierta/total** (−0,35 y −0,37)
+    son las más fuertes.
+  - **Cocheras** (+0,25 y +0,22; falta el 34 %) y **expensas por m²** (+0,30 y +0,27; n = 1.606, falta el 58 %)
+    suben con el precio relativo. Son señales de edificios de más categoría.
+- **La superficie es el caso no lineal.** Pearson da casi 0 (r = +0,01) y Spearman, −0,15, pero la curva dibuja
+  una **U**.
+  - Los departamentos de menos de 30 m² piden más de 10 % por encima de la mediana de su barrio.
+  - El mínimo está entre unos 60 y 100 m², y por encima de 120 m² la curva vuelve a subir.
+  - Un solo coeficiente diría "casi no hay relación". En realidad la relación existe y cambia de sentido. Por eso
+    conviene comparar contra avisos de tamaño parecido (sección 3).
+- **La antigüedad tampoco es una recta.** La curva baja hasta los 40 años y después se aplana cerca de −12 %. La
+  recta de Pearson, en cambio, sigue bajando y llega a casi −50 % pasados los 110 años, algo que los datos no
+  muestran. En un modelo conviene usar tramos, como en la sección 3 bis, y no un término lineal.
+- **Ubicación fina: no hay nada escondido.**
+  - La distancia a subte o tren, la gastronomía y los delitos a 500 m dan |r| y |rho| ≤ 0,07.
+  - La curva queda casi plana, así que los coeficientes no están tapando una relación no lineal.
+  - Confirma lo que mostró la sección 3.
+
+**Por barrio**
+
+Con 48 barrios, uno o dos casos alcanzan para mover el coeficiente.
+- **Gastronomía: Spearman +0,42 contra Pearson +0,22.**
+  - La curva sube hasta unos 50 locales y después baja.
+  - Los barrios con más gastronomía son Recoleta, San Telmo, San Nicolás y Retiro. Tienen precios intermedios:
+    San Nicolás, con 102 locales, está en 1.776 USD/m².
+  - Es una U invertida: Pearson la subestima.
+- **Delitos con arma: Pearson −0,37, que llega a −0,55 sin extremos.** Puerto Madero (7,3 % con arma y
+  5.608 USD/m²) frena la recta. Sin él, la asociación es más fuerte y acompaña al gradiente norte–sur.
+- **Subte y escuelas: los coeficientes lineales son un efecto de pocos barrios.**
+  - Estaciones de subte por 100 ha: Pearson −0,20, pero Spearman 0,00.
+  - Escuelas por 100 ha: Pearson −0,10, que pasa a +0,14 sin extremos.
+- **Delitos registrados por ha: −0,29 y −0,24 (p = 0,11).** Una asociación débil e inestable, como en la sección 5.
+
+> **Para el modelo y la app.**
+> 1. Tratar la superficie y la antigüedad con tramos o términos no lineales. Los árboles del modelo ya lo captan;
+>    una regresión lineal, no.
+> 2. En las vistas por barrio, informar Spearman y mostrar el gráfico, porque con 48 barrios Pearson puede cambiar
+>    de signo por uno o dos casos.
+> 3. No atribuir efectos a la ubicación fina dentro del barrio: con estos datos no aparecen ni lineales ni no
+>    lineales.
+""")
+
 # ---------------------------------------------------------------- 6. Barrios alternativos
 md(r"""
 ## 6. Oportunidad de barrio: "si te gusta X, mirá Y"

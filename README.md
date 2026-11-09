@@ -211,6 +211,20 @@ El [informe de avisos](docs/eda-avisos.md) describe la calidad de la captura, la
 python -m precio_entorno.eda_avisos data/raw/inmobiliarias-20261107
 ```
 
+## EDA de oportunidades (Colab)
+
+El notebook [`notebooks/eda_oportunidades.ipynb`](notebooks/eda_oportunidades.ipynb) explora los datos reales pensando en la app: confianza de la mediana por barrio, qué mueve el USD/m² dentro de un barrio, umbrales de presupuesto, barrios parecidos y más accesibles, avisos por debajo de sus comparables, relación precio/alquiler y posibles duplicados con precio distinto. Cada sección cierra con una propuesta para la app. Son precios de publicación, no tasaciones.
+
+1. Generar el paquete de datos, que queda en `data/processed/eda-colab/eda_bundle.zip` (fuera de Git, sin contactos de anunciantes):
+
+   ```powershell
+   python -m precio_entorno.eda_colab
+   ```
+
+2. Abrir el notebook en Colab y subir el .zip cuando lo pida, o dejarlo en `MyDrive/precio-entorno-caba/`. Localmente, lo encuentra solo.
+
+El notebook se genera desde `notebooks/build_eda_oportunidades.py`: editar ese archivo y volver a correrlo. El tipo de cambio de la sección de alquiler (`TC_ARS_POR_USD`) es un supuesto que hay que actualizar.
+
 ## Informe exploratorio de delitos
 
 El [informe](docs/eda-delitos.md) analiza los CSV oficiales de 2024 y 2025 por tipo, mes, franja y barrio. Todavía no hay datos publicados de 2026. Para regenerar sus tablas y gráficos con todos los `data/raw/delitos_20*.csv`:

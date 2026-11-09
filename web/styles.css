@@ -775,3 +775,19 @@ button, input, select { font: inherit; color: inherit; }
 @media (prefers-reduced-motion: reduce) {
   .panel { transition: none; }
 }
+
+.analisis-delitos { margin-top: 1.5rem; border-top: 1px solid var(--cordon); padding-top: 0.5rem; }
+.analisis-delitos h3 { font-size: var(--t-base); margin: 1rem 0 0.5rem; }
+.revision-fuente { font-size: var(--t-chico); border-left: 3px solid var(--alerta); padding: 0.625rem 0.75rem; background: #fff7ed; }
+.comparacion-registros { margin: 1rem 0; font-size: var(--t-chico); }
+.comparacion-registros figcaption { margin-bottom: 0.75rem; font-weight: 600; }
+.serie-registros { display: grid; grid-template-columns: 6rem 1fr 3rem; align-items: center; gap: 0.5rem; margin: 0.5rem 0; }
+.serie-registros strong { text-align: right; font-variant-numeric: tabular-nums; }
+.barra-registros { height: 0.625rem; background: var(--vereda); border-radius: 2px; overflow: hidden; }
+.barra-registros i { display: block; height: 100%; background: #55708E; }
+.tabla-registros { overflow-x: auto; }
+.tabla-registros caption { text-align: left; font-size: var(--t-chico); padding: 0.5rem 0; }
+.radio-elegido { background: var(--jacaranda-tinte); }
+.huella-fuente { overflow-wrap: anywhere; }
+.control-flotante .fuente { max-width: 19rem; margin: 0.25rem 0; }
+.ficha > .avisos { display: block; overflow-x: auto; }

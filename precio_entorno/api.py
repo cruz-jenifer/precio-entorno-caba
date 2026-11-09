@@ -14,9 +14,9 @@ from fastapi import FastAPI, HTTPException, Query
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from . import entorno
+from . import concentracion, entorno
 from .bases import REAL_BASE, ROOT, demo_base, open_store
-from .importing import BARRIOS
+from .importing import BARRIOS, usable_pin
 from .matching import matches
 
 Mode = Literal['demo', 'real']
@@ -140,6 +140,7 @@ def create_app(demo_path=None, real_path=None, entorno_dir=None, raw_dir=None, w
             'id': i['id'], 'precio': i['price'], 'moneda': i.get('currency') or 'USD',
             'superficie': i['covered_area'], 'superficie_total': i.get('total_area_m2'), 'ambientes': i['rooms'],
             'expensas': i.get('expenses'), 'capturado': i.get('captured_at'),
+            'pin_utilizable': modo == 'real' and usable_pin(i),
             'enlace': i.get('url') if modo == 'real' else None} for i in found]}
 
     @app.get('/api/mapa/barrios')
@@ -203,6 +204,49 @@ def create_app(demo_path=None, real_path=None, entorno_dir=None, raw_dir=None, w
                 'tipo': tipo, 'tipos': kinds, 'maximo': max((c['hechos'] for c in cells), default=0),
                 'celdas': collection([{'type': 'Feature', 'geometry': square(c['lon'], c['lat'], 200),
                                        'properties': {'hechos': c['hechos']}} for c in cells])}
+
+    @app.get('/api/delitos/concentracion')
+    def crime_concentration(barrio: str, inmueble: str | None = None,
+                            radio: int = Query(500, ge=250, le=1000),
+                            tipo: Literal['todos', 'robo', 'hurto'] = 'todos',
+                            franja: Literal['todas', 'diurno', 'nocturno', 'sin_dato'] = 'todas',
+                            anio: int | None = None, modo: Mode = 'real', operacion: Operation = 'venta'):
+        check_barrio(barrio)
+        if modo == 'demo':
+            return {'disponible': False, 'motivo': 'Los avisos ficticios no se cruzan con delitos reales.'}
+        store = store_for(modo, operacion)
+        listing = None
+        if inmueble is not None:
+            listing = next((i for i in store.listings() if i['id'] == inmueble and i['neighborhood'] == barrio), None)
+            if listing is None:
+                raise HTTPException(404, 'El inmueble no pertenece al catálogo y barrio seleccionados.')
+        paths = concentracion.source_paths(raw_dir)
+        if not paths:
+            path, _, reason = crime_source(store)
+            if reason:
+                return {'disponible': False, 'motivo': reason}
+            paths = (path,)
+        signature = tuple((str(p), p.stat().st_mtime_ns, p.stat().st_size) for p in paths)
+        try:
+            if cache.get('concentracion_signature') != signature:
+                index = concentracion.CrimeIndex(paths)
+                cache.update(concentracion_signature=signature, concentracion_index=index)
+            data = layers()
+            if data is None:
+                return {'disponible': False, 'motivo': 'Las capas no se generaron.'}
+            result = cache['concentracion_index'].analyze(
+                entorno.bbox_of(data['barrios'], barrio), listing, radio, tipo, franja, anio)
+        except (OSError, ValueError) as error:
+            raise HTTPException(422, str(error)) from error
+        if result['disponible']:
+            result['celdas'] = collection([
+                {'type': 'Feature', 'geometry': square(c['lon'], c['lat'], concentracion.CELL_M),
+                 'properties': {k: v for k, v in c.items() if k not in ('lon', 'lat')}} for c in result['celdas']])
+            result['radios'] = collection([
+                {'type': 'Feature', 'geometry': concentracion.circle(listing['longitude'], listing['latitude'], r),
+                 'properties': {'radio_m': r, 'seleccionado': r == radio}} for r in concentracion.RADIOS
+            ]) if listing else collection([])
+        return result
 
     @app.get('/api/fuentes')
     def sources():

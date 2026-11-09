@@ -23,7 +23,7 @@ const NOTAS = {
   salud: 'Estar cerca no asegura turnos.',
   ruido: 'Nivel exterior típico por celda de 100 m, medido sobre todo en calles. No describe el interior de un departamento.',
   riesgo: 'Áreas de prevención publicadas en 2020. Si una dirección cae dentro, conviene preguntarlo en la visita.',
-  delitos: 'Hechos registrados por celda de 200 m. También reflejan diferencias de exposición y de denuncia. No son un puntaje de seguridad.',
+  delitos: 'Hechos registrados por celda de 200 m. Más circulación puede concentrar más eventos y existe subregistro. No equivalen a la probabilidad individual de victimización.',
 };
 const PRESUPUESTO = { 'venta-USD': 110000, 'alquiler-ARS': 800000, 'alquiler-USD': 900 };
 const VACIO = { type: 'FeatureCollection', features: [] };
@@ -61,7 +61,8 @@ const estado = {
   prefs: new Set(guardado.prefs || ['subte', 'verdes']),
   nivel: guardado.nivel || 'primario',
   ruido: 'diurno',
-  delitos: { periodo: null, tipo: '' },
+  delitos: { anio: '', tipo: 'todos', franja: 'todas', radio: '500', inmueble: '' },
+  pedidoDelitos: 0,
   info: null,
   barrios: [],
   formas: null,
@@ -190,6 +191,7 @@ function renderFicha() {
       <td>${a.ambientes}</td>
       ${alquiler ? `<td>${a.expensas == null ? '—' : dinero(a.expensas, 'ARS')}</td>` : ''}
       <td>${a.enlace ? `<a href="${esc(a.enlace)}" target="_blank" rel="noopener">Ver aviso</a>` : 'Ejemplo'}</td>
+      <td>${a.pin_utilizable ? `<button class="boton-texto" type="button" data-inmueble="${esc(a.id)}">${estado.delitos.inmueble === a.id ? 'Entorno elegido' : 'Ver registros cerca'}</button>` : '<span class="fuente">Sin pin preciso</span>'}</td>
     </tr>`).join('');
   const resumen = b.coincidencias
     ? `${b.coincidencias} de ${b.avisos} ${plural(b.avisos, 'aviso', 'avisos')} en ${estado.moneda} ${plural(b.coincidencias, 'encaja', 'encajan')} con tu búsqueda. Mediana ${dinero(b.mediana, estado.moneda)}.`
@@ -210,12 +212,41 @@ function renderFicha() {
           <button class="boton-texto" type="button" data-fuentes>Ver fuentes</button></p>` : ''}
       ${b.coincidencias ? `<h2>Avisos que encajan</h2>
         <table class="avisos">
-          <thead><tr><th>Precio publicado</th><th>Cubierta</th><th>Amb.</th>${alquiler ? '<th>Expensas</th>' : ''}<th><span hidden>Enlace</span></th></tr></thead>
+          <thead><tr><th>Precio publicado</th><th>Cubierta</th><th>Amb.</th>${alquiler ? '<th>Expensas</th>' : ''}<th><span hidden>Enlace</span></th><th>Registros cerca</th></tr></thead>
           <tbody>${filas}</tbody>
         </table>
         ${estado.avisos.length > visibles.length ? `<p class="fuente">Se muestran los ${visibles.length} más baratos de ${estado.avisos.length}. <button class="boton-texto" type="button" id="ver-todos">Ver todos</button></p>` : ''}
         <p class="fuente">${estado.modo === 'demo' ? 'Avisos ficticios de ejemplo.' : 'Precios de publicación del catálogo autorizado, no tasaciones ni precios de cierre.'}</p>` : ''}
+      ${renderAnalisisDelitos()}
     </article>`;
+}
+
+function renderAnalisisDelitos() {
+  if (!estado.capas.has('delitos')) return '';
+  const d = estado.delitosDatos;
+  if (!d?.disponible) return `<section class="analisis-delitos" aria-live="polite"><h2>Registros y contexto</h2><p class="nota">${esc(d?.motivo || 'Cargando registros…')}</p></section>`;
+  const filas = d.resumen_radios.map((r) => `<tr${r.radio_m === Number(estado.delitos.radio) ? ' class="radio-elegido"' : ''}>
+    <th scope="row">${r.anio} · ${numero.format(r.radio_m)} m · ${r.tipo === 'robo' ? 'Robo' : 'Hurto'}</th>
+    <td>${numero.format(r.diurno)}</td><td>${numero.format(r.nocturno)}</td><td>${numero.format(r.sin_dato)}</td><td>${numero.format(r.total)}</td></tr>`).join('');
+  const maximo = Math.max(1, ...d.resumen_radios.map((r) => r.total));
+  const series = d.resumen_radios.filter((r) => r.radio_m === Number(estado.delitos.radio));
+  const barras = series.map((r) => `<div class="serie-registros"><span>${r.anio} · ${r.tipo === 'robo' ? 'Robo' : 'Hurto'}</span>
+    <div class="barra-registros" aria-hidden="true"><i style="width:${r.total / maximo * 100}%"></i></div><strong>${numero.format(r.total)}</strong></div>`).join('');
+  return `<section class="analisis-delitos" aria-live="polite"><h2>Registros y contexto</h2>
+    <p class="nota"><strong>Los registros no indican tu probabilidad de sufrir un delito.</strong> Más peatones y actividad pueden concentrar más eventos. Existe subregistro.</p>
+    ${d.revision_2025 ? `<p class="revision-fuente">${esc(d.revision_2025)} <a href="${esc(d.revision_url)}" target="_blank" rel="noopener">Ficha oficial</a></p>` : ''}
+    <p class="fuente">${esc(d.unidad)} Día: 06–19:59 h. Noche: 20–05:59 h. Sin horario se informa aparte.</p>
+    ${d.inmueble ? `<h3>Alrededor del aviso ${esc(d.inmueble.id)}</h3><p class="fuente">Precisión informada del pin: ${d.inmueble.precision_m} m. Los círculos pueden cruzar límites de barrio.</p>
+      <figure class="comparacion-registros"><figcaption>Hechos registrados a ${numero.format(Number(estado.delitos.radio))} m · comparación anual</figcaption>${barras}</figure>
+      <details><summary>Los tres radios · día y noche, por año y tipo</summary><div class="tabla-registros"><table class="avisos"><caption>Conteos acumulativos sin filtros de tipo ni franja; no sumar los radios.</caption>
+      <thead><tr><th>Año · radio · tipo</th><th>Día</th><th>Noche</th><th>Sin hora</th><th>Total</th></tr></thead><tbody>${filas}</tbody></table></div></details>`
+      : '<p class="nota">Elegí «Ver registros cerca» en un aviso con pin preciso para comparar radios de 250, 500 y 1.000 m. Esta vista general usa celdas, no totales por barrio.</p>'}
+    <h3>Persistencia entre años</h3><p class="fuente">${esc(d.persistencia.definicion)}</p>
+    ${!d.persistencia.disponible ? '<p class="nota">Faltan al menos dos años con los 12 meses observados para evaluar persistencia.</p>' : ''}
+    <p class="fuente">Cobertura observada: ${d.cobertura.map((c) => `${c.anio}: ${c.meses_observados.length}/12 meses`).join(' · ')}. Los conteos de años parciales no se anualizan.</p>
+    <details><summary>Fuente, calidad y límites</summary><ul class="nota">${d.limitaciones.map((s) => `<li>${esc(s)}</li>`).join('')}</ul>
+      <p class="fuente">Robos y hurtos excluidos por falta de coordenadas válidas: ${numero.format(d.calidad.robos_hurtos_sin_pin || 0)}. Sin horario entre los geolocalizados: ${numero.format(d.calidad.robos_hurtos_sin_horario || 0)}. Estos valores corresponden al conjunto de fuentes.</p>
+      ${d.fuentes.map((f) => `<p class="fuente">${esc(f.archivo)} · <a href="${esc(f.url)}" target="_blank" rel="noopener">Mapa del Delito CABA</a><br>SHA-256: <span class="huella-fuente">${esc(f.sha256)}</span></p>`).join('')}</details></section>`;
 }
 
 function renderPanel() {
@@ -249,7 +280,7 @@ async function prepararMapa() {
   if (!estado.seleccionado) encuadrar(null, true);
   const simbolo = mapa.getStyle().layers.find((capa) => capa.type === 'symbol')?.id;
   mapa.addSource('barrios', { type: 'geojson', data: formas, promoteId: 'barrio' });
-  for (const id of ['ruido', 'delitos', 'riesgo', 'verdes', 'subte', 'escuelas', 'salud']) {
+  for (const id of ['ruido', 'delitos', 'radios', 'inmueble', 'riesgo', 'verdes', 'subte', 'escuelas', 'salud']) {
     mapa.addSource(id, { type: 'geojson', data: VACIO });
   }
   const sel = ['boolean', ['feature-state', 'sel'], false];
@@ -291,6 +322,10 @@ async function prepararMapa() {
   mapa.addLayer({ id: 'subte', type: 'circle', source: 'subte',
     paint: { 'circle-radius': 6.5, 'circle-color': ['match', ['get', 'line'], ...Object.entries(SUBTE).flat(), '#55626B'],
       'circle-stroke-color': '#FFFFFF', 'circle-stroke-width': 2 } });
+  mapa.addLayer({ id: 'radios', type: 'line', source: 'radios',
+    paint: { 'line-color': '#6A4FB3', 'line-width': ['case', ['get', 'seleccionado'], 2.5, 1], 'line-dasharray': [3, 2] } });
+  mapa.addLayer({ id: 'inmueble', type: 'circle', source: 'inmueble',
+    paint: { 'circle-radius': 7, 'circle-color': '#6A4FB3', 'circle-stroke-color': '#FFFFFF', 'circle-stroke-width': 2 } });
 
   const puntos = ['subte', 'salud', 'escuelas'];
   const conTexto = [...puntos, 'verdes', 'riesgo', 'ruido', 'delitos'];
@@ -328,8 +363,9 @@ function textoElemento(f) {
     return `Nivel exterior típico de ${p.tipico} a ${p.tipico + 5} dBA. El máximo en la celda es de ${p.maximo} a ${p.maximo + 5} dBA.`;
   }
   if (f.layer.id === 'delitos') {
-    const tipo = estado.delitos.tipo ? ` de ${estado.delitos.tipo.toLowerCase()}` : '';
-    return `${p.hechos} ${plural(p.hechos, 'hecho registrado', 'hechos registrados')}${tipo} en ${mes(estado.delitosDatos.periodo)}.`;
+    const detalle = JSON.parse(typeof p.por_anio === 'string' ? p.por_anio : JSON.stringify(p.por_anio));
+    const altos = JSON.parse(typeof p.anios_altos === 'string' ? p.anios_altos : JSON.stringify(p.anios_altos));
+    return `Celda de 200 m · ${Object.entries(detalle).map(([y, n]) => `${y}: ${n}`).join(' · ')} hechos. ${estado.delitos.tipo}; ${estado.delitos.franja}. Años de concentración alta: ${altos.join(', ') || 'ninguno'}. La celda puede cruzar el círculo; los conteos por radio usan cada registro.`;
   }
   return `${String(p.tooltip || p.name || '').split(' · ').join('. ')}.`.replace(/\.\.$/, '.');
 }
@@ -390,7 +426,7 @@ async function actualizarCapas() {
   const barrio = estado.seleccionado;
   const fijas = ['subte', 'verdes', 'escuelas', 'salud', 'ruido', 'riesgo'];
   if (!barrio) {
-    fijas.concat('delitos').forEach((id) => mapa.getSource(id)?.setData(VACIO));
+    fijas.concat('delitos', 'radios', 'inmueble').forEach((id) => mapa.getSource(id)?.setData(VACIO));
     renderControles();
     renderLeyenda();
     return;
@@ -404,7 +440,7 @@ async function actualizarCapas() {
       if (barrio !== estado.seleccionado) return;
       faltan.forEach((c) => { estado.capasDatos[claveCapa(c)] = respuesta[c]; });
     }
-    if (estado.capas.has('delitos')) await cargarDelitos();
+    if (estado.capas.has('delitos') && !await cargarDelitos()) return;
   } catch (error) {
     mostrarAvisoMapa(`No se pudieron cargar las capas: ${error.message}`);
   }
@@ -412,21 +448,34 @@ async function actualizarCapas() {
   for (const c of fijas) mapa.getSource(c)?.setData(estado.capas.has(c) ? estado.capasDatos[claveCapa(c)] || VACIO : VACIO);
   const delitos = estado.capas.has('delitos') && estado.delitosDatos?.disponible ? estado.delitosDatos.celdas : VACIO;
   mapa.getSource('delitos')?.setData(delitos);
+  const d = estado.capas.has('delitos') && estado.delitosDatos?.disponible ? estado.delitosDatos : null;
+  mapa.getSource('radios')?.setData(d?.radios || VACIO);
+  mapa.getSource('inmueble')?.setData(d?.inmueble ? { type: 'FeatureCollection', features: [{ type: 'Feature',
+    geometry: { type: 'Point', coordinates: [d.inmueble.lon, d.inmueble.lat] }, properties: {} }] } : VACIO);
   renderControles();
   renderLeyenda();
+  renderPanel();
 }
 
 async function cargarDelitos() {
+  const secuencia = ++estado.pedidoDelitos;
   const pedido = new URLSearchParams({ barrio: estado.seleccionado, modo: estado.modo, operacion: estado.operacion });
-  if (estado.delitos.periodo) pedido.set('periodo', estado.delitos.periodo);
-  if (estado.delitos.tipo) pedido.set('tipo', estado.delitos.tipo);
-  const datos = await api(`/api/delitos?${pedido}`);
+  for (const clave of ['tipo', 'franja', 'radio', 'inmueble']) if (estado.delitos[clave]) pedido.set(clave, estado.delitos[clave]);
+  if (estado.delitos.anio && estado.delitos.anio !== 'persistencia') pedido.set('anio', estado.delitos.anio);
+  const datos = await api(`/api/delitos/concentracion?${pedido}`);
+  if (secuencia !== estado.pedidoDelitos) return false;
   if (datos.disponible) {
-    datos.cortes = cortesQuintiles(datos.celdas.features.map((f) => f.properties.hechos));
-    for (const f of datos.celdas.features) f.properties.paso = pasoDelito(f.properties.hechos, datos.cortes);
-    estado.delitos.periodo = datos.periodo;
+    if (!estado.delitos.anio) estado.delitos.anio = datos.persistencia.disponible ? 'persistencia' : String(datos.anios.at(-1));
+    const persistencia = estado.delitos.anio === 'persistencia';
+    for (const f of datos.celdas.features) {
+      const p = f.properties;
+      p.hechos = persistencia ? p.anios_altos.length : (p.por_anio[estado.delitos.anio] || 0);
+      p.paso = persistencia ? Math.min(4, p.hechos) : [5, 10, 20, 50].filter((n) => p.hechos >= n).length;
+    }
+    datos.celdas.features = datos.celdas.features.filter((f) => persistencia ? f.properties.persistente : f.properties.hechos > 0);
   }
   estado.delitosDatos = datos;
+  return true;
 }
 
 function mostrarAvisoMapa(texto) {
@@ -463,12 +512,12 @@ function renderControles() {
   if (estado.seleccionado && estado.capas.has('delitos') && estado.delitosDatos) {
     const d = estado.delitosDatos;
     if (d.disponible) {
-      const tipos = Object.keys(d.tipos).sort();
       partes.push(`<div class="control-flotante">
-        <label>Mes <select data-control="periodo">${d.periodos.map((p) =>
-          `<option value="${p}"${p === d.periodo ? ' selected' : ''}>${esc(mes(p))}</option>`).join('')}</select></label>
-        <label>Tipo <select data-control="tipo"><option value="">Todos</option>${tipos.map((t) =>
-          `<option value="${esc(t)}"${t === estado.delitos.tipo ? ' selected' : ''}>${esc(t)}</option>`).join('')}</select></label>
+        <label>Vista <select data-control="anio">${[['persistencia', 'Persistencia entre años'], ...d.anios.map((y) => [String(y), String(y)])].map(([v, t]) => `<option value="${v}"${v === estado.delitos.anio ? ' selected' : ''}>${t}</option>`).join('')}</select></label>
+        <label>Tipo <select data-control="tipo">${[['todos', 'Robos y hurtos'], ['robo', 'Robos · fuerza o violencia'], ['hurto', 'Hurtos · sin violencia']].map(([v, t]) => `<option value="${v}"${v === estado.delitos.tipo ? ' selected' : ''}>${t}</option>`).join('')}</select></label>
+        <label>Horario <select data-control="franja">${[['todas', 'Todos los horarios'], ['diurno', 'Día · 06–19:59'], ['nocturno', 'Noche · 20–05:59'], ['sin_dato', 'Sin horario informado']].map(([v, t]) => `<option value="${v}"${v === estado.delitos.franja ? ' selected' : ''}>${t}</option>`).join('')}</select></label>
+        ${d.inmueble ? `<label>Radio <select data-control="radio">${[250, 500, 1000].map((r) => `<option value="${r}"${String(r) === estado.delitos.radio ? ' selected' : ''}>${numero.format(r)} m</option>`).join('')}</select></label><button class="boton-texto" type="button" data-quitar-inmueble>Vista general</button>` : ''}
+        <p class="fuente">${d.celdas.features.length ? `${d.celdas.features.length} celdas visibles` : estado.delitos.anio === 'persistencia' ? 'Sin celdas persistentes con estos filtros; no implica ausencia de delitos.' : 'Sin registros geolocalizados con estos filtros; no implica ausencia de delitos.'}</p>
       </div>`);
     } else {
       partes.push(`<p class="control-flotante">${esc(d.motivo)}</p>`);
@@ -530,7 +579,10 @@ function renderLeyenda() {
     } else if (c.clave === 'delitos') {
       const d = estado.delitosDatos;
       if (!d?.disponible) continue;
-      items = d.maximo ? rangosDelitos(d.maximo, d.cortes).map(([color, texto]) => muestra(color, texto)) : [];
+      items = estado.delitos.anio === 'persistencia'
+        ? [...new Set(d.celdas.features.map((f) => f.properties.hechos))].sort((a, b) => a - b).map((n) => muestra(DELITOS[Math.min(4, n)], `Concentración alta en ${n} años`))
+        : ['1–4', '5–9', '10–19', '20–49', '50 o más'].map((r, i) => muestra(DELITOS[i], `${r} hechos / celda · ${estado.delitos.anio}`));
+      if (d.inmueble) items.push(muestra('#6A4FB3', `Pin del aviso · círculos 250, 500 y 1.000 m`));
     }
     const titulo = c.clave === 'ruido' ? `Ruido ${estado.ruido === 'diurno' ? 'de día' : 'de noche'}` : c.nombre;
     bloques.push(`<h3>${esc(titulo)}</h3>${items.length ? `<ul class="leyenda-items">${items.join('')}</ul>` : ''}`);
@@ -575,6 +627,8 @@ async function seleccionar(nombre) {
   estado.verTodos = false;
   estado.avisos = [];
   estado.delitosDatos = null;
+  estado.delitos.inmueble = '';
+  estado.pedidoDelitos += 1;
   popup.remove();
   if (nombre && mapa.getSource('barrios')) mapa.setFeatureState({ source: 'barrios', id: nombre }, { sel: true });
   estado.capas = new Set(nombre ? estado.prefs : []);
@@ -601,6 +655,8 @@ function recargar() {
     try {
       await cargarBarrios();
       await cargarAvisos();
+      if (!estado.avisos.some((a) => a.id === estado.delitos.inmueble)) estado.delitos.inmueble = '';
+      if (estado.capas.has('delitos')) await actualizarCapas();
       renderPanel();
       renderLeyenda();
     } catch (error) {
@@ -647,7 +703,8 @@ async function cambiarContexto() {
     if (estado.seleccionado) {
       await cargarAvisos();
       estado.delitosDatos = null;
-      estado.delitos = { periodo: null, tipo: '' };
+      estado.delitos = { anio: '', tipo: 'todos', franja: 'todas', radio: '500', inmueble: '' };
+      estado.pedidoDelitos += 1;
       await actualizarCapas();
     }
     renderPanel();
@@ -734,6 +791,17 @@ function conectarEventos() {
   $('#nivel').addEventListener('change', (e) => { cambiarNivel(e.target.value); });
 
   $('#contenido').addEventListener('click', async (e) => {
+    const inmueble = e.target.closest('[data-inmueble]');
+    if (inmueble) {
+      estado.delitos.inmueble = inmueble.dataset.inmueble;
+      estado.capas.add('delitos');
+      estado.delitosDatos = null;
+      renderChips(); renderPanel();
+      await actualizarCapas();
+      const pin = estado.delitosDatos?.inmueble;
+      if (pin) mapa.flyTo({ center: [pin.lon, pin.lat], zoom: 14.5, duration: reducido ? 0 : 500 });
+      return;
+    }
     const fila = e.target.closest('[data-barrio]');
     if (fila) { seleccionar(fila.dataset.barrio); return; }
     if (e.target.closest('#volver')) { seleccionar(null); return; }
@@ -758,10 +826,10 @@ function conectarEventos() {
   $('#capa-controles').addEventListener('change', (e) => {
     const control = e.target.dataset.control;
     if (control === 'nivel') cambiarNivel(e.target.value);
-    if (control === 'periodo') { estado.delitos.periodo = e.target.value; actualizarCapas(); }
-    if (control === 'tipo') { estado.delitos.tipo = e.target.value; actualizarCapas(); }
+    if (['anio', 'tipo', 'franja', 'radio'].includes(control)) { estado.delitos[control] = e.target.value; actualizarCapas(); }
   });
   $('#capa-controles').addEventListener('click', (e) => {
+    if (e.target.closest('[data-quitar-inmueble]')) { estado.delitos.inmueble = ''; actualizarCapas(); encuadrar(estado.seleccionado); }
     const boton = e.target.closest('[data-ruido]');
     if (boton && boton.dataset.ruido !== estado.ruido) { estado.ruido = boton.dataset.ruido; actualizarCapas(); }
   });

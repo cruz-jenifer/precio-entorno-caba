@@ -178,6 +178,7 @@ Una flecha de A a B significa que A importa B. `badata_poi`, `store`, `matching`
 | `eda_delitos` | 313 | Informe exploratorio de delitos 2024–2025 y dataset `barrio_mes.csv` | CSV de delitos | `data/processed/delitos/` y figuras |
 | `eda_avisos` | 253 | Informe exploratorio de la captura de venta | Captura de venta | `data/processed/avisos/` y figuras |
 | `modelo` | 356 | Pipeline del capstone: variables, partición por grupos, placebo, controles y puntos de interés | Avisos, delitos y POI | `data/processed/modelo*/` |
+| `radar` y `radar_clasificar` | 652 y 479 | Radar de tendencias barriales: recolecta notas de Clarín, LA NACION y TN por feed, sitemap o sección pública, las clasifica por barrio, tema y aperturas, y arma el boletín de `/api/radar`. Ver [radar.md](radar.md). | Feeds y notas de los medios | `data/local/radar/` |
 | `app.py` | 304 | Interfaz: operación, modo, preferencias, comparación, mapa del entorno, contexto de delitos, búsquedas, alertas e importación | Las cuatro bases SQLite | Las cuatro bases SQLite |
 
 ## 5. Base de datos

@@ -9,3 +9,4 @@
 - Verificar con `python -m unittest discover -s tests -v`.
 - La interfaz web arranca con `python -m precio_entorno.api` y se abre en http://127.0.0.1:8000. Necesita las capas de `data/processed/entorno/`, que se generan con `python -m precio_entorno.entorno`.
 - La app de Streamlit, para importar datos y probar la actualización, arranca con `python -m streamlit run app.py`.
+- El radar de tendencias barriales se recolecta con `python -m precio_entorno.radar` (lunes 9:00 por la tarea de Windows). Es una capa editorial: no mezclar sus conteos con avisos, delitos ni datos ficticios, y no guardar el texto de las notas.

@@ -290,6 +290,16 @@ python -m precio_entorno.actualizar --probar-make error
 
 La tarea corre solo con la sesión de Windows iniciada. Si una inmobiliaria retira el permiso o empieza a bloquear, quitá su sitio con `--sitios` en `scripts/actualizar.cmd` o deshabilitá la tarea. El [protocolo de validación](docs/validacion-inmobiliaria.md) y su [planilla](docs/plantillas/registro-validacion.csv) guían la prueba de dos semanas con una inmobiliaria: tiempo ahorrado, alertas útiles, costo operativo y disposición a pagar.
 
+## Radar de tendencias barriales
+
+Capa editorial de la comparación: cuenta las notas inmobiliarias de Clarín, LA NACION y TN centradas en cada barrio y las aperturas de locales que esas notas reportan con fecha. Mide la cobertura de los medios monitoreados, no la demanda inmobiliaria. Está separada de los avisos, los delitos y los datos de ejemplo.
+
+```bash
+python -m precio_entorno.radar
+```
+
+Toma las notas de los siete días calendario anteriores, guarda cada medio por separado en `data/local/radar/` y muestra el boletín. La interfaz web lo lee de `/api/radar`. La tarea de Windows **PrecioEntornoCABA\Radar de noticias** lo corre los lunes a las 9:00 con [scripts/radar.cmd](scripts/radar.cmd). Fuentes, permisos, reglas de barrios y aperturas, fallas y límites: [docs/radar.md](docs/radar.md).
+
 ## Organización
 
 La [arquitectura técnica](docs/arquitectura.md) describe en detalle el stack, los módulos y sus dependencias, el esquema de la base con sus relaciones, la captura, Apify, Make, GitHub y los pendientes técnicos.

@@ -146,11 +146,13 @@ function renderLista() {
       <span class="fila-mediana">Mediana ${dinero(b.mediana, estado.moneda)}</span>
       <span></span>
       ${b.entorno ? `<span class="fila-entorno">${esc(lineaEntorno(b.entorno))}</span>` : ''}
+      ${prensaFila(b.barrio)}
     </button></li>`).join('');
   const compactos = sin.map((b) => `<li><button type="button" data-barrio="${esc(b.barrio)}">${esc(b.barrio)} · ${b.avisos}</button></li>`).join('');
   $('#contenido').innerHTML = `
     <h1 class="titulo-lista">${titulo}</h1>
     <p class="nota">${nota}</p>
+    ${renderRadarLista()}
     ${con.length ? `<ul class="barrios">${filas}</ul>` : ''}
     ${sin.length ? `<details class="sin-coincidencias"${con.length ? '' : ' open'}>
       <summary>${sin.length} ${plural(sin.length, 'barrio', 'barrios')} sin avisos que encajen</summary>
@@ -225,6 +227,7 @@ function renderFicha() {
         ${estado.avisos.length > visibles.length ? `<p class="fuente">Se muestran los ${visibles.length} más baratos de ${estado.avisos.length}. <button class="boton-texto" type="button" id="ver-todos">Ver todos</button></p>` : ''}
         <p class="fuente">${estado.modo === 'demo' ? 'Avisos ficticios de ejemplo.' : 'Precios de publicación del catálogo autorizado, no tasaciones ni precios de cierre.'}</p>` : ''}
       ${renderAnalisisDelitos()}
+      ${renderRadarFicha(b.barrio)}
     </article>`;
 }
 
@@ -256,6 +259,169 @@ function renderAnalisisDelitos() {
     <details><summary>Fuente, calidad y límites</summary><ul class="nota">${d.limitaciones.map((s) => `<li>${esc(s)}</li>`).join('')}</ul>
       <p class="fuente">Robos y hurtos excluidos por falta de coordenadas válidas: ${numero.format(d.calidad.robos_hurtos_sin_pin || 0)}. Sin horario entre los geolocalizados: ${numero.format(d.calidad.robos_hurtos_sin_horario || 0)}. Estos valores corresponden al conjunto de fuentes.</p>
       ${d.fuentes.map((f) => `<p class="fuente">${esc(f.archivo)} · <a href="${esc(f.url)}" target="_blank" rel="noopener">Mapa del Delito CABA</a><br>SHA-256: <span class="huella-fuente">${esc(f.sha256)}</span></p>`).join('')}</details></section>`;
+}
+
+/* Radar de tendencias barriales: capa editorial, separada de avisos, delitos y datos de ejemplo. */
+
+const ESTADO_FUENTE = { ok: 'Completa', parcial: 'Parcial', error: 'Falló', restringido: 'Acceso restringido', sin_ejecutar: 'Sin ejecutar' };
+const fechaCorta = (iso) => (iso ? new Intl.DateTimeFormat('es-AR', { day: 'numeric', month: 'numeric', year: 'numeric',
+  timeZone: 'America/Argentina/Buenos_Aires' }).format(new Date(iso.length === 10 ? `${iso}T12:00:00-03:00` : iso)) : '—');
+const fechaHora = (iso) => (iso ? new Intl.DateTimeFormat('es-AR', { day: 'numeric', month: 'numeric', year: 'numeric',
+  hour: '2-digit', minute: '2-digit', timeZone: 'America/Argentina/Buenos_Aires' }).format(new Date(iso)) : '—');
+const fechaLarga = (iso) => new Intl.DateTimeFormat('es-AR', { day: 'numeric', month: 'long', year: 'numeric',
+  timeZone: 'America/Argentina/Buenos_Aires' }).format(new Date(`${iso}T12:00:00-03:00`));
+
+function periodoRadar(r) {
+  return `del ${fechaLarga(r.periodo.desde)} al ${fechaLarga(r.periodo.hasta)}`;
+}
+
+function fuentesConProblemas(r) {
+  return r.fuentes.filter((f) => !['ok', 'parcial'].includes(f.estado));
+}
+
+function avisoFuentes(r) {
+  const malas = fuentesConProblemas(r);
+  const parciales = r.fuentes.filter((f) => f.estado === 'parcial');
+  const partes = [];
+  if (malas.length) partes.push(`Sin datos de ${enumerar(malas.map((f) => f.medio))} para este período: la recolección ${plural(malas.length, 'falló', 'fallaron')} y eso no significa que no hubo notas.`);
+  if (parciales.length) partes.push(`La recolección de ${enumerar(parciales.map((f) => f.medio))} fue parcial.`);
+  return partes.length ? `<p class="nota radar-alerta">${esc(partes.join(' '))}</p>` : '';
+}
+
+function renderRadarLista() {
+  const r = estado.radar;
+  if (!r) return '';
+  if (!r.disponible) {
+    return `<p class="fuente radar-lista">Radar de tendencias barriales: ${esc(r.motivo || 'no está disponible.')}</p>`;
+  }
+  const filas = r.barrios.filter((b) => b.notas || b.aperturas).map((b) => `<tr>
+      <th scope="row"><button class="boton-texto" type="button" data-barrio="${esc(b.barrio)}">${esc(b.barrio)}</button></th>
+      <td>${b.notas ? `<button class="radar-numero" type="button" data-radar-barrio="${esc(b.barrio)}" data-radar-tipo="notas"
+        aria-label="Ver las ${b.notas} ${plural(b.notas, 'nota', 'notas')} sobre ${esc(b.barrio)}">${b.notas}</button>` : '0'}</td>
+      <td>${b.aperturas ? `<button class="radar-numero" type="button" data-radar-barrio="${esc(b.barrio)}" data-radar-tipo="aperturas"
+        aria-label="Ver las aperturas reportadas en ${esc(b.barrio)}">${b.aperturas}</button>` : '0'}</td></tr>`).join('');
+  const sinBarrio = r.sin_barrio.length;
+  const problemas = fuentesConProblemas(r).length + r.fuentes.filter((f) => f.estado === 'parcial').length;
+  return `<details class="radar radar-lista"${estado.radarAbierto ? ' open' : ''}>
+    <summary><span class="radar-titulo" id="titulo-radar">Radar de tendencias barriales</span>
+      <span class="radar-resumen">${r.totales.notas} ${plural(r.totales.notas, 'nota', 'notas')} de prensa ·
+        ${r.totales.aperturas} ${plural(r.totales.aperturas, 'apertura reportada', 'aperturas reportadas')} ·
+        ${fechaCorta(r.periodo.desde)} al ${fechaCorta(r.periodo.hasta)}${problemas ? ' · revisar fuentes' : ''}</span></summary>
+    <p class="nota">Notas inmobiliarias publicadas ${periodoRadar(r)} en ${enumerar(r.fuentes.map((f) => f.medio))}.
+      ${esc(r.aviso)} Es una capa editorial aparte: no usa los avisos, los delitos ni los datos de ejemplo.</p>
+    <p class="fuente">Última actualización: ${fechaHora(r.actualizado)} ·
+      <button class="boton-texto" type="button" data-radar-fuentes>Estado de las fuentes</button></p>
+    <ul class="radar-fuentes">${r.fuentes.map((f) => `<li class="radar-estado radar-${esc(f.estado)}">
+      ${esc(f.medio)}: ${esc(ESTADO_FUENTE[f.estado] || f.estado)}${['ok', 'parcial'].includes(f.estado) ? ` · ${f.notas} ${plural(f.notas, 'nota', 'notas')}` : ''}</li>`).join('')}</ul>
+    ${avisoFuentes(r)}
+    ${filas ? `<table class="tabla radar-tabla">
+      <caption>Barrios con notas centradas en ellos, en orden alfabético. Tocá un número para ver las notas que lo respaldan.</caption>
+      <thead><tr><th scope="col">Barrio</th><th scope="col">Notas publicadas</th><th scope="col">Aperturas reportadas</th></tr></thead>
+      <tbody>${filas}</tbody></table>`
+      : '<p class="nota">Ninguna nota del período se centró en un barrio porteño.</p>'}
+    <p class="fuente">Las menciones al pasar y las comparaciones no suman. Una apertura cuenta solo si la nota informa local, dirección y una fecha de apertura dentro del período.
+      ${sinBarrio ? `<button class="boton-texto" type="button" data-radar-sin-barrio>${sinBarrio} ${plural(sinBarrio, 'nota', 'notas')} sin barrio asignado</button>` : ''}</p>
+  </details>`;
+}
+
+function prensaFila(barrio) {
+  const fila = estado.radar?.disponible && estado.radar.barrios.find((x) => x.barrio === barrio);
+  if (!fila || !(fila.notas || fila.aperturas)) return '';
+  const partes = [`${fila.notas} ${plural(fila.notas, 'nota', 'notas')}`];
+  if (fila.aperturas) partes.push(`${fila.aperturas} ${plural(fila.aperturas, 'apertura', 'aperturas')}`);
+  return `<span class="fila-prensa">En la prensa: ${partes.join(' · ')}</span>`;
+}
+
+function renderNotaRadar(n) {
+  const republicada = n.republicaciones?.length
+    ? `<p class="fuente">También publicada en: ${n.republicaciones.map((x) => `<a href="${esc(x.url)}" target="_blank" rel="noopener">${esc(x.medio)}, ${fechaCorta(x.fecha_publicacion)}</a>`).join(' · ')}</p>` : '';
+  return `<li class="radar-nota">
+    <p class="radar-meta">${fechaCorta(n.fecha_publicacion)} · ${esc(n.medio)} · ${esc(n.tema_nombre)}</p>
+    <a href="${esc(n.url)}" target="_blank" rel="noopener">${esc(n.titular)}</a>
+    <p class="fuente">${esc(n.resumen)}${n.fecha_hecho ? ` Fecha del hecho: ${fechaCorta(n.fecha_hecho)}.` : ''}</p>
+    ${republicada}</li>`;
+}
+
+function renderAperturaRadar(a) {
+  return `<li class="radar-nota">
+    <p class="radar-meta">Apertura el ${fechaCorta(a.fecha_apertura)}${a.barrio ? ` · ${esc(a.barrio)}` : ''}</p>
+    <strong>${esc(a.local)}</strong>, ${esc(a.direccion)}
+    ${a.fechas_informadas.length > 1 ? `<p class="fuente">Las notas informan fechas distintas: ${a.fechas_informadas.map(fechaCorta).join(', ')}.</p>` : ''}
+    <p class="fuente">${plural(a.notas.length, 'Lo respalda', 'Lo respaldan')}: ${a.notas.map((n) => `<a href="${esc(n.url)}" target="_blank" rel="noopener">${esc(n.medio)}, ${fechaCorta(n.fecha_publicacion)}</a>`).join(' · ')}</p></li>`;
+}
+
+function coberturaAperturas(barrio) {
+  return (estado.radar?.aperturas_sin_conteo || []).filter((a) => a.barrio === barrio);
+}
+
+function renderRadarFicha(barrio) {
+  const r = estado.radar;
+  if (!r?.disponible) return '';
+  const d = r.detalle[barrio] || { notas: [], aperturas: [] };
+  const fila = r.barrios.find((b) => b.barrio === barrio);
+  const extra = coberturaAperturas(barrio);
+  return `<section class="radar radar-ficha" aria-labelledby="titulo-prensa">
+    <h2 id="titulo-prensa">En la prensa</h2>
+    <p class="fuente">Radar de tendencias barriales, ${periodoRadar(r)}. Cobertura de los medios monitoreados, no demanda medida.</p>
+    ${avisoFuentes(r)}
+    <dl class="hechos"><dt>Notas publicadas</dt><dd>${d.notas.length}</dd><dt>Aperturas reportadas</dt><dd>${d.aperturas.length}</dd></dl>
+    ${d.notas.length ? `<ul class="radar-notas">${d.notas.map(renderNotaRadar).join('')}</ul>`
+      : '<p class="nota">Ninguna nota del período se centró en este barrio.</p>'}
+    ${d.aperturas.length ? `<h3>Aperturas reportadas</h3><ul class="radar-notas">${d.aperturas.map(renderAperturaRadar).join('')}</ul>` : ''}
+    ${extra.length ? `<h3>Cobertura de aperturas que no suma</h3><ul class="radar-notas">${extra.map((a) => `<li class="radar-nota">
+      ${a.local ? `<strong>${esc(a.local)}</strong>` : 'Local sin nombre identificado'}: ${esc(a.motivo)}.
+      <a href="${esc(a.nota.url)}" target="_blank" rel="noopener">${esc(a.nota.medio)}</a></li>`).join('')}</ul>` : ''}
+    ${fila?.incidentales ? `<p class="fuente">Además, ${fila.incidentales} ${plural(fila.incidentales, 'nota lo nombra', 'notas lo nombran')} al pasar o como comparación. No suman.</p>` : ''}
+  </section>`;
+}
+
+function abrirRadar(contenido) {
+  $('#radar-contenido').innerHTML = contenido;
+  $('#dialogo-radar').showModal();
+}
+
+function detalleRadar(barrio, tipo) {
+  const r = estado.radar;
+  const d = r.detalle[barrio] || { notas: [], aperturas: [] };
+  if (tipo === 'aperturas') {
+    abrirRadar(`<h3>Aperturas reportadas en ${esc(barrio)}</h3>
+      <p class="nota">${periodoRadar(r)}. Cada apertura agrupa las notas que informan el mismo local y la misma dirección. No es un censo: solo incluye lo que publicaron los medios monitoreados.</p>
+      <ul class="radar-notas">${d.aperturas.map(renderAperturaRadar).join('')}</ul>`);
+    return;
+  }
+  abrirRadar(`<h3>Notas publicadas sobre ${esc(barrio)}</h3>
+    <p class="nota">${periodoRadar(r)}. Notas centradas en el barrio: lo nombran en el titular, la bajada o un subtítulo, o varias veces sin usarlo como comparación.</p>
+    <ul class="radar-notas">${d.notas.map(renderNotaRadar).join('')}</ul>`);
+}
+
+function detalleSinBarrio() {
+  const r = estado.radar;
+  abrirRadar(`<h3>Notas sin barrio asignado</h3>
+    <p class="nota">${periodoRadar(r)}. Tratan sobre la Ciudad en general, otra ciudad o un tema sin un barrio puntual, o lo nombran de forma ambigua.</p>
+    <ul class="radar-notas">${r.sin_barrio.map(renderNotaRadar).join('')}</ul>`);
+}
+
+function detalleFuentesRadar() {
+  const r = estado.radar;
+  abrirRadar(`<h3>Estado de las fuentes</h3>
+    <p class="nota">Período ${periodoRadar(r)}. Cada medio se recolecta y se guarda por separado: si uno falla, se conservan sus datos anteriores y la falla se informa.</p>
+    <table class="tabla"><thead><tr><th>Medio</th><th>Estado</th><th>Notas</th><th>Recolectado</th></tr></thead><tbody>
+    ${r.fuentes.map((f) => `<tr><td><a href="${esc(f.seccion)}" target="_blank" rel="noopener">${esc(f.medio)}</a></td>
+      <td>${esc(ESTADO_FUENTE[f.estado] || f.estado)}</td><td>${['ok', 'parcial'].includes(f.estado) ? f.notas : '—'}</td>
+      <td>${fechaHora(f.recolectado_en)}</td></tr>`).join('')}</tbody></table>
+    ${r.fuentes.map((f) => `<p class="fuente"><strong>${esc(f.medio)}.</strong> ${esc(f.metodo)}
+      ${f.cobertura_desde ? ` Los listados llegaron hasta el ${fechaCorta(f.cobertura_desde)}.` : ''}
+      ${f.motivo ? ` Observaciones: ${esc(f.motivo)}` : ''}
+      ${f.ultimo_intento && f.ultimo_intento.fecha !== f.recolectado_en ? ` Último intento: ${fechaHora(f.ultimo_intento.fecha)}, ${esc(ESTADO_FUENTE[f.ultimo_intento.estado] || f.ultimo_intento.estado)}.` : ''}</p>`).join('')}
+    <p class="fuente">Se guardan medio, titular, enlace, fechas, barrios, tema y un resumen propio. No se guarda el texto de las notas ni se leen notas de acceso restringido.</p>`);
+}
+
+async function cargarRadar() {
+  try {
+    estado.radar = await api('/api/radar');
+  } catch (error) {
+    estado.radar = { disponible: false, motivo: `No se pudo cargar el radar: ${error.message}` };
+  }
 }
 
 function renderPanel() {
@@ -803,6 +969,10 @@ function conectarEventos() {
       if (pin) { if (celular()) plegarPanel(false); encuadrarPin(pin); }
       return;
     }
+    const numero = e.target.closest('[data-radar-barrio]');
+    if (numero) { detalleRadar(numero.dataset.radarBarrio, numero.dataset.radarTipo); return; }
+    if (e.target.closest('[data-radar-fuentes]')) { detalleFuentesRadar(); return; }
+    if (e.target.closest('[data-radar-sin-barrio]')) { detalleSinBarrio(); return; }
     const fila = e.target.closest('[data-barrio]');
     if (fila) { seleccionar(fila.dataset.barrio); return; }
     if (e.target.closest('#volver')) { seleccionar(null); return; }
@@ -810,6 +980,9 @@ function conectarEventos() {
     if (e.target.closest('#crear-alerta')) crearAlerta(e.target.closest('#crear-alerta'));
     if (e.target.closest('#ver-todos')) { estado.verTodos = true; renderFicha(); }
   });
+  $('#contenido').addEventListener('toggle', (e) => {
+    if (e.target.matches('.radar-lista')) estado.radarAbierto = e.target.open;
+  }, true);
   $('#contenido').addEventListener('mouseover', (e) => {
     const fila = e.target.closest('.fila');
     marcarHover(fila ? fila.dataset.barrio : null, 'lista');
@@ -941,7 +1114,7 @@ async function iniciar() {
   renderChips();
   $('#contenido').innerHTML = '<p class="nota">Cargando barrios…</p>';
   try {
-    await Promise.all([cargarEstado(), cargarBarrios()]);
+    await Promise.all([cargarEstado(), cargarBarrios(), cargarRadar()]);
     renderPanel();
   } catch (error) {
     $('#contenido').innerHTML = `<p class="vacio">No se pudieron cargar los barrios: ${esc(error.message)}.

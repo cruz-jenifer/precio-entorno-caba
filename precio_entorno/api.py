@@ -17,7 +17,7 @@ from fastapi import FastAPI, HTTPException, Query
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from . import concentracion, entorno, make_webhook
+from . import concentracion, entorno, make_webhook, radar
 from .bases import REAL_BASE, ROOT, demo_base, open_store
 from .importing import BARRIOS, usable_pin
 from .matching import matches
@@ -63,11 +63,12 @@ def point_features(items, kind, bbox):
 
 
 def create_app(demo_path=None, real_path=None, entorno_dir=None, raw_dir=None, web_dir=None,
-               subscriptions_url=..., post=None):
+               subscriptions_url=..., post=None, radar_dir=None):
     """`subscriptions_url` es el webhook de altas de Make; por defecto se lee MAKE_BUSQUEDAS_WEBHOOK_URL."""
     entorno_dir = Path(entorno_dir or ROOT / 'data/processed/entorno')
     raw_dir = Path(raw_dir or ROOT / 'data/raw')
     web_dir = Path(web_dir or ROOT / 'web')
+    radar_dir = Path(radar_dir or radar.RADAR_DIR)
     cache = {}
     app = FastAPI(title='Precio y Entorno CABA', docs_url='/api/docs', openapi_url='/api/openapi.json')
 
@@ -258,6 +259,11 @@ def create_app(demo_path=None, real_path=None, entorno_dir=None, raw_dir=None, w
                  'properties': {'radio_m': r, 'seleccionado': r == radio}} for r in concentracion.RADIOS
             ]) if listing else collection([])
         return result
+
+    @app.get('/api/radar')
+    def news_radar(periodo: str | None = None):
+        """Capa editorial: cobertura de prensa por barrio. No depende del modo ni de la operación."""
+        return radar.boletin(radar_dir, periodo)
 
     @app.get('/api/fuentes')
     def sources():

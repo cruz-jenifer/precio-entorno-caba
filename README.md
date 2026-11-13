@@ -4,6 +4,8 @@ Prototipo local de búsqueda inmobiliaria. Una persona ingresa sus preferencias,
 
 El [plan de entrega del capstone](docs/plan-capstone.md) reúne el cronograma de la profesora, las evidencias del repositorio y los pendientes para Analytics, Inference y la defensa comercial.
 
+La [entrega de Producto 1 del 12/11](docs/entrega-12-11.md) incluye la auditoría de cumplimiento, muestras analíticas, diccionario, guion de demo y acciones de cierre por rol.
+
 La [guía del flujo de trabajo](docs/flujo-de-trabajo.md) conecta la operación del producto con Analytics, Inference y el seguimiento en Trello.
 
 ## Ejecutar en Windows

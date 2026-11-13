@@ -12,10 +12,13 @@ const PREFERENCIAS = [
 ];
 const CAPAS = [...PREFERENCIAS, { clave: 'delitos', nombre: 'Delitos registrados' }];
 const SUBTE = { A: '#18CCCC', B: '#EB0909', C: '#233AA8', D: '#02A17A', E: '#AE3D97', H: '#FFD600' };
-const COLOR = { verdes: '#5E7D4F', riesgo: '#1E88E5', escuela: '#1E2A32', cesac: '#00897B', hospital: '#795548' };
+const COLOR = { verdes: '#5E7D4F', riesgo: '#1E88E5', escuela: '#1E2A32', cesac: '#00897B', hospital: '#795548',
+  aviso: '#6A4FB3' };
 const RUIDO = [[50, '#FFFFCC'], [55, '#FFEDA0'], [60, '#FED976'], [65, '#FEB24C'], [70, '#FD8D3C'], [75, '#F03B20'], [80, '#BD0026']];
 const DELITOS = ['#D3DBE3', '#A9B8C8', '#7E93AB', '#55708E', '#2E4560'];
 const ESTILO = 'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json';
+const NOTA_AVISOS = 'Punto que publica la fuente, sin precisión declarada: puede marcar el edificio o una referencia cercana. '
+  + 'Hueco si cae a entre 150 y 500 m del barrio del aviso. Más lejos, no se dibuja. Un punto más grande reúne varios avisos.';
 const NOTAS = {
   subte: 'Indican conectividad, no tiempos de viaje.',
   verdes: 'Plazas, parques, jardines y paseos. No incluye canteros ni plazoletas.',
@@ -193,8 +196,11 @@ function renderFicha() {
       <td>${a.ambientes}</td>
       ${alquiler ? `<td>${a.expensas == null ? '—' : dinero(a.expensas, 'ARS')}</td>` : ''}
       <td>${a.enlace ? `<a href="${esc(a.enlace)}" target="_blank" rel="noopener">Ver aviso</a>` : 'Ejemplo'}</td>
-      <td>${a.pin_utilizable ? `<button class="boton-texto" type="button" data-inmueble="${esc(a.id)}">${estado.delitos.inmueble === a.id ? 'Entorno elegido' : 'Ver registros cerca'}</button>` : '<span class="fuente">Sin pin preciso</span>'}</td>
+      <td>${a.pin_utilizable ? `<button class="boton-texto" type="button" data-inmueble="${esc(a.id)}">${estado.delitos.inmueble === a.id ? 'Entorno elegido' : 'Ver registros cerca'}</button>`
+        : a.ubicacion ? `<button class="boton-texto" type="button" data-ubicar="${esc(a.id)}" title="Ver en el mapa">Ubicar</button>`
+          : '<span class="fuente">Sin ubicación</span>'}</td>
     </tr>`).join('');
+  const ubicados = estado.avisos.filter((a) => a.ubicacion).length;
   const resumen = b.coincidencias
     ? `${b.coincidencias} de ${b.avisos} ${plural(b.avisos, 'aviso', 'avisos')} en ${estado.moneda} ${plural(b.coincidencias, 'encaja', 'encajan')} con tu búsqueda. Mediana ${dinero(b.mediana, estado.moneda)}.`
     : 'Ningún aviso encaja con tu búsqueda por ahora. Podés crear la alerta igual.';
@@ -221,11 +227,12 @@ function renderFicha() {
           <button class="boton-texto" type="button" data-fuentes>Ver fuentes</button></p>` : ''}
       ${b.coincidencias ? `<h2>Avisos que encajan</h2>
         <table class="avisos">
-          <thead><tr><th>Precio publicado</th><th>Cubierta</th><th>Amb.</th>${alquiler ? '<th>Expensas</th>' : ''}<th><span hidden>Enlace</span></th><th>Registros cerca</th></tr></thead>
+          <thead><tr><th>Precio publicado</th><th>Cubierta</th><th>Amb.</th>${alquiler ? '<th>Expensas</th>' : ''}<th><span hidden>Enlace</span></th><th>Mapa</th></tr></thead>
           <tbody>${filas}</tbody>
         </table>
         ${estado.avisos.length > visibles.length ? `<p class="fuente">Se muestran los ${visibles.length} más baratos de ${estado.avisos.length}. <button class="boton-texto" type="button" id="ver-todos">Ver todos</button></p>` : ''}
-        <p class="fuente">${estado.modo === 'demo' ? 'Avisos ficticios de ejemplo.' : 'Precios de publicación del catálogo autorizado, no tasaciones ni precios de cierre.'}</p>` : ''}
+        <p class="fuente">${estado.modo === 'demo' ? 'Avisos ficticios de ejemplo.' : 'Precios de publicación del catálogo autorizado, no tasaciones ni precios de cierre.'}
+          ${estado.modo === 'real' ? `${ubicados} de ${estado.avisos.length} ${plural(estado.avisos.length, 'aviso tiene', 'avisos tienen')} un punto en el mapa, publicado por la fuente sin precisión declarada.` : ''}</p>` : ''}
       ${renderAnalisisDelitos()}
       ${renderRadarFicha(b.barrio)}
     </article>`;
@@ -427,6 +434,7 @@ async function cargarRadar() {
 function renderPanel() {
   if (estado.seleccionado) renderFicha();
   else renderLista();
+  pintarAvisos();
 }
 
 /* Mapa */
@@ -447,6 +455,10 @@ mapa.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-r
 const mapaListo = new Promise((resolver) => mapa.on('load', resolver));
 new ResizeObserver(() => mapa.resize()).observe(document.querySelector('.mapa'));
 const popup = new maplibregl.Popup({ closeButton: false, closeOnClick: false, offset: 10, maxWidth: '18rem' });
+// Lista de avisos de un punto, con enlaces. Se cierra a mano al tocar otro lugar del mapa.
+const popupAviso = new maplibregl.Popup({ closeButton: true, closeOnClick: false, offset: 12, maxWidth: '20rem',
+  className: 'popup-avisos' });
+popupAviso.on('close', () => { estado.pinAbierto = null; });
 
 async function prepararMapa() {
   const [formas] = await Promise.all([api('/api/mapa/barrios'), mapaListo]);
@@ -455,7 +467,7 @@ async function prepararMapa() {
   if (!estado.seleccionado) encuadrar(null, true);
   const simbolo = mapa.getStyle().layers.find((capa) => capa.type === 'symbol')?.id;
   mapa.addSource('barrios', { type: 'geojson', data: formas, promoteId: 'barrio' });
-  for (const id of ['ruido', 'delitos', 'radios', 'inmueble', 'riesgo', 'verdes', 'subte', 'escuelas', 'salud']) {
+  for (const id of ['ruido', 'delitos', 'radios', 'inmueble', 'riesgo', 'verdes', 'subte', 'escuelas', 'salud', 'avisos']) {
     mapa.addSource(id, { type: 'geojson', data: VACIO });
   }
   const sel = ['boolean', ['feature-state', 'sel'], false];
@@ -497,6 +509,15 @@ async function prepararMapa() {
   mapa.addLayer({ id: 'subte', type: 'circle', source: 'subte',
     paint: { 'circle-radius': 6.5, 'circle-color': ['match', ['get', 'line'], ...Object.entries(SUBTE).flat(), '#55626B'],
       'circle-stroke-color': '#FFFFFF', 'circle-stroke-width': 2 } });
+  // Avisos que encajan: relleno si la ubicación publicada es coherente con el barrio, hueco si es aproximada.
+  // Un punto con varios avisos (un mismo edificio) se dibuja más grande.
+  mapa.addLayer({ id: 'avisos', type: 'circle', source: 'avisos',
+    paint: {
+      'circle-radius': ['interpolate', ['linear'], ['get', 'cantidad'], 1, 5, 5, 8, 20, 11],
+      'circle-color': ['case', ['get', 'aproximada'], '#FFFFFF', COLOR.aviso],
+      'circle-stroke-color': ['case', ['get', 'aproximada'], COLOR.aviso, '#FFFFFF'],
+      'circle-stroke-width': ['case', ['get', 'aproximada'], 2, 1.4],
+    } });
   mapa.addLayer({ id: 'radios', type: 'line', source: 'radios',
     paint: { 'line-color': '#6A4FB3', 'line-width': ['case', ['get', 'seleccionado'], 2.5, 1], 'line-dasharray': [3, 2] } });
   mapa.addLayer({ id: 'inmueble', type: 'circle', source: 'inmueble',
@@ -508,6 +529,13 @@ async function prepararMapa() {
   mapa.on('mousemove', (evento) => {
     const barrio = mapa.queryRenderedFeatures(evento.point, { layers: ['barrios-relleno'] })[0];
     marcarHover(barrio ? barrio.id : null, 'mapa');
+    const pin = mapa.queryRenderedFeatures(evento.point, { layers: ['avisos'] })[0];
+    if (pin) {
+      mapa.getCanvas().style.cursor = 'pointer';
+      if (estado.pinAbierto === pin.properties.clave) popup.remove();
+      else popup.setLngLat(pin.geometry.coordinates).setHTML(esc(textoPin(pin.properties.clave))).addTo(mapa);
+      return;
+    }
     const elemento = mapa.queryRenderedFeatures(evento.point, { layers: conTexto })[0];
     const texto = elemento ? textoElemento(elemento) : (barrio && !estado.seleccionado ? textoBarrio(barrio.id) : null);
     mapa.getCanvas().style.cursor = barrio || elemento ? 'pointer' : '';
@@ -516,6 +544,12 @@ async function prepararMapa() {
   });
   mapa.on('mouseout', () => { popup.remove(); marcarHover(null, 'mapa'); });
   mapa.on('click', (evento) => {
+    const pin = mapa.queryRenderedFeatures(evento.point, { layers: ['avisos'] })[0];
+    if (pin) {
+      abrirPin(pin.properties.clave);
+      return;
+    }
+    popupAviso.remove();
     const elemento = mapa.queryRenderedFeatures(evento.point, { layers: conTexto })[0];
     if (elemento) {
       popup.setLngLat(evento.lngLat).setHTML(esc(textoElemento(elemento))).addTo(mapa);
@@ -524,6 +558,62 @@ async function prepararMapa() {
     const barrio = mapa.queryRenderedFeatures(evento.point, { layers: ['barrios-relleno'] })[0];
     if (barrio && barrio.id !== estado.seleccionado) seleccionar(barrio.id);
   });
+  pintarAvisos();
+}
+
+/* Pines de los avisos */
+
+function claveUbicacion(a) {
+  return `${a.lat.toFixed(6)},${a.lon.toFixed(6)}`;
+}
+
+function gruposAvisos() {
+  const grupos = new Map();
+  for (const a of estado.avisos) {
+    if (!a.ubicacion) continue;
+    const clave = claveUbicacion(a);
+    if (!grupos.has(clave)) grupos.set(clave, []);
+    grupos.get(clave).push(a);
+  }
+  return grupos;
+}
+
+function pintarAvisos() {
+  const fuente = mapa.getSource('avisos');
+  if (!fuente) return;
+  const grupos = estado.seleccionado ? gruposAvisos() : new Map();
+  fuente.setData({ type: 'FeatureCollection', features: [...grupos].map(([clave, lista]) => ({
+    type: 'Feature', geometry: { type: 'Point', coordinates: [lista[0].lon, lista[0].lat] },
+    properties: { clave, cantidad: lista.length, aproximada: lista.every((a) => a.ubicacion === 'aproximada') },
+  })) });
+  if (estado.pinAbierto && !grupos.has(estado.pinAbierto)) popupAviso.remove();
+}
+
+function textoPin(clave) {
+  const lista = gruposAvisos().get(clave) || [];
+  if (lista.length === 1) {
+    const a = lista[0];
+    return `${dinero(a.precio, a.moneda)} · ${a.superficie} m² · ${a.ambientes} amb.${a.ubicacion === 'aproximada' ? ' Ubicación aproximada.' : ''}`;
+  }
+  const precios = lista.map((a) => a.precio);
+  return `${lista.length} avisos en este punto, de ${dinero(Math.min(...precios), lista[0].moneda)} a ${dinero(Math.max(...precios), lista[0].moneda)}. Tocá para verlos.`;
+}
+
+function abrirPin(clave) {
+  const lista = gruposAvisos().get(clave);
+  if (!lista) return;
+  popup.remove();
+  estado.pinAbierto = clave;
+  const filas = lista.map((a) => `<li><strong>${esc(dinero(a.precio, a.moneda))}</strong> · ${a.superficie} m² · ${a.ambientes} amb.
+    ${a.enlace ? `<a href="${esc(a.enlace)}" target="_blank" rel="noopener">Ver aviso</a>` : ''}</li>`).join('');
+  const nota = lista.every((a) => a.ubicacion === 'aproximada')
+    ? 'Ubicación aproximada: el punto publicado cae a entre 150 y 500 m del barrio.'
+    : 'Punto publicado por la fuente, sin precisión declarada.';
+  popupAviso.setLngLat([lista[0].lon, lista[0].lat])
+    .setHTML(`<p class="pin-titulo">${lista.length === 1 ? '1 aviso' : `${lista.length} avisos`} en este punto</p>
+      <ul class="pin-lista">${filas}</ul><p class="pin-nota">${nota}</p>`)
+    .addTo(mapa);
+  estado.pinAbierto = clave;
 }
 
 function textoBarrio(nombre) {
@@ -727,6 +817,13 @@ function renderLeyenda() {
   }
   const bloques = [];
   const notas = [];
+  const conPunto = estado.avisos.filter((a) => a.ubicacion);
+  if (conPunto.length) {
+    const pin = (hueco, etiqueta) => `<li><span class="chip-muestra chip-pin${hueco ? ' chip-pin-hueco' : ''}"></span>${esc(etiqueta)}</li>`;
+    bloques.push(`<h3>Avisos que encajan</h3><ul class="leyenda-items">${pin(false, 'Punto publicado')}${
+      conPunto.some((a) => a.ubicacion === 'aproximada') ? pin(true, 'Aproximado') : ''}</ul>`);
+    notas.push(`<li><strong>Avisos.</strong> ${esc(NOTA_AVISOS)}</li>`);
+  }
   for (const c of CAPAS) {
     if (!estado.capas.has(c.clave)) continue;
     let items = [];
@@ -794,6 +891,7 @@ async function seleccionar(nombre) {
   estado.pedidoDelitos += 1;
   popup.remove();
   if (nombre && mapa.getSource('barrios')) mapa.setFeatureState({ source: 'barrios', id: nombre }, { sel: true });
+  popupAviso.remove();
   estado.capas = new Set(nombre ? estado.prefs : []);
   pintarCoropletas();
   encuadrar(nombre);
@@ -1100,6 +1198,16 @@ async function abrirFuentes() {
       ${fuentes.map((f) => `<tr><td>${esc(f.titulo)}</td><td>${esc(f.periodo)}</td>
         <td>${f.url ? `<a href="${esc(f.url)}" target="_blank" rel="noopener">${esc(f.archivo)}</a>` : esc(f.archivo)}</td></tr>`).join('')}
       </tbody></table>
+    const ubicar = e.target.closest('[data-ubicar]');
+    if (ubicar) {
+      const aviso = estado.avisos.find((a) => a.id === ubicar.dataset.ubicar);
+      if (aviso?.ubicacion) {
+        if (celular()) plegarPanel(false);
+        encuadrarPin(aviso);
+        abrirPin(claveUbicacion(aviso));
+      }
+      return;
+    }
       <h3>Avisos y delitos</h3>
       <p class="nota">${estado.modo === 'demo' ? 'En la demo, los avisos y los delitos son ficticios.'
         : `Avisos del catálogo autorizado ${esc(catalogo || 'sin cargar')}, con precios de publicación. Delitos del Mapa del Delito de CABA${estado.info?.delitos ? `, archivo ${esc(estado.info.delitos.archivo)}` : ''}.`}</p>`;

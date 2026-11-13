@@ -21,7 +21,7 @@ function runtime() {
         constructor() { this.touchZoomRotate = { disableRotation() {} }; }
         addControl() {} on() {} getSource() { return null; }
       },
-      NavigationControl: class {}, Popup: class {},
+      NavigationControl: class {}, Popup: class { on() { return this; } remove() { return this; } },
     },
   });
   const source = fs.readFileSync(path.join(__dirname, '../web/app.js'), 'utf8');

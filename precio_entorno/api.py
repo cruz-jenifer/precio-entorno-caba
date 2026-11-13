@@ -17,7 +17,7 @@ from fastapi import FastAPI, HTTPException, Query
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from . import concentracion, entorno, make_webhook, radar
+from . import concentracion, entorno, make_webhook, radar, ubicacion
 from .bases import REAL_BASE, ROOT, demo_base, open_store
 from .importing import BARRIOS, usable_pin
 from .matching import matches
@@ -148,12 +148,22 @@ def create_app(demo_path=None, real_path=None, entorno_dir=None, raw_dir=None, w
         found = [i for i in store_for(modo, operacion).listings()
                  if i['neighborhood'] == barrio and matches(i, presupuesto, superficie, ambientes, moneda, ambientes_o_mas)]
         found.sort(key=lambda i: (i['price'], -i['covered_area']))
-        return {'avisos': [{
-            'id': i['id'], 'precio': i['price'], 'moneda': i.get('currency') or 'USD',
-            'superficie': i['covered_area'], 'superficie_total': i.get('total_area_m2'), 'ambientes': i['rooms'],
-            'expensas': i.get('expenses'), 'capturado': i.get('captured_at'),
-            'pin_utilizable': modo == 'real' and usable_pin(i),
-            'enlace': i.get('url') if modo == 'real' else None} for i in found]}
+        data = layers()
+        shape = next((f['geometry'] for f in (data['barrios']['features'] if data else [])
+                      if f['properties'].get('barrio') == barrio), None)
+        avisos = []
+        for i in found:
+            location = ubicacion.quality(i.get('longitude'), i.get('latitude'), shape)
+            avisos.append({
+                'id': i['id'], 'precio': i['price'], 'moneda': i.get('currency') or 'USD',
+                'superficie': i['covered_area'], 'superficie_total': i.get('total_area_m2'), 'ambientes': i['rooms'],
+                'expensas': i.get('expenses'), 'capturado': i.get('captured_at'),
+                'pin_utilizable': modo == 'real' and usable_pin(i),
+                # Punto para el mapa: solo si es coherente con el barrio (ver precio_entorno/ubicacion.py).
+                'ubicacion': location,
+                'lat': i['latitude'] if location else None, 'lon': i['longitude'] if location else None,
+                'enlace': i.get('url') if modo == 'real' else None})
+        return {'avisos': avisos}
 
     @app.get('/api/mapa/barrios')
     def neighborhood_shapes():

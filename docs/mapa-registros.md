@@ -31,6 +31,20 @@ La [ficha oficial del recurso de 2025](https://data.buenosaires.gob.ar/ar/datase
 
 Solo se habilita el cruce de un aviso si tiene coordenadas y precisión informada de **hasta 100 m**, como exige `usable_pin`. Una ubicación sin precisión informada no se reemplaza por el centro del barrio. Tener una precisión declarada no garantiza que el pin sea exacto.
 
+### Pines de los avisos en el mapa
+
+Al elegir un barrio, el mapa dibuja los avisos que encajan con la búsqueda en el punto que publica la fuente. Ninguna fuente informa la precisión en metros, así que solo se controla que el punto sea coherente con el barrio del aviso (`precio_entorno/ubicacion.py`):
+
+| Calidad | Regla | En el mapa |
+| --- | --- | --- |
+| `publicada` | Dentro del barrio o a menos de 150 m de su límite | Punto relleno |
+| `aproximada` | A entre 150 y 500 m del barrio | Punto hueco |
+| sin punto | Sin coordenadas o a más de 500 m (contradice el barrio) | No se dibuja; la tabla dice «Sin ubicación» |
+
+- Los avisos que comparten el punto exacto se dibujan como un solo punto más grande. En general son unidades de un mismo edificio, y a veces el mismo inmueble publicado por dos fuentes. Al tocar el punto se listan todos, con su enlace.
+- En la captura de venta, 3.395 de 3.820 avisos traen coordenadas. De esos, 3.173 quedan como `publicada`, 127 a entre 150 y 500 m y 95 a más de 500 m. Migliorisi y Clarín no publican coordenadas.
+- **Los pines sirven para ubicar el aviso, no para contar registros.** El cruce con delitos alrededor del aviso sigue exigiendo precisión declarada de hasta 100 m: un punto sin precisión puede marcar una referencia cercana en lugar del edificio.
+
 Los conteos de los radios usan distancia geodésica sobre una esfera de radio medio terrestre, desde el pin del aviso a cada registro. Son radios acumulativos: 250 m está contenido en 500 m y este en 1.000 m; **no se suman**. Se incluyen hechos de barrios vecinos. En el borde de CABA solo se dispone de la porción cubierta por los registros de la Ciudad. No se calculan recorridos caminables.
 
 La superficie coloreada utiliza una **grilla fija aproximada de 200 m**, con el mismo origen en todos los años. El mapa incluye las celdas que pueden tocar el círculo; una celda contiene todos sus registros, incluso los que quedan fuera del radio. Por eso su suma puede diferir del conteo exacto del radio. La ficha y el tooltip explican esta diferencia. La grilla evita publicar puntos individuales como si fueran direcciones exactas.

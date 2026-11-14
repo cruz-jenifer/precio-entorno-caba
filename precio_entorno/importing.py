@@ -46,6 +46,17 @@ CURRENCIES = {
 }
 PRICE_RANGES = {('venta', 'USD'): PRICE_USD, ('alquiler', 'ARS'): (50_000, 50_000_000),
                 ('alquiler', 'USD'): (100, 30_000)}
+# Datos opcionales del edificio y la unidad (hoy solo los publican algunas fuentes).
+AGE_YEARS = (0, 200)
+GARAGES = (0, 10)
+FLOOR = (0, 80)
+# Estado de la propiedad, con las etiquetas que usan las fuentes llevadas a una sola escala.
+CONDITIONS = {
+    'a_estrenar': 'a estrenar', 'nuevo': 'a estrenar', 'en_construccion': 'en construcción',
+    'en_pozo': 'en construcción', 'de_pozo': 'en construcción',
+    'excelente': 'excelente', 'muy_bueno': 'muy bueno', 'bueno': 'bueno', 'regular': 'regular',
+    'reciclado': 'reciclado', 'a_reciclar': 'a reciclar', 'a_refaccionar': 'a reciclar',
+}
 PRICE_PER_M2_RANGES = {('venta', 'USD'): PRICE_PER_M2_USD, ('alquiler', 'ARS'): (1_000, 2_000_000),
                        ('alquiler', 'USD'): (1, 1_000)}
 
@@ -57,6 +68,8 @@ class Report:
     duplicates: int = 0
     alerts: int = 0
     discarded: int = 0
+    price_changes: int = 0   # Avisos ya conocidos cuyo precio publicado cambió.
+    reactivated: int = 0     # Avisos dados de baja que volvieron a publicarse.
     missing: Counter = field(default_factory=Counter)
     invalid: Counter = field(default_factory=Counter)
 
@@ -127,7 +140,9 @@ def field_value(report, name, raw, parse):
 def import_listings(store, content, filename, source, operation='venta'):
     source = source.strip().casefold()
     listings, report = parse_listings(content, filename, source, operation)
-    report.added, report.alerts = store.ingest(listings, source=source)
+    stats = {}
+    report.added, report.alerts = store.ingest(listings, source=source, stats=stats)
+    report.price_changes, report.reactivated = stats['cambios_de_precio'], stats['reactivados']
     report.duplicates = len(listings) - report.added
     return report
 
@@ -197,6 +212,12 @@ def parse_listings(content, filename, source, operation='venta'):
         listing['latitude'] = get('latitude', lambda x: number(x, minimum=-34.73, maximum=-34.52), 'latitud', 'lat')
         listing['longitude'] = get('longitude', lambda x: number(x, minimum=-58.54, maximum=-58.32), 'longitud', 'lon')
         listing['location_accuracy_m'] = get('location_accuracy_m', lambda x: number(x, minimum=0.01), 'precision_m')
+        listing['age_years'] = get('age_years', lambda x: number(
+            x, minimum=AGE_YEARS[0], maximum=AGE_YEARS[1], whole=True), 'antiguedad')
+        listing['condition'] = get('condition', lambda x: CONDITIONS[key(x)], 'estado')
+        listing['garages'] = get('garages', lambda x: number(
+            x, minimum=GARAGES[0], maximum=GARAGES[1], whole=True), 'cocheras')
+        listing['floor'] = get('floor', lambda x: number(x, minimum=FLOOR[0], maximum=FLOOR[1], whole=True), 'piso')
         if listing['total_area_m2'] is not None and listing['covered_area'] is not None:
             if listing['total_area_m2'] < listing['covered_area']:
                 report.invalid['total_area_m2'] += 1

@@ -1,0 +1,45 @@
+{
+  "title": "Alertas de avisos nuevos",
+  "type": "object",
+  "schemaVersion": 1,
+  "properties": {
+    "busquedas": {
+      "title": "Búsquedas activas",
+      "type": "array",
+      "description": "Una entrada por búsqueda, sin datos personales: id, operacion (venta o alquiler), barrio, presupuesto, moneda (USD o ARS), superficie mínima, ambientes y ambientesOMas.",
+      "editor": "json",
+      "prefill": [
+        {"id": 1, "operacion": "venta", "barrio": "Caballito", "presupuesto": 130000, "moneda": "USD", "superficie": 40, "ambientes": 2, "ambientesOMas": true},
+        {"id": 2, "operacion": "venta", "barrio": "Almagro", "presupuesto": 110000, "moneda": "USD", "superficie": 35, "ambientes": 2, "ambientesOMas": true}
+      ]
+    },
+    "sitios": {
+      "title": "Sitios",
+      "type": "array",
+      "description": "Inmobiliarias autorizadas a capturar. Vacío: todas las habilitadas.",
+      "editor": "stringList",
+      "default": ["century21", "migliorisi", "mob", "remax"]
+    },
+    "maxAvisosPorSitio": {
+      "title": "Avisos recientes por sitio",
+      "type": "integer",
+      "description": "Tope de avisos más recientes por sitio y operación.",
+      "minimum": 1,
+      "maximum": 200,
+      "default": 50
+    },
+    "alertarPrimeraCorrida": {
+      "title": "Alertar en la primera corrida",
+      "type": "boolean",
+      "description": "Si es falso, la primera corrida de cada operación solo guarda los avisos vigentes como línea de base y no alerta.",
+      "default": false
+    },
+    "autorizacionConfirmada": {
+      "title": "Autorización confirmada",
+      "type": "boolean",
+      "description": "Confirmo que los sitios elegidos autorizaron la lectura.",
+      "default": false
+    }
+  },
+  "required": ["busquedas", "autorizacionConfirmada"]
+}

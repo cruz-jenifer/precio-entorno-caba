@@ -12,6 +12,12 @@
       "runtimeExecutable": "C:\\Users\\Usuario\\AppData\\Local\\Microsoft\\WindowsApps\\PythonSoftwareFoundation.Python.3.13_qbz5n2kfra8p0\\python.exe",
       "runtimeArgs": ["-m", "precio_entorno.api", "--puerto", "8000"],
       "port": 8000
+    },
+    {
+      "name": "web-prueba",
+      "runtimeExecutable": "C:\\Users\\Usuario\\AppData\\Local\\Microsoft\\WindowsApps\\PythonSoftwareFoundation.Python.3.13_qbz5n2kfra8p0\\python.exe",
+      "runtimeArgs": ["-m", "precio_entorno.api", "--puerto", "8010"],
+      "port": 8010
     }
   ]
 }

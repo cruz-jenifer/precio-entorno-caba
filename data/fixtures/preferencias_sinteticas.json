@@ -1,0 +1,1805 @@
+{
+  "origen": "Consultas sintéticas etiquetadas para evaluación",
+  "casos": [
+    {
+      "id": "S001",
+      "split": "desarrollo",
+      "texto": "Comprar en Almagro, hasta USD 110 mil.",
+      "campos": {
+        "operacion": "venta",
+        "barrio": [
+          "Almagro"
+        ],
+        "moneda": "USD",
+        "presupuesto": "110000"
+      },
+      "dudas": [],
+      "condiciones": []
+    },
+    {
+      "id": "S002",
+      "split": "desarrollo",
+      "texto": "Alquiler en Almagro, mínimo 40 m² cubiertos.",
+      "campos": {
+        "operacion": "alquiler",
+        "barrio": [
+          "Almagro"
+        ],
+        "superficie": "40"
+      },
+      "dudas": [],
+      "condiciones": []
+    },
+    {
+      "id": "S003",
+      "split": "desarrollo",
+      "texto": "Hasta 120 mil en Almagro.",
+      "campos": {
+        "presupuesto": "120000",
+        "barrio": [
+          "Almagro"
+        ]
+      },
+      "dudas": [
+        "moneda"
+      ],
+      "condiciones": []
+    },
+    {
+      "id": "S004",
+      "split": "desarrollo",
+      "texto": "En Almagro, dos ambientes o más y necesito balcón.",
+      "campos": {
+        "barrio": [
+          "Almagro"
+        ],
+        "ambientes": "2",
+        "ambientes_o_mas": "true"
+      },
+      "dudas": [],
+      "condiciones": [
+        true
+      ]
+    },
+    {
+      "id": "S005",
+      "split": "desarrollo",
+      "texto": "Comprar en Caballito, hasta USD 111 mil.",
+      "campos": {
+        "operacion": "venta",
+        "barrio": [
+          "Caballito"
+        ],
+        "moneda": "USD",
+        "presupuesto": "111000"
+      },
+      "dudas": [],
+      "condiciones": []
+    },
+    {
+      "id": "S006",
+      "split": "desarrollo",
+      "texto": "Alquiler en Caballito, mínimo 41 m² cubiertos.",
+      "campos": {
+        "operacion": "alquiler",
+        "barrio": [
+          "Caballito"
+        ],
+        "superficie": "41"
+      },
+      "dudas": [],
+      "condiciones": []
+    },
+    {
+      "id": "S007",
+      "split": "desarrollo",
+      "texto": "Hasta 121 mil en Caballito.",
+      "campos": {
+        "presupuesto": "121000",
+        "barrio": [
+          "Caballito"
+        ]
+      },
+      "dudas": [
+        "moneda"
+      ],
+      "condiciones": []
+    },
+    {
+      "id": "S008",
+      "split": "desarrollo",
+      "texto": "En Caballito, dos ambientes o más y necesito balcón.",
+      "campos": {
+        "barrio": [
+          "Caballito"
+        ],
+        "ambientes": "2",
+        "ambientes_o_mas": "true"
+      },
+      "dudas": [],
+      "condiciones": [
+        true
+      ]
+    },
+    {
+      "id": "S009",
+      "split": "desarrollo",
+      "texto": "Comprar en Boedo, hasta USD 112 mil.",
+      "campos": {
+        "operacion": "venta",
+        "barrio": [
+          "Boedo"
+        ],
+        "moneda": "USD",
+        "presupuesto": "112000"
+      },
+      "dudas": [],
+      "condiciones": []
+    },
+    {
+      "id": "S010",
+      "split": "desarrollo",
+      "texto": "Alquiler en Boedo, mínimo 42 m² cubiertos.",
+      "campos": {
+        "operacion": "alquiler",
+        "barrio": [
+          "Boedo"
+        ],
+        "superficie": "42"
+      },
+      "dudas": [],
+      "condiciones": []
+    },
+    {
+      "id": "S011",
+      "split": "desarrollo",
+      "texto": "Hasta 122 mil en Boedo.",
+      "campos": {
+        "presupuesto": "122000",
+        "barrio": [
+          "Boedo"
+        ]
+      },
+      "dudas": [
+        "moneda"
+      ],
+      "condiciones": []
+    },
+    {
+      "id": "S012",
+      "split": "desarrollo",
+      "texto": "En Boedo, dos ambientes o más y necesito balcón.",
+      "campos": {
+        "barrio": [
+          "Boedo"
+        ],
+        "ambientes": "2",
+        "ambientes_o_mas": "true"
+      },
+      "dudas": [],
+      "condiciones": [
+        true
+      ]
+    },
+    {
+      "id": "S013",
+      "split": "desarrollo",
+      "texto": "Comprar en Flores, hasta USD 113 mil.",
+      "campos": {
+        "operacion": "venta",
+        "barrio": [
+          "Flores"
+        ],
+        "moneda": "USD",
+        "presupuesto": "113000"
+      },
+      "dudas": [],
+      "condiciones": []
+    },
+    {
+      "id": "S014",
+      "split": "desarrollo",
+      "texto": "Alquiler en Flores, mínimo 43 m² cubiertos.",
+      "campos": {
+        "operacion": "alquiler",
+        "barrio": [
+          "Flores"
+        ],
+        "superficie": "43"
+      },
+      "dudas": [],
+      "condiciones": []
+    },
+    {
+      "id": "S015",
+      "split": "desarrollo",
+      "texto": "Hasta 123 mil en Flores.",
+      "campos": {
+        "presupuesto": "123000",
+        "barrio": [
+          "Flores"
+        ]
+      },
+      "dudas": [
+        "moneda"
+      ],
+      "condiciones": []
+    },
+    {
+      "id": "S016",
+      "split": "desarrollo",
+      "texto": "En Flores, dos ambientes o más y necesito balcón.",
+      "campos": {
+        "barrio": [
+          "Flores"
+        ],
+        "ambientes": "2",
+        "ambientes_o_mas": "true"
+      },
+      "dudas": [],
+      "condiciones": [
+        true
+      ]
+    },
+    {
+      "id": "S017",
+      "split": "desarrollo",
+      "texto": "Comprar en Palermo, hasta USD 114 mil.",
+      "campos": {
+        "operacion": "venta",
+        "barrio": [
+          "Palermo"
+        ],
+        "moneda": "USD",
+        "presupuesto": "114000"
+      },
+      "dudas": [],
+      "condiciones": []
+    },
+    {
+      "id": "S018",
+      "split": "desarrollo",
+      "texto": "Alquiler en Palermo, mínimo 44 m² cubiertos.",
+      "campos": {
+        "operacion": "alquiler",
+        "barrio": [
+          "Palermo"
+        ],
+        "superficie": "44"
+      },
+      "dudas": [],
+      "condiciones": []
+    },
+    {
+      "id": "S019",
+      "split": "desarrollo",
+      "texto": "Hasta 124 mil en Palermo.",
+      "campos": {
+        "presupuesto": "124000",
+        "barrio": [
+          "Palermo"
+        ]
+      },
+      "dudas": [
+        "moneda"
+      ],
+      "condiciones": []
+    },
+    {
+      "id": "S020",
+      "split": "desarrollo",
+      "texto": "En Palermo, dos ambientes o más y necesito balcón.",
+      "campos": {
+        "barrio": [
+          "Palermo"
+        ],
+        "ambientes": "2",
+        "ambientes_o_mas": "true"
+      },
+      "dudas": [],
+      "condiciones": [
+        true
+      ]
+    },
+    {
+      "id": "S021",
+      "split": "desarrollo",
+      "texto": "Comprar en Belgrano, hasta USD 115 mil.",
+      "campos": {
+        "operacion": "venta",
+        "barrio": [
+          "Belgrano"
+        ],
+        "moneda": "USD",
+        "presupuesto": "115000"
+      },
+      "dudas": [],
+      "condiciones": []
+    },
+    {
+      "id": "S022",
+      "split": "desarrollo",
+      "texto": "Alquiler en Belgrano, mínimo 45 m² cubiertos.",
+      "campos": {
+        "operacion": "alquiler",
+        "barrio": [
+          "Belgrano"
+        ],
+        "superficie": "45"
+      },
+      "dudas": [],
+      "condiciones": []
+    },
+    {
+      "id": "S023",
+      "split": "desarrollo",
+      "texto": "Hasta 125 mil en Belgrano.",
+      "campos": {
+        "presupuesto": "125000",
+        "barrio": [
+          "Belgrano"
+        ]
+      },
+      "dudas": [
+        "moneda"
+      ],
+      "condiciones": []
+    },
+    {
+      "id": "S024",
+      "split": "desarrollo",
+      "texto": "En Belgrano, dos ambientes o más y necesito balcón.",
+      "campos": {
+        "barrio": [
+          "Belgrano"
+        ],
+        "ambientes": "2",
+        "ambientes_o_mas": "true"
+      },
+      "dudas": [],
+      "condiciones": [
+        true
+      ]
+    },
+    {
+      "id": "S025",
+      "split": "desarrollo",
+      "texto": "Comprar en Saavedra, hasta USD 116 mil.",
+      "campos": {
+        "operacion": "venta",
+        "barrio": [
+          "Saavedra"
+        ],
+        "moneda": "USD",
+        "presupuesto": "116000"
+      },
+      "dudas": [],
+      "condiciones": []
+    },
+    {
+      "id": "S026",
+      "split": "desarrollo",
+      "texto": "Alquiler en Saavedra, mínimo 46 m² cubiertos.",
+      "campos": {
+        "operacion": "alquiler",
+        "barrio": [
+          "Saavedra"
+        ],
+        "superficie": "46"
+      },
+      "dudas": [],
+      "condiciones": []
+    },
+    {
+      "id": "S027",
+      "split": "desarrollo",
+      "texto": "Hasta 126 mil en Saavedra.",
+      "campos": {
+        "presupuesto": "126000",
+        "barrio": [
+          "Saavedra"
+        ]
+      },
+      "dudas": [
+        "moneda"
+      ],
+      "condiciones": []
+    },
+    {
+      "id": "S028",
+      "split": "desarrollo",
+      "texto": "En Saavedra, dos ambientes o más y necesito balcón.",
+      "campos": {
+        "barrio": [
+          "Saavedra"
+        ],
+        "ambientes": "2",
+        "ambientes_o_mas": "true"
+      },
+      "dudas": [],
+      "condiciones": [
+        true
+      ]
+    },
+    {
+      "id": "S029",
+      "split": "desarrollo",
+      "texto": "Comprar en Chacarita, hasta USD 117 mil.",
+      "campos": {
+        "operacion": "venta",
+        "barrio": [
+          "Chacarita"
+        ],
+        "moneda": "USD",
+        "presupuesto": "117000"
+      },
+      "dudas": [],
+      "condiciones": []
+    },
+    {
+      "id": "S030",
+      "split": "desarrollo",
+      "texto": "Alquiler en Chacarita, mínimo 47 m² cubiertos.",
+      "campos": {
+        "operacion": "alquiler",
+        "barrio": [
+          "Chacarita"
+        ],
+        "superficie": "47"
+      },
+      "dudas": [],
+      "condiciones": []
+    },
+    {
+      "id": "S031",
+      "split": "desarrollo",
+      "texto": "Hasta 127 mil en Chacarita.",
+      "campos": {
+        "presupuesto": "127000",
+        "barrio": [
+          "Chacarita"
+        ]
+      },
+      "dudas": [
+        "moneda"
+      ],
+      "condiciones": []
+    },
+    {
+      "id": "S032",
+      "split": "desarrollo",
+      "texto": "En Chacarita, dos ambientes o más y necesito balcón.",
+      "campos": {
+        "barrio": [
+          "Chacarita"
+        ],
+        "ambientes": "2",
+        "ambientes_o_mas": "true"
+      },
+      "dudas": [],
+      "condiciones": [
+        true
+      ]
+    },
+    {
+      "id": "S033",
+      "split": "desarrollo",
+      "texto": "Comprar en Colegiales, hasta USD 118 mil.",
+      "campos": {
+        "operacion": "venta",
+        "barrio": [
+          "Colegiales"
+        ],
+        "moneda": "USD",
+        "presupuesto": "118000"
+      },
+      "dudas": [],
+      "condiciones": []
+    },
+    {
+      "id": "S034",
+      "split": "desarrollo",
+      "texto": "Alquiler en Colegiales, mínimo 48 m² cubiertos.",
+      "campos": {
+        "operacion": "alquiler",
+        "barrio": [
+          "Colegiales"
+        ],
+        "superficie": "48"
+      },
+      "dudas": [],
+      "condiciones": []
+    },
+    {
+      "id": "S035",
+      "split": "desarrollo",
+      "texto": "Hasta 128 mil en Colegiales.",
+      "campos": {
+        "presupuesto": "128000",
+        "barrio": [
+          "Colegiales"
+        ]
+      },
+      "dudas": [
+        "moneda"
+      ],
+      "condiciones": []
+    },
+    {
+      "id": "S036",
+      "split": "desarrollo",
+      "texto": "En Colegiales, dos ambientes o más y necesito balcón.",
+      "campos": {
+        "barrio": [
+          "Colegiales"
+        ],
+        "ambientes": "2",
+        "ambientes_o_mas": "true"
+      },
+      "dudas": [],
+      "condiciones": [
+        true
+      ]
+    },
+    {
+      "id": "S037",
+      "split": "desarrollo",
+      "texto": "Comprar en Villa Crespo, hasta USD 119 mil.",
+      "campos": {
+        "operacion": "venta",
+        "barrio": [
+          "Villa Crespo"
+        ],
+        "moneda": "USD",
+        "presupuesto": "119000"
+      },
+      "dudas": [],
+      "condiciones": []
+    },
+    {
+      "id": "S038",
+      "split": "desarrollo",
+      "texto": "Alquiler en Villa Crespo, mínimo 49 m² cubiertos.",
+      "campos": {
+        "operacion": "alquiler",
+        "barrio": [
+          "Villa Crespo"
+        ],
+        "superficie": "49"
+      },
+      "dudas": [],
+      "condiciones": []
+    },
+    {
+      "id": "S039",
+      "split": "desarrollo",
+      "texto": "Hasta 129 mil en Villa Crespo.",
+      "campos": {
+        "presupuesto": "129000",
+        "barrio": [
+          "Villa Crespo"
+        ]
+      },
+      "dudas": [
+        "moneda"
+      ],
+      "condiciones": []
+    },
+    {
+      "id": "S040",
+      "split": "desarrollo",
+      "texto": "En Villa Crespo, dos ambientes o más y necesito balcón.",
+      "campos": {
+        "barrio": [
+          "Villa Crespo"
+        ],
+        "ambientes": "2",
+        "ambientes_o_mas": "true"
+      },
+      "dudas": [],
+      "condiciones": [
+        true
+      ]
+    },
+    {
+      "id": "S041",
+      "split": "prueba",
+      "texto": "No quiero comprar: busco alquilar en Balvanera.",
+      "campos": {
+        "operacion": "alquiler",
+        "barrio": [
+          "Balvanera"
+        ]
+      },
+      "dudas": [],
+      "condiciones": []
+    },
+    {
+      "id": "S042",
+      "split": "prueba",
+      "texto": "Tope de 700 mil pesos al mes por un alquiler en Balvanera.",
+      "campos": {
+        "presupuesto": "700000",
+        "moneda": "ARS",
+        "operacion": "alquiler",
+        "barrio": [
+          "Balvanera"
+        ]
+      },
+      "dudas": [],
+      "condiciones": []
+    },
+    {
+      "id": "S043",
+      "split": "prueba",
+      "texto": "¿Qué hay en Balvanera con 40 metros?",
+      "campos": {
+        "barrio": [
+          "Balvanera"
+        ]
+      },
+      "dudas": [
+        "superficie"
+      ],
+      "condiciones": []
+    },
+    {
+      "id": "S044",
+      "split": "prueba",
+      "texto": "Me sirve Balvanera o Villa Urquiza. Busco tres amb.",
+      "campos": {
+        "barrio": [
+          "Balvanera",
+          "Villa Urquiza"
+        ],
+        "ambientes": "3",
+        "ambientes_o_mas": "false"
+      },
+      "dudas": [
+        "barrio"
+      ],
+      "condiciones": []
+    },
+    {
+      "id": "S045",
+      "split": "prueba",
+      "texto": "Depto en Balvanera. Al menos 40 m2 cubiertos; prefiero expensas bajas.",
+      "campos": {
+        "barrio": [
+          "Balvanera"
+        ],
+        "superficie": "40"
+      },
+      "dudas": [],
+      "condiciones": [
+        false
+      ]
+    },
+    {
+      "id": "S046",
+      "split": "prueba",
+      "texto": "En Balvanera, como máximo $ 400.000.",
+      "campos": {
+        "barrio": [
+          "Balvanera"
+        ],
+        "presupuesto": "400000"
+      },
+      "dudas": [
+        "moneda"
+      ],
+      "condiciones": []
+    },
+    {
+      "id": "S047",
+      "split": "prueba",
+      "texto": "Quiero mirar Balvanera. Mínimo 3 amb y cerca del subte.",
+      "campos": {
+        "barrio": [
+          "Balvanera"
+        ],
+        "ambientes": "3",
+        "ambientes_o_mas": "true",
+        "capa": [
+          "subte"
+        ]
+      },
+      "dudas": [],
+      "condiciones": []
+    },
+    {
+      "id": "S048",
+      "split": "prueba",
+      "texto": "En Balvanera quiero 2 ambientes, pero también pido exactamente 4.",
+      "campos": {
+        "barrio": [
+          "Balvanera"
+        ]
+      },
+      "dudas": [
+        "ambientes"
+      ],
+      "condiciones": []
+    },
+    {
+      "id": "S049",
+      "split": "prueba",
+      "texto": "No quiero comprar: busco alquilar en Villa Urquiza.",
+      "campos": {
+        "operacion": "alquiler",
+        "barrio": [
+          "Villa Urquiza"
+        ]
+      },
+      "dudas": [],
+      "condiciones": []
+    },
+    {
+      "id": "S050",
+      "split": "prueba",
+      "texto": "Tope de 701 mil pesos al mes por un alquiler en Villa Urquiza.",
+      "campos": {
+        "presupuesto": "701000",
+        "moneda": "ARS",
+        "operacion": "alquiler",
+        "barrio": [
+          "Villa Urquiza"
+        ]
+      },
+      "dudas": [],
+      "condiciones": []
+    },
+    {
+      "id": "S051",
+      "split": "prueba",
+      "texto": "¿Qué hay en Villa Urquiza con 41 metros?",
+      "campos": {
+        "barrio": [
+          "Villa Urquiza"
+        ]
+      },
+      "dudas": [
+        "superficie"
+      ],
+      "condiciones": []
+    },
+    {
+      "id": "S052",
+      "split": "prueba",
+      "texto": "Me sirve Villa Urquiza o Núñez. Busco tres amb.",
+      "campos": {
+        "barrio": [
+          "Villa Urquiza",
+          "Núñez"
+        ],
+        "ambientes": "3",
+        "ambientes_o_mas": "false"
+      },
+      "dudas": [
+        "barrio"
+      ],
+      "condiciones": []
+    },
+    {
+      "id": "S053",
+      "split": "prueba",
+      "texto": "Depto en Villa Urquiza. Al menos 41 m2 cubiertos; prefiero expensas bajas.",
+      "campos": {
+        "barrio": [
+          "Villa Urquiza"
+        ],
+        "superficie": "41"
+      },
+      "dudas": [],
+      "condiciones": [
+        false
+      ]
+    },
+    {
+      "id": "S054",
+      "split": "prueba",
+      "texto": "En Villa Urquiza, como máximo $ 401.000.",
+      "campos": {
+        "barrio": [
+          "Villa Urquiza"
+        ],
+        "presupuesto": "401000"
+      },
+      "dudas": [
+        "moneda"
+      ],
+      "condiciones": []
+    },
+    {
+      "id": "S055",
+      "split": "prueba",
+      "texto": "Quiero mirar Villa Urquiza. Mínimo 3 amb y cerca del subte.",
+      "campos": {
+        "barrio": [
+          "Villa Urquiza"
+        ],
+        "ambientes": "3",
+        "ambientes_o_mas": "true",
+        "capa": [
+          "subte"
+        ]
+      },
+      "dudas": [],
+      "condiciones": []
+    },
+    {
+      "id": "S056",
+      "split": "prueba",
+      "texto": "En Villa Urquiza quiero 2 ambientes, pero también pido exactamente 4.",
+      "campos": {
+        "barrio": [
+          "Villa Urquiza"
+        ]
+      },
+      "dudas": [
+        "ambientes"
+      ],
+      "condiciones": []
+    },
+    {
+      "id": "S057",
+      "split": "prueba",
+      "texto": "No quiero comprar: busco alquilar en Núñez.",
+      "campos": {
+        "operacion": "alquiler",
+        "barrio": [
+          "Núñez"
+        ]
+      },
+      "dudas": [],
+      "condiciones": []
+    },
+    {
+      "id": "S058",
+      "split": "prueba",
+      "texto": "Tope de 702 mil pesos al mes por un alquiler en Núñez.",
+      "campos": {
+        "presupuesto": "702000",
+        "moneda": "ARS",
+        "operacion": "alquiler",
+        "barrio": [
+          "Núñez"
+        ]
+      },
+      "dudas": [],
+      "condiciones": []
+    },
+    {
+      "id": "S059",
+      "split": "prueba",
+      "texto": "¿Qué hay en Núñez con 42 metros?",
+      "campos": {
+        "barrio": [
+          "Núñez"
+        ]
+      },
+      "dudas": [
+        "superficie"
+      ],
+      "condiciones": []
+    },
+    {
+      "id": "S060",
+      "split": "prueba",
+      "texto": "Me sirve Núñez o Villa Luro. Busco tres amb.",
+      "campos": {
+        "barrio": [
+          "Núñez",
+          "Villa Luro"
+        ],
+        "ambientes": "3",
+        "ambientes_o_mas": "false"
+      },
+      "dudas": [
+        "barrio"
+      ],
+      "condiciones": []
+    },
+    {
+      "id": "S061",
+      "split": "prueba",
+      "texto": "Depto en Núñez. Al menos 42 m2 cubiertos; prefiero expensas bajas.",
+      "campos": {
+        "barrio": [
+          "Núñez"
+        ],
+        "superficie": "42"
+      },
+      "dudas": [],
+      "condiciones": [
+        false
+      ]
+    },
+    {
+      "id": "S062",
+      "split": "prueba",
+      "texto": "En Núñez, como máximo $ 402.000.",
+      "campos": {
+        "barrio": [
+          "Núñez"
+        ],
+        "presupuesto": "402000"
+      },
+      "dudas": [
+        "moneda"
+      ],
+      "condiciones": []
+    },
+    {
+      "id": "S063",
+      "split": "prueba",
+      "texto": "Quiero mirar Núñez. Mínimo 3 amb y cerca del subte.",
+      "campos": {
+        "barrio": [
+          "Núñez"
+        ],
+        "ambientes": "3",
+        "ambientes_o_mas": "true",
+        "capa": [
+          "subte"
+        ]
+      },
+      "dudas": [],
+      "condiciones": []
+    },
+    {
+      "id": "S064",
+      "split": "prueba",
+      "texto": "En Núñez quiero 2 ambientes, pero también pido exactamente 4.",
+      "campos": {
+        "barrio": [
+          "Núñez"
+        ]
+      },
+      "dudas": [
+        "ambientes"
+      ],
+      "condiciones": []
+    },
+    {
+      "id": "S065",
+      "split": "prueba",
+      "texto": "No quiero comprar: busco alquilar en Villa Luro.",
+      "campos": {
+        "operacion": "alquiler",
+        "barrio": [
+          "Villa Luro"
+        ]
+      },
+      "dudas": [],
+      "condiciones": []
+    },
+    {
+      "id": "S066",
+      "split": "prueba",
+      "texto": "Tope de 703 mil pesos al mes por un alquiler en Villa Luro.",
+      "campos": {
+        "presupuesto": "703000",
+        "moneda": "ARS",
+        "operacion": "alquiler",
+        "barrio": [
+          "Villa Luro"
+        ]
+      },
+      "dudas": [],
+      "condiciones": []
+    },
+    {
+      "id": "S067",
+      "split": "prueba",
+      "texto": "¿Qué hay en Villa Luro con 43 metros?",
+      "campos": {
+        "barrio": [
+          "Villa Luro"
+        ]
+      },
+      "dudas": [
+        "superficie"
+      ],
+      "condiciones": []
+    },
+    {
+      "id": "S068",
+      "split": "prueba",
+      "texto": "Me sirve Villa Luro o Parque Chas. Busco tres amb.",
+      "campos": {
+        "barrio": [
+          "Villa Luro",
+          "Parque Chas"
+        ],
+        "ambientes": "3",
+        "ambientes_o_mas": "false"
+      },
+      "dudas": [
+        "barrio"
+      ],
+      "condiciones": []
+    },
+    {
+      "id": "S069",
+      "split": "prueba",
+      "texto": "Depto en Villa Luro. Al menos 43 m2 cubiertos; prefiero expensas bajas.",
+      "campos": {
+        "barrio": [
+          "Villa Luro"
+        ],
+        "superficie": "43"
+      },
+      "dudas": [],
+      "condiciones": [
+        false
+      ]
+    },
+    {
+      "id": "S070",
+      "split": "prueba",
+      "texto": "En Villa Luro, como máximo $ 403.000.",
+      "campos": {
+        "barrio": [
+          "Villa Luro"
+        ],
+        "presupuesto": "403000"
+      },
+      "dudas": [
+        "moneda"
+      ],
+      "condiciones": []
+    },
+    {
+      "id": "S071",
+      "split": "prueba",
+      "texto": "Quiero mirar Villa Luro. Mínimo 3 amb y cerca del subte.",
+      "campos": {
+        "barrio": [
+          "Villa Luro"
+        ],
+        "ambientes": "3",
+        "ambientes_o_mas": "true",
+        "capa": [
+          "subte"
+        ]
+      },
+      "dudas": [],
+      "condiciones": []
+    },
+    {
+      "id": "S072",
+      "split": "prueba",
+      "texto": "En Villa Luro quiero 2 ambientes, pero también pido exactamente 4.",
+      "campos": {
+        "barrio": [
+          "Villa Luro"
+        ]
+      },
+      "dudas": [
+        "ambientes"
+      ],
+      "condiciones": []
+    },
+    {
+      "id": "S073",
+      "split": "prueba",
+      "texto": "No quiero comprar: busco alquilar en Parque Chas.",
+      "campos": {
+        "operacion": "alquiler",
+        "barrio": [
+          "Parque Chas"
+        ]
+      },
+      "dudas": [],
+      "condiciones": []
+    },
+    {
+      "id": "S074",
+      "split": "prueba",
+      "texto": "Tope de 704 mil pesos al mes por un alquiler en Parque Chas.",
+      "campos": {
+        "presupuesto": "704000",
+        "moneda": "ARS",
+        "operacion": "alquiler",
+        "barrio": [
+          "Parque Chas"
+        ]
+      },
+      "dudas": [],
+      "condiciones": []
+    },
+    {
+      "id": "S075",
+      "split": "prueba",
+      "texto": "¿Qué hay en Parque Chas con 44 metros?",
+      "campos": {
+        "barrio": [
+          "Parque Chas"
+        ]
+      },
+      "dudas": [
+        "superficie"
+      ],
+      "condiciones": []
+    },
+    {
+      "id": "S076",
+      "split": "prueba",
+      "texto": "Me sirve Parque Chas o Coghlan. Busco tres amb.",
+      "campos": {
+        "barrio": [
+          "Parque Chas",
+          "Coghlan"
+        ],
+        "ambientes": "3",
+        "ambientes_o_mas": "false"
+      },
+      "dudas": [
+        "barrio"
+      ],
+      "condiciones": []
+    },
+    {
+      "id": "S077",
+      "split": "prueba",
+      "texto": "Depto en Parque Chas. Al menos 44 m2 cubiertos; prefiero expensas bajas.",
+      "campos": {
+        "barrio": [
+          "Parque Chas"
+        ],
+        "superficie": "44"
+      },
+      "dudas": [],
+      "condiciones": [
+        false
+      ]
+    },
+    {
+      "id": "S078",
+      "split": "prueba",
+      "texto": "En Parque Chas, como máximo $ 404.000.",
+      "campos": {
+        "barrio": [
+          "Parque Chas"
+        ],
+        "presupuesto": "404000"
+      },
+      "dudas": [
+        "moneda"
+      ],
+      "condiciones": []
+    },
+    {
+      "id": "S079",
+      "split": "prueba",
+      "texto": "Quiero mirar Parque Chas. Mínimo 3 amb y cerca del subte.",
+      "campos": {
+        "barrio": [
+          "Parque Chas"
+        ],
+        "ambientes": "3",
+        "ambientes_o_mas": "true",
+        "capa": [
+          "subte"
+        ]
+      },
+      "dudas": [],
+      "condiciones": []
+    },
+    {
+      "id": "S080",
+      "split": "prueba",
+      "texto": "En Parque Chas quiero 2 ambientes, pero también pido exactamente 4.",
+      "campos": {
+        "barrio": [
+          "Parque Chas"
+        ]
+      },
+      "dudas": [
+        "ambientes"
+      ],
+      "condiciones": []
+    },
+    {
+      "id": "S081",
+      "split": "prueba",
+      "texto": "No quiero comprar: busco alquilar en Coghlan.",
+      "campos": {
+        "operacion": "alquiler",
+        "barrio": [
+          "Coghlan"
+        ]
+      },
+      "dudas": [],
+      "condiciones": []
+    },
+    {
+      "id": "S082",
+      "split": "prueba",
+      "texto": "Tope de 705 mil pesos al mes por un alquiler en Coghlan.",
+      "campos": {
+        "presupuesto": "705000",
+        "moneda": "ARS",
+        "operacion": "alquiler",
+        "barrio": [
+          "Coghlan"
+        ]
+      },
+      "dudas": [],
+      "condiciones": []
+    },
+    {
+      "id": "S083",
+      "split": "prueba",
+      "texto": "¿Qué hay en Coghlan con 45 metros?",
+      "campos": {
+        "barrio": [
+          "Coghlan"
+        ]
+      },
+      "dudas": [
+        "superficie"
+      ],
+      "condiciones": []
+    },
+    {
+      "id": "S084",
+      "split": "prueba",
+      "texto": "Me sirve Coghlan o Villa Real. Busco tres amb.",
+      "campos": {
+        "barrio": [
+          "Coghlan",
+          "Villa Real"
+        ],
+        "ambientes": "3",
+        "ambientes_o_mas": "false"
+      },
+      "dudas": [
+        "barrio"
+      ],
+      "condiciones": []
+    },
+    {
+      "id": "S085",
+      "split": "prueba",
+      "texto": "Depto en Coghlan. Al menos 45 m2 cubiertos; prefiero expensas bajas.",
+      "campos": {
+        "barrio": [
+          "Coghlan"
+        ],
+        "superficie": "45"
+      },
+      "dudas": [],
+      "condiciones": [
+        false
+      ]
+    },
+    {
+      "id": "S086",
+      "split": "prueba",
+      "texto": "En Coghlan, como máximo $ 405.000.",
+      "campos": {
+        "barrio": [
+          "Coghlan"
+        ],
+        "presupuesto": "405000"
+      },
+      "dudas": [
+        "moneda"
+      ],
+      "condiciones": []
+    },
+    {
+      "id": "S087",
+      "split": "prueba",
+      "texto": "Quiero mirar Coghlan. Mínimo 3 amb y cerca del subte.",
+      "campos": {
+        "barrio": [
+          "Coghlan"
+        ],
+        "ambientes": "3",
+        "ambientes_o_mas": "true",
+        "capa": [
+          "subte"
+        ]
+      },
+      "dudas": [],
+      "condiciones": []
+    },
+    {
+      "id": "S088",
+      "split": "prueba",
+      "texto": "En Coghlan quiero 2 ambientes, pero también pido exactamente 4.",
+      "campos": {
+        "barrio": [
+          "Coghlan"
+        ]
+      },
+      "dudas": [
+        "ambientes"
+      ],
+      "condiciones": []
+    },
+    {
+      "id": "S089",
+      "split": "prueba",
+      "texto": "No quiero comprar: busco alquilar en Villa Real.",
+      "campos": {
+        "operacion": "alquiler",
+        "barrio": [
+          "Villa Real"
+        ]
+      },
+      "dudas": [],
+      "condiciones": []
+    },
+    {
+      "id": "S090",
+      "split": "prueba",
+      "texto": "Tope de 706 mil pesos al mes por un alquiler en Villa Real.",
+      "campos": {
+        "presupuesto": "706000",
+        "moneda": "ARS",
+        "operacion": "alquiler",
+        "barrio": [
+          "Villa Real"
+        ]
+      },
+      "dudas": [],
+      "condiciones": []
+    },
+    {
+      "id": "S091",
+      "split": "prueba",
+      "texto": "¿Qué hay en Villa Real con 46 metros?",
+      "campos": {
+        "barrio": [
+          "Villa Real"
+        ]
+      },
+      "dudas": [
+        "superficie"
+      ],
+      "condiciones": []
+    },
+    {
+      "id": "S092",
+      "split": "prueba",
+      "texto": "Me sirve Villa Real o Floresta. Busco tres amb.",
+      "campos": {
+        "barrio": [
+          "Villa Real",
+          "Floresta"
+        ],
+        "ambientes": "3",
+        "ambientes_o_mas": "false"
+      },
+      "dudas": [
+        "barrio"
+      ],
+      "condiciones": []
+    },
+    {
+      "id": "S093",
+      "split": "prueba",
+      "texto": "Depto en Villa Real. Al menos 46 m2 cubiertos; prefiero expensas bajas.",
+      "campos": {
+        "barrio": [
+          "Villa Real"
+        ],
+        "superficie": "46"
+      },
+      "dudas": [],
+      "condiciones": [
+        false
+      ]
+    },
+    {
+      "id": "S094",
+      "split": "prueba",
+      "texto": "En Villa Real, como máximo $ 406.000.",
+      "campos": {
+        "barrio": [
+          "Villa Real"
+        ],
+        "presupuesto": "406000"
+      },
+      "dudas": [
+        "moneda"
+      ],
+      "condiciones": []
+    },
+    {
+      "id": "S095",
+      "split": "prueba",
+      "texto": "Quiero mirar Villa Real. Mínimo 3 amb y cerca del subte.",
+      "campos": {
+        "barrio": [
+          "Villa Real"
+        ],
+        "ambientes": "3",
+        "ambientes_o_mas": "true",
+        "capa": [
+          "subte"
+        ]
+      },
+      "dudas": [],
+      "condiciones": []
+    },
+    {
+      "id": "S096",
+      "split": "prueba",
+      "texto": "En Villa Real quiero 2 ambientes, pero también pido exactamente 4.",
+      "campos": {
+        "barrio": [
+          "Villa Real"
+        ]
+      },
+      "dudas": [
+        "ambientes"
+      ],
+      "condiciones": []
+    },
+    {
+      "id": "S097",
+      "split": "prueba",
+      "texto": "No quiero comprar: busco alquilar en Floresta.",
+      "campos": {
+        "operacion": "alquiler",
+        "barrio": [
+          "Floresta"
+        ]
+      },
+      "dudas": [],
+      "condiciones": []
+    },
+    {
+      "id": "S098",
+      "split": "prueba",
+      "texto": "Tope de 707 mil pesos al mes por un alquiler en Floresta.",
+      "campos": {
+        "presupuesto": "707000",
+        "moneda": "ARS",
+        "operacion": "alquiler",
+        "barrio": [
+          "Floresta"
+        ]
+      },
+      "dudas": [],
+      "condiciones": []
+    },
+    {
+      "id": "S099",
+      "split": "prueba",
+      "texto": "¿Qué hay en Floresta con 47 metros?",
+      "campos": {
+        "barrio": [
+          "Floresta"
+        ]
+      },
+      "dudas": [
+        "superficie"
+      ],
+      "condiciones": []
+    },
+    {
+      "id": "S100",
+      "split": "prueba",
+      "texto": "Me sirve Floresta o Barracas. Busco tres amb.",
+      "campos": {
+        "barrio": [
+          "Floresta",
+          "Barracas"
+        ],
+        "ambientes": "3",
+        "ambientes_o_mas": "false"
+      },
+      "dudas": [
+        "barrio"
+      ],
+      "condiciones": []
+    },
+    {
+      "id": "S101",
+      "split": "prueba",
+      "texto": "Depto en Floresta. Al menos 47 m2 cubiertos; prefiero expensas bajas.",
+      "campos": {
+        "barrio": [
+          "Floresta"
+        ],
+        "superficie": "47"
+      },
+      "dudas": [],
+      "condiciones": [
+        false
+      ]
+    },
+    {
+      "id": "S102",
+      "split": "prueba",
+      "texto": "En Floresta, como máximo $ 407.000.",
+      "campos": {
+        "barrio": [
+          "Floresta"
+        ],
+        "presupuesto": "407000"
+      },
+      "dudas": [
+        "moneda"
+      ],
+      "condiciones": []
+    },
+    {
+      "id": "S103",
+      "split": "prueba",
+      "texto": "Quiero mirar Floresta. Mínimo 3 amb y cerca del subte.",
+      "campos": {
+        "barrio": [
+          "Floresta"
+        ],
+        "ambientes": "3",
+        "ambientes_o_mas": "true",
+        "capa": [
+          "subte"
+        ]
+      },
+      "dudas": [],
+      "condiciones": []
+    },
+    {
+      "id": "S104",
+      "split": "prueba",
+      "texto": "En Floresta quiero 2 ambientes, pero también pido exactamente 4.",
+      "campos": {
+        "barrio": [
+          "Floresta"
+        ]
+      },
+      "dudas": [
+        "ambientes"
+      ],
+      "condiciones": []
+    },
+    {
+      "id": "S105",
+      "split": "prueba",
+      "texto": "No quiero comprar: busco alquilar en Barracas.",
+      "campos": {
+        "operacion": "alquiler",
+        "barrio": [
+          "Barracas"
+        ]
+      },
+      "dudas": [],
+      "condiciones": []
+    },
+    {
+      "id": "S106",
+      "split": "prueba",
+      "texto": "Tope de 708 mil pesos al mes por un alquiler en Barracas.",
+      "campos": {
+        "presupuesto": "708000",
+        "moneda": "ARS",
+        "operacion": "alquiler",
+        "barrio": [
+          "Barracas"
+        ]
+      },
+      "dudas": [],
+      "condiciones": []
+    },
+    {
+      "id": "S107",
+      "split": "prueba",
+      "texto": "¿Qué hay en Barracas con 48 metros?",
+      "campos": {
+        "barrio": [
+          "Barracas"
+        ]
+      },
+      "dudas": [
+        "superficie"
+      ],
+      "condiciones": []
+    },
+    {
+      "id": "S108",
+      "split": "prueba",
+      "texto": "Me sirve Barracas o Retiro. Busco tres amb.",
+      "campos": {
+        "barrio": [
+          "Barracas",
+          "Retiro"
+        ],
+        "ambientes": "3",
+        "ambientes_o_mas": "false"
+      },
+      "dudas": [
+        "barrio"
+      ],
+      "condiciones": []
+    },
+    {
+      "id": "S109",
+      "split": "prueba",
+      "texto": "Depto en Barracas. Al menos 48 m2 cubiertos; prefiero expensas bajas.",
+      "campos": {
+        "barrio": [
+          "Barracas"
+        ],
+        "superficie": "48"
+      },
+      "dudas": [],
+      "condiciones": [
+        false
+      ]
+    },
+    {
+      "id": "S110",
+      "split": "prueba",
+      "texto": "En Barracas, como máximo $ 408.000.",
+      "campos": {
+        "barrio": [
+          "Barracas"
+        ],
+        "presupuesto": "408000"
+      },
+      "dudas": [
+        "moneda"
+      ],
+      "condiciones": []
+    },
+    {
+      "id": "S111",
+      "split": "prueba",
+      "texto": "Quiero mirar Barracas. Mínimo 3 amb y cerca del subte.",
+      "campos": {
+        "barrio": [
+          "Barracas"
+        ],
+        "ambientes": "3",
+        "ambientes_o_mas": "true",
+        "capa": [
+          "subte"
+        ]
+      },
+      "dudas": [],
+      "condiciones": []
+    },
+    {
+      "id": "S112",
+      "split": "prueba",
+      "texto": "En Barracas quiero 2 ambientes, pero también pido exactamente 4.",
+      "campos": {
+        "barrio": [
+          "Barracas"
+        ]
+      },
+      "dudas": [
+        "ambientes"
+      ],
+      "condiciones": []
+    },
+    {
+      "id": "S113",
+      "split": "prueba",
+      "texto": "No quiero comprar: busco alquilar en Retiro.",
+      "campos": {
+        "operacion": "alquiler",
+        "barrio": [
+          "Retiro"
+        ]
+      },
+      "dudas": [],
+      "condiciones": []
+    },
+    {
+      "id": "S114",
+      "split": "prueba",
+      "texto": "Tope de 709 mil pesos al mes por un alquiler en Retiro.",
+      "campos": {
+        "presupuesto": "709000",
+        "moneda": "ARS",
+        "operacion": "alquiler",
+        "barrio": [
+          "Retiro"
+        ]
+      },
+      "dudas": [],
+      "condiciones": []
+    },
+    {
+      "id": "S115",
+      "split": "prueba",
+      "texto": "¿Qué hay en Retiro con 49 metros?",
+      "campos": {
+        "barrio": [
+          "Retiro"
+        ]
+      },
+      "dudas": [
+        "superficie"
+      ],
+      "condiciones": []
+    },
+    {
+      "id": "S116",
+      "split": "prueba",
+      "texto": "Me sirve Retiro o Balvanera. Busco tres amb.",
+      "campos": {
+        "barrio": [
+          "Retiro",
+          "Balvanera"
+        ],
+        "ambientes": "3",
+        "ambientes_o_mas": "false"
+      },
+      "dudas": [
+        "barrio"
+      ],
+      "condiciones": []
+    },
+    {
+      "id": "S117",
+      "split": "prueba",
+      "texto": "Depto en Retiro. Al menos 49 m2 cubiertos; prefiero expensas bajas.",
+      "campos": {
+        "barrio": [
+          "Retiro"
+        ],
+        "superficie": "49"
+      },
+      "dudas": [],
+      "condiciones": [
+        false
+      ]
+    },
+    {
+      "id": "S118",
+      "split": "prueba",
+      "texto": "En Retiro, como máximo $ 409.000.",
+      "campos": {
+        "barrio": [
+          "Retiro"
+        ],
+        "presupuesto": "409000"
+      },
+      "dudas": [
+        "moneda"
+      ],
+      "condiciones": []
+    },
+    {
+      "id": "S119",
+      "split": "prueba",
+      "texto": "Quiero mirar Retiro. Mínimo 3 amb y cerca del subte.",
+      "campos": {
+        "barrio": [
+          "Retiro"
+        ],
+        "ambientes": "3",
+        "ambientes_o_mas": "true",
+        "capa": [
+          "subte"
+        ]
+      },
+      "dudas": [],
+      "condiciones": []
+    },
+    {
+      "id": "S120",
+      "split": "prueba",
+      "texto": "En Retiro quiero 2 ambientes, pero también pido exactamente 4.",
+      "campos": {
+        "barrio": [
+          "Retiro"
+        ]
+      },
+      "dudas": [
+        "ambientes"
+      ],
+      "condiciones": []
+    }
+  ]
+}

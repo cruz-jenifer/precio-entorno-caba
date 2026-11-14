@@ -1,0 +1,26 @@
+{
+  "actorSpecification": 1,
+  "name": "precio-entorno-analytics",
+  "title": "Precio y Entorno CABA · Analytics (ETL y EDA)",
+  "description": "ETL de avisos de venta autorizados con el Mapa del Delito de CABA, y EDA con las tablas del dashboard. Precios de publicación, no tasaciones.",
+  "version": "0.1",
+  "buildTag": "latest",
+  "dockerfile": "./Dockerfile",
+  "input": "./input_schema.json",
+  "storages": {
+    "dataset": {
+      "actorSpecification": 1,
+      "title": "Tabla de barrios (EDA) o reporte (ETL)",
+      "views": {
+        "barrios": {
+          "title": "Barrios",
+          "transformation": {
+            "fields": ["barrio", "comuna", "avisos", "mediana_usd_m2", "p25_usd_m2", "p75_usd_m2", "mediana_precio_usd",
+                       "delitos_registrados", "robos_hurtos", "periodo_delitos", "muestra_chica"]
+          },
+          "display": {"component": "table"}
+        }
+      }
+    }
+  }
+}

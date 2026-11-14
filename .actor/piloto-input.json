@@ -1,0 +1,10 @@
+{
+  "busquedas": [
+    {"id": "piloto-1", "operacion": "venta", "barrio": "Caballito", "presupuesto": 130000, "moneda": "USD", "superficie": 40, "ambientes": 2, "ambientesOMas": true},
+    {"id": "piloto-2", "operacion": "venta", "barrio": "Almagro", "presupuesto": 110000, "moneda": "USD", "superficie": 35, "ambientes": 2, "ambientesOMas": true}
+  ],
+  "sitios": ["century21", "migliorisi", "mob", "remax"],
+  "maxAvisosPorSitio": 12,
+  "alertarPrimeraCorrida": true,
+  "autorizacionConfirmada": true
+}

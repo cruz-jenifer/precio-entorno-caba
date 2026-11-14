@@ -12,10 +12,13 @@ const PREFERENCIAS = [
 ];
 const CAPAS = [...PREFERENCIAS, { clave: 'delitos', nombre: 'Delitos registrados' }];
 const SUBTE = { A: '#18CCCC', B: '#EB0909', C: '#233AA8', D: '#02A17A', E: '#AE3D97', H: '#FFD600' };
-const COLOR = { verdes: '#5E7D4F', riesgo: '#1E88E5', escuela: '#1E2A32', cesac: '#00897B', hospital: '#795548' };
+const COLOR = { verdes: '#5E7D4F', riesgo: '#1E88E5', escuela: '#1E2A32', cesac: '#00897B', hospital: '#795548',
+  aviso: '#6A4FB3' };
 const RUIDO = [[50, '#FFFFCC'], [55, '#FFEDA0'], [60, '#FED976'], [65, '#FEB24C'], [70, '#FD8D3C'], [75, '#F03B20'], [80, '#BD0026']];
 const DELITOS = ['#D3DBE3', '#A9B8C8', '#7E93AB', '#55708E', '#2E4560'];
 const ESTILO = 'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json';
+const NOTA_AVISOS = 'Punto que publica la fuente, sin precisión declarada: puede marcar el edificio o una referencia cercana. '
+  + 'Hueco si cae a entre 150 y 500 m del barrio del aviso. Más lejos, no se dibuja. Un punto más grande reúne varios avisos.';
 const NOTAS = {
   subte: 'Indican conectividad, no tiempos de viaje.',
   verdes: 'Plazas, parques, jardines y paseos. No incluye canteros ni plazoletas.',
@@ -23,7 +26,7 @@ const NOTAS = {
   salud: 'Estar cerca no asegura turnos.',
   ruido: 'Nivel exterior típico por celda de 100 m, medido sobre todo en calles. No describe el interior de un departamento.',
   riesgo: 'Áreas de prevención publicadas en 2020. Si una dirección cae dentro, conviene preguntarlo en la visita.',
-  delitos: 'Hechos registrados por celda de 200 m. También reflejan diferencias de exposición y de denuncia. No son un puntaje de seguridad.',
+  delitos: 'Hechos registrados por celda de 200 m. Más circulación puede concentrar más eventos y existe subregistro. No equivalen a la probabilidad individual de victimización.',
 };
 const PRESUPUESTO = { 'venta-USD': 110000, 'alquiler-ARS': 800000, 'alquiler-USD': 900 };
 const VACIO = { type: 'FeatureCollection', features: [] };
@@ -44,6 +47,16 @@ const esc = (texto) => String(texto ?? '').replace(/[&<>"']/g, (c) => (
   { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const $ = (selector) => document.querySelector(selector);
 
+/* «Dónde comer»: datos de Google consultados a pedido. No se guardan ni se dibujan en el mapa. */
+const TIPOS_LUGAR = [['restaurantes', 'Restaurantes'], ['cafes', 'Cafés'], ['bares', 'Bares']];
+const MIN_RESENAS = 200;
+const MIN_RESENAS_BAJO = 50;
+const LUGARES_VISIBLES = 5;
+
+function lugaresIniciales(tipo) {
+  return { tipo, fase: 'inicial', datos: null, minResenas: MIN_RESENAS, todos: false, pedido: 0, mensaje: '' };
+}
+
 function leerGuardado() {
   try { return JSON.parse(localStorage.getItem('precio-entorno-filtros')) || {}; } catch { return {}; }
 }
@@ -61,7 +74,8 @@ const estado = {
   prefs: new Set(guardado.prefs || ['subte', 'verdes']),
   nivel: guardado.nivel || 'primario',
   ruido: 'diurno',
-  delitos: { periodo: null, tipo: '' },
+  delitos: { anio: '', tipo: 'todos', franja: 'todas', radio: '500', inmueble: '' },
+  pedidoDelitos: 0,
   info: null,
   barrios: [],
   formas: null,
@@ -73,6 +87,8 @@ const estado = {
   hover: null,
   leyendaCerrada: window.matchMedia('(max-width: 820px)').matches,
   leyendaAbierta: false,
+  lugares: lugaresIniciales('restaurantes'),
+  parecidos: { barrio: null, datos: null, error: '' },
 };
 
 function guardar() {
@@ -145,11 +161,13 @@ function renderLista() {
       <span class="fila-mediana">Mediana ${dinero(b.mediana, estado.moneda)}</span>
       <span></span>
       ${b.entorno ? `<span class="fila-entorno">${esc(lineaEntorno(b.entorno))}</span>` : ''}
+      ${prensaFila(b.barrio)}
     </button></li>`).join('');
   const compactos = sin.map((b) => `<li><button type="button" data-barrio="${esc(b.barrio)}">${esc(b.barrio)} · ${b.avisos}</button></li>`).join('');
   $('#contenido').innerHTML = `
     <h1 class="titulo-lista">${titulo}</h1>
     <p class="nota">${nota}</p>
+    ${renderRadarLista()}
     ${con.length ? `<ul class="barrios">${filas}</ul>` : ''}
     ${sin.length ? `<details class="sin-coincidencias"${con.length ? '' : ' open'}>
       <summary>${sin.length} ${plural(sin.length, 'barrio', 'barrios')} sin avisos que encajen</summary>
@@ -157,6 +175,22 @@ function renderLista() {
 }
 
 /* Panel: ficha del barrio */
+
+const lugaresOsm = (g) => g.restaurantes + g.cafes + g.bares;
+const densidadOsm = (e) => (e.area_ha ? (lugaresOsm(e.gastronomia) / e.area_ha) * 100 : null);
+
+function textoGastronomia(e) {
+  const g = e.gastronomia;
+  const valores = estado.barrios.map((b) => (b.entorno?.gastronomia ? densidadOsm(b.entorno) : null))
+    .filter((v) => v != null).sort((a, b) => a - b);
+  const medio = Math.floor(valores.length / 2);
+  const mediana = valores.length ? (valores.length % 2 ? valores[medio] : (valores[medio - 1] + valores[medio]) / 2) : null;
+  const densidad = densidadOsm(e);
+  return `${numero.format(lugaresOsm(g))} registrados en OpenStreetMap: ${g.restaurantes} ${plural(g.restaurantes, 'restaurante', 'restaurantes')}, `
+    + `${g.cafes} ${plural(g.cafes, 'café', 'cafés')} y ${g.bares} ${plural(g.bares, 'bar', 'bares')}`
+    + (densidad == null ? '' : `. ${numero.format(Math.round(densidad))} cada 100 ha`)
+    + (mediana == null ? '' : ` (barrio mediano: ${numero.format(Math.round(mediana))})`);
+}
 
 function renderFicha() {
   const b = estado.barrios.find((x) => x.barrio === estado.seleccionado);
@@ -175,6 +209,7 @@ function renderFicha() {
       ['Plazas y parques', e.verdes_cantidad
         ? `${e.verdes_cantidad} ${plural(e.verdes_cantidad, 'plaza o parque', 'plazas y parques')}, ${decimal.format(e.verdes_ha)} ha`
         : 'Ninguno en el inventario'],
+      ...(e.gastronomia ? [['Cafés, bares y restaurantes', textoGastronomia(e)]] : []),
       [`Escuelas de nivel ${estado.nivel}`, `${total}, de las que ${escuelas.Estatal || 0} son de gestión estatal`],
       ['Salud', `${e.cesac} CeSAC y ${e.hospitales} ${plural(e.hospitales, 'hospital', 'hospitales')}`],
       ['Ruido de día', dia == null ? 'Sin cobertura suficiente' : `70 dBA o más en el ${dia} % de las celdas relevadas`],
@@ -190,7 +225,11 @@ function renderFicha() {
       <td>${a.ambientes}</td>
       ${alquiler ? `<td>${a.expensas == null ? '—' : dinero(a.expensas, 'ARS')}</td>` : ''}
       <td>${a.enlace ? `<a href="${esc(a.enlace)}" target="_blank" rel="noopener">Ver aviso</a>` : 'Ejemplo'}</td>
+      <td>${a.pin_utilizable ? `<button class="boton-texto" type="button" data-inmueble="${esc(a.id)}">${estado.delitos.inmueble === a.id ? 'Entorno elegido' : 'Ver registros cerca'}</button>`
+        : a.ubicacion ? `<button class="boton-texto" type="button" data-ubicar="${esc(a.id)}" title="Ver en el mapa">Ubicar</button>`
+          : '<span class="fuente">Sin ubicación</span>'}</td>
     </tr>`).join('');
+  const ubicados = estado.avisos.filter((a) => a.ubicacion).length;
   const resumen = b.coincidencias
     ? `${b.coincidencias} de ${b.avisos} ${plural(b.avisos, 'aviso', 'avisos')} en ${estado.moneda} ${plural(b.coincidencias, 'encaja', 'encajan')} con tu búsqueda. Mediana ${dinero(b.mediana, estado.moneda)}.`
     : 'Ningún aviso encaja con tu búsqueda por ahora. Podés crear la alerta igual.';
@@ -202,25 +241,338 @@ function renderFicha() {
       <p class="ficha-resumen">${resumen}</p>
       ${estado.ambientesOMas
         ? '<p class="nota">Para crear una alerta, elegí una cantidad exacta de ambientes.</p>'
-        : `<button class="boton-primario" type="button" id="crear-alerta">Crear alerta para ${esc(b.barrio)}</button>`}
+        : `${estado.modo === 'real' ? `<div class="alerta-mail">
+            <label class="campo campo-mail"><span class="campo-etiqueta">Mail</span>
+              <input type="email" id="mail-alerta" autocomplete="email" inputmode="email" maxlength="254"
+                placeholder="Opcional, para recibir avisos nuevos"></label>
+            <p class="fuente">Si dejás tu mail, lo usamos solo para mandarte los avisos nuevos de esta búsqueda.
+              Cada correo trae un enlace para darte de baja.</p>
+          </div>` : ''}
+          <button class="boton-primario" type="button" id="crear-alerta">Crear alerta para ${esc(b.barrio)}</button>`}
       <p class="estado" id="estado-alerta" role="status"></p>
       ${ficha.length ? `<h2>Entorno</h2>
         <dl class="hechos">${ficha.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join('')}</dl>
         <p class="fuente">Datos abiertos de Buenos Aires Data, por barrio oficial. Describen el barrio, no un departamento.
+          ${e?.gastronomia ? `Cafés, bares y restaurantes: © colaboradores de OpenStreetMap${e.gastronomia.captura ? `, captura del ${fechaCorta(e.gastronomia.captura)}` : ''}. La cobertura depende de quién mapea cada zona.` : ''}
           <button class="boton-texto" type="button" data-fuentes>Ver fuentes</button></p>` : ''}
+      ${renderParecidos(b.barrio)}
+      ${renderLugares(b.barrio)}
       ${b.coincidencias ? `<h2>Avisos que encajan</h2>
         <table class="avisos">
-          <thead><tr><th>Precio publicado</th><th>Cubierta</th><th>Amb.</th>${alquiler ? '<th>Expensas</th>' : ''}<th><span hidden>Enlace</span></th></tr></thead>
+          <thead><tr><th>Precio publicado</th><th>Cubierta</th><th>Amb.</th>${alquiler ? '<th>Expensas</th>' : ''}<th><span hidden>Enlace</span></th><th>Mapa</th></tr></thead>
           <tbody>${filas}</tbody>
         </table>
         ${estado.avisos.length > visibles.length ? `<p class="fuente">Se muestran los ${visibles.length} más baratos de ${estado.avisos.length}. <button class="boton-texto" type="button" id="ver-todos">Ver todos</button></p>` : ''}
-        <p class="fuente">${estado.modo === 'demo' ? 'Avisos ficticios de ejemplo.' : 'Precios de publicación del catálogo autorizado, no tasaciones ni precios de cierre.'}</p>` : ''}
+        <p class="fuente">${estado.modo === 'demo' ? 'Avisos ficticios de ejemplo.' : 'Precios de publicación del catálogo autorizado, no tasaciones ni precios de cierre.'}
+          ${estado.modo === 'real' ? `${ubicados} de ${estado.avisos.length} ${plural(estado.avisos.length, 'aviso tiene', 'avisos tienen')} un punto en el mapa, publicado por la fuente sin precisión declarada.` : ''}</p>` : ''}
+      ${renderAnalisisDelitos()}
+      ${renderRadarFicha(b.barrio)}
     </article>`;
+}
+
+function textoPrecioParecido(p, barrio) {
+  if (!p.coincidencias) return 'Ningún aviso encaja con tu búsqueda';
+  const base = `${p.coincidencias} ${plural(p.coincidencias, 'aviso encaja', 'avisos encajan')}, mediana ${dinero(p.mediana, estado.moneda)}`;
+  if (p.diferencia_mediana == null) return base;
+  if (p.diferencia_mediana === 0) return `${base}, igual que en ${barrio}`;
+  return `${base}, ${dinero(Math.abs(p.diferencia_mediana), estado.moneda)} ${p.diferencia_mediana < 0 ? 'menos' : 'más'} que en ${barrio}`;
+}
+
+function renderParecidos(barrio) {
+  const p = estado.parecidos;
+  if (p.barrio !== barrio || (!p.datos && !p.error)) return '';
+  if (p.error) return `<section class="parecidos"><h2>Barrios parecidos</h2><p class="fuente">${esc(p.error)}</p></section>`;
+  if (!p.datos.length) return '';
+  const elegidas = PREFERENCIAS.filter((x) => estado.prefs.has(x.clave)).map((x) => x.nombre.toLowerCase());
+  const items = p.datos.map((x) => `<li class="parecido">
+      <button type="button" class="parecido-boton" data-barrio="${esc(x.barrio)}">
+        <span class="parecido-nombre">${esc(x.barrio)}</span>
+        <span class="parecido-precio">${esc(textoPrecioParecido(x, barrio))}</span>
+      </button>
+      <ul class="parecido-motivos">
+        ${x.parecido_en.map((m) => `<li><span class="motivo-marca" aria-hidden="true">=</span>${esc(m.texto)}</li>`).join('')}
+        ${x.diferencias.map((m) => `<li class="motivo-difiere"><span class="motivo-marca" aria-hidden="true">≠</span>${esc(m.texto)}</li>`).join('')}
+      </ul>
+    </li>`).join('');
+  return `<section class="parecidos" aria-labelledby="titulo-parecidos">
+      <h2 id="titulo-parecidos">Barrios parecidos</h2>
+      <p class="fuente">Por su entorno, no por su precio.${elegidas.length ? ` Pesa doble lo que marcaste: ${esc(enumerar(elegidas))}.` : ''}
+        Primero, los que tienen avisos que encajan con tu búsqueda.</p>
+      <ol class="lista-parecidos">${items}</ol>
+    </section>`;
+}
+
+async function cargarParecidos() {
+  const barrio = estado.seleccionado;
+  if (!barrio) return;
+  const params = consulta({ nivel: estado.nivel });
+  estado.prefs.forEach((clave) => params.append('prefs', clave));
+  try {
+    const datos = await api(`/api/barrios/${encodeURIComponent(barrio)}/parecidos?${params}`);
+    if (barrio !== estado.seleccionado) return;
+    estado.parecidos = { barrio, datos: datos.parecidos, error: '' };
+  } catch (error) {
+    if (barrio !== estado.seleccionado) return;
+    estado.parecidos = { barrio, datos: null, error: `No se pudieron calcular los barrios parecidos: ${error.message}` };
+  }
+  renderPanel();
+}
+
+function renderLugares(barrio) {
+  if (estado.modo !== 'real' || !estado.info?.lugares) return '';
+  const l = estado.lugares;
+  const tipos = TIPOS_LUGAR.map(([clave, nombre]) => `<button type="button" class="chip-lugar" data-lugares-tipo="${clave}"
+      aria-pressed="${l.tipo === clave}">${nombre}</button>`).join('');
+  const nombreTipo = TIPOS_LUGAR.find(([clave]) => clave === l.tipo)[1].toLowerCase();
+  let cuerpo;
+  if (l.fase === 'inicial') {
+    cuerpo = `<p class="fuente">Se consulta a Google solo cuando lo pedís.</p>
+      <button class="boton-secundario" type="button" id="cargar-lugares">Ver los más valorados en Google</button>`;
+  } else if (l.fase === 'cargando') {
+    cuerpo = '<p class="fuente" role="status">Consultando a Google…</p>';
+  } else if (l.fase === 'error') {
+    cuerpo = `<p>${esc(l.mensaje)}</p>
+      <p class="fuente">Mientras tanto, las capas del mapa siguen disponibles.</p>`;
+  } else {
+    const filtrados = l.datos.lugares.filter((x) => x.resenas >= l.minResenas);
+    const visibles = l.todos ? filtrados : filtrados.slice(0, LUGARES_VISIBLES);
+    const filas = visibles.map((x) => `<li class="lugar">
+        <span class="lugar-nombre">${esc(x.nombre)}</span>
+        <span class="lugar-datos">★ ${decimal.format(x.nota)}, ${numero.format(x.resenas)} ${plural(x.resenas, 'reseña', 'reseñas')}${x.precio ? `, ${esc(x.precio)}` : ''}</span>
+        ${x.enlace ? `<a class="lugar-enlace" href="${esc(x.enlace)}" target="_blank" rel="noopener">Abrir en Maps</a>` : ''}
+      </li>`).join('');
+    cuerpo = filtrados.length
+      ? `<ol class="lugares">${filas}</ol>
+        ${filtrados.length > visibles.length ? `<button class="boton-texto" type="button" id="lugares-todos">Ver los ${filtrados.length} más valorados</button>` : ''}`
+      : `<p>Google no devolvió ${nombreTipo} con al menos ${numero.format(l.minResenas)} reseñas en ${esc(barrio)}.</p>
+        ${l.minResenas > MIN_RESENAS_BAJO ? `<button class="boton-texto" type="button" id="lugares-menos">Mostrar los que tienen al menos ${MIN_RESENAS_BAJO}</button>` : ''}`;
+    cuerpo += `<p class="fuente">Los más valorados entre los ${l.datos.en_barrio} lugares de ${esc(barrio)} que devolvió Google,
+      con al menos ${numero.format(l.minResenas)} reseñas. Calificaciones de usuarios de Google, no de Precio y Entorno.
+      Se consultan al momento y no se guardan.</p>`;
+  }
+  return `<section class="lugares-google" aria-labelledby="titulo-lugares">
+      <div class="lugares-encabezado"><h2 id="titulo-lugares">Dónde comer</h2><span class="atribucion-google">Google Maps</span></div>
+      <div class="chips-lugar" role="group" aria-label="Tipo de lugar">${tipos}</div>
+      ${cuerpo}
+    </section>`;
+}
+
+async function cargarLugares() {
+  const barrio = estado.seleccionado;
+  if (!barrio) return;
+  const l = estado.lugares;
+  const pedido = l.pedido + 1;
+  Object.assign(l, { fase: 'cargando', pedido, todos: false, minResenas: MIN_RESENAS });
+  renderFicha();
+  try {
+    const datos = await api(`/api/barrios/${encodeURIComponent(barrio)}/lugares?${new URLSearchParams({ tipo: l.tipo, modo: estado.modo })}`);
+    if (barrio !== estado.seleccionado || pedido !== estado.lugares.pedido) return;
+    if (datos.disponible) Object.assign(l, { fase: 'listo', datos });
+    else Object.assign(l, { fase: 'error', mensaje: datos.motivo === 'cupo' ? 'La consulta a Google no está disponible por este mes.' : datos.mensaje });
+  } catch (error) {
+    if (barrio !== estado.seleccionado || pedido !== estado.lugares.pedido) return;
+    Object.assign(l, { fase: 'error', mensaje: `No se pudo consultar a Google: ${error.message}` });
+  }
+  renderFicha();
+}
+
+function renderAnalisisDelitos() {
+  if (!estado.capas.has('delitos')) return '';
+  const d = estado.delitosDatos;
+  if (!d?.disponible) return `<section class="analisis-delitos" aria-live="polite"><h2>Registros y contexto</h2><p class="nota">${esc(d?.motivo || 'Cargando registros…')}</p></section>`;
+  const filas = d.resumen_radios.map((r) => `<tr${r.radio_m === Number(estado.delitos.radio) ? ' class="radio-elegido"' : ''}>
+    <th scope="row">${r.anio} · ${numero.format(r.radio_m)} m · ${r.tipo === 'robo' ? 'Robo' : 'Hurto'}</th>
+    <td>${numero.format(r.diurno)}</td><td>${numero.format(r.nocturno)}</td><td>${numero.format(r.sin_dato)}</td><td>${numero.format(r.total)}</td></tr>`).join('');
+  const series = d.resumen_radios.filter((r) => r.radio_m === Number(estado.delitos.radio)
+    && (estado.delitos.tipo === 'todos' || r.tipo === estado.delitos.tipo));
+  const valor = (r) => estado.delitos.franja === 'todas' ? r.total : r[estado.delitos.franja];
+  const maximo = Math.max(1, ...series.map(valor));
+  const barras = series.map((r) => `<div class="serie-registros"><span>${r.anio} · ${r.tipo === 'robo' ? 'Robo' : 'Hurto'}</span>
+    <div class="barra-registros" aria-hidden="true"><i style="width:${valor(r) / maximo * 100}%"></i></div><strong>${numero.format(valor(r))}</strong></div>`).join('');
+  return `<section class="analisis-delitos" aria-live="polite"><h2>Registros y contexto</h2>
+    <p class="nota"><strong>Los registros no indican tu probabilidad de sufrir un delito.</strong> Más peatones y actividad pueden concentrar más eventos. Existe subregistro.</p>
+    ${d.revision_2025 ? `<p class="revision-fuente">${esc(d.revision_2025)} <a href="${esc(d.revision_url)}" target="_blank" rel="noopener">Ficha oficial</a></p>` : ''}
+    <p class="fuente">${esc(d.unidad)} Día: 06–19:59 h. Noche: 20–05:59 h. Sin horario se informa aparte.</p>
+    ${d.inmueble ? `<h3>Alrededor del aviso ${esc(d.inmueble.id)}</h3><p class="fuente">Precisión informada del pin: ${d.inmueble.precision_m} m. Los círculos pueden cruzar límites de barrio.</p>
+      <figure class="comparacion-registros"><figcaption>Hechos registrados a ${numero.format(Number(estado.delitos.radio))} m · ${esc(estado.delitos.tipo)} · horario ${esc(estado.delitos.franja)}</figcaption>${barras}</figure>
+      <details><summary>Los tres radios · día y noche, por año y tipo</summary><div class="tabla-registros"><table class="avisos"><caption>Conteos acumulativos sin filtros de tipo ni franja; no sumar los radios.</caption>
+      <thead><tr><th>Año · radio · tipo</th><th>Día</th><th>Noche</th><th>Sin hora</th><th>Total</th></tr></thead><tbody>${filas}</tbody></table></div></details>`
+      : '<p class="nota">Elegí «Ver registros cerca» en un aviso con pin preciso para comparar radios de 250, 500 y 1.000 m. Esta vista general usa celdas, no totales por barrio.</p>'}
+    <h3>Persistencia entre años</h3><p class="fuente">${esc(d.persistencia.definicion)}</p>
+    ${!d.persistencia.disponible ? '<p class="nota">Faltan al menos dos años con los 12 meses observados para evaluar persistencia.</p>' : ''}
+    <p class="fuente">Cobertura observada: ${d.cobertura.map((c) => `${c.anio}: ${c.meses_observados.length}/12 meses`).join(' · ')}. Los conteos de años parciales no se anualizan.</p>
+    <details><summary>Fuente, calidad y límites</summary><ul class="nota">${d.limitaciones.map((s) => `<li>${esc(s)}</li>`).join('')}</ul>
+      <p class="fuente">Robos y hurtos excluidos por falta de coordenadas válidas: ${numero.format(d.calidad.robos_hurtos_sin_pin || 0)}. Sin horario entre los geolocalizados: ${numero.format(d.calidad.robos_hurtos_sin_horario || 0)}. Estos valores corresponden al conjunto de fuentes.</p>
+      ${d.fuentes.map((f) => `<p class="fuente">${esc(f.archivo)} · <a href="${esc(f.url)}" target="_blank" rel="noopener">Mapa del Delito CABA</a><br>SHA-256: <span class="huella-fuente">${esc(f.sha256)}</span></p>`).join('')}</details></section>`;
+}
+
+/* Radar de tendencias barriales: capa editorial, separada de avisos, delitos y datos de ejemplo. */
+
+const ESTADO_FUENTE = { ok: 'Completa', parcial: 'Parcial', error: 'Falló', restringido: 'Acceso restringido', sin_ejecutar: 'Sin ejecutar' };
+const fechaCorta = (iso) => (iso ? new Intl.DateTimeFormat('es-AR', { day: 'numeric', month: 'numeric', year: 'numeric',
+  timeZone: 'America/Argentina/Buenos_Aires' }).format(new Date(iso.length === 10 ? `${iso}T12:00:00-03:00` : iso)) : '—');
+const fechaHora = (iso) => (iso ? new Intl.DateTimeFormat('es-AR', { day: 'numeric', month: 'numeric', year: 'numeric',
+  hour: '2-digit', minute: '2-digit', timeZone: 'America/Argentina/Buenos_Aires' }).format(new Date(iso)) : '—');
+const fechaLarga = (iso) => new Intl.DateTimeFormat('es-AR', { day: 'numeric', month: 'long', year: 'numeric',
+  timeZone: 'America/Argentina/Buenos_Aires' }).format(new Date(`${iso}T12:00:00-03:00`));
+
+function periodoRadar(r) {
+  return `del ${fechaLarga(r.periodo.desde)} al ${fechaLarga(r.periodo.hasta)}`;
+}
+
+function fuentesConProblemas(r) {
+  return r.fuentes.filter((f) => !['ok', 'parcial'].includes(f.estado));
+}
+
+function avisoFuentes(r) {
+  const malas = fuentesConProblemas(r);
+  const parciales = r.fuentes.filter((f) => f.estado === 'parcial');
+  const partes = [];
+  if (malas.length) partes.push(`Sin datos de ${enumerar(malas.map((f) => f.medio))} para este período: la recolección ${plural(malas.length, 'falló', 'fallaron')} y eso no significa que no hubo notas.`);
+  if (parciales.length) partes.push(`La recolección de ${enumerar(parciales.map((f) => f.medio))} fue parcial.`);
+  return partes.length ? `<p class="nota radar-alerta">${esc(partes.join(' '))}</p>` : '';
+}
+
+function renderRadarLista() {
+  const r = estado.radar;
+  if (!r) return '';
+  if (!r.disponible) {
+    return `<p class="fuente radar-lista">Radar de tendencias barriales: ${esc(r.motivo || 'no está disponible.')}</p>`;
+  }
+  const filas = r.barrios.filter((b) => b.notas || b.aperturas).map((b) => `<tr>
+      <th scope="row"><button class="boton-texto" type="button" data-barrio="${esc(b.barrio)}">${esc(b.barrio)}</button></th>
+      <td>${b.notas ? `<button class="radar-numero" type="button" data-radar-barrio="${esc(b.barrio)}" data-radar-tipo="notas"
+        aria-label="Ver las ${b.notas} ${plural(b.notas, 'nota', 'notas')} sobre ${esc(b.barrio)}">${b.notas}</button>` : '0'}</td>
+      <td>${b.aperturas ? `<button class="radar-numero" type="button" data-radar-barrio="${esc(b.barrio)}" data-radar-tipo="aperturas"
+        aria-label="Ver las aperturas reportadas en ${esc(b.barrio)}">${b.aperturas}</button>` : '0'}</td></tr>`).join('');
+  const sinBarrio = r.sin_barrio.length;
+  const problemas = fuentesConProblemas(r).length + r.fuentes.filter((f) => f.estado === 'parcial').length;
+  return `<details class="radar radar-lista"${estado.radarAbierto ? ' open' : ''}>
+    <summary><span class="radar-titulo" id="titulo-radar">Radar de tendencias barriales</span>
+      <span class="radar-resumen">${r.totales.notas} ${plural(r.totales.notas, 'nota', 'notas')} de prensa ·
+        ${r.totales.aperturas} ${plural(r.totales.aperturas, 'apertura reportada', 'aperturas reportadas')} ·
+        ${fechaCorta(r.periodo.desde)} al ${fechaCorta(r.periodo.hasta)}${problemas ? ' · revisar fuentes' : ''}</span></summary>
+    <p class="nota">Notas inmobiliarias publicadas ${periodoRadar(r)} en ${enumerar(r.fuentes.map((f) => f.medio))}.
+      ${esc(r.aviso)} Es una capa editorial aparte: no usa los avisos, los delitos ni los datos de ejemplo.</p>
+    <p class="fuente">Última actualización: ${fechaHora(r.actualizado)} ·
+      <button class="boton-texto" type="button" data-radar-fuentes>Estado de las fuentes</button></p>
+    <ul class="radar-fuentes">${r.fuentes.map((f) => `<li class="radar-estado radar-${esc(f.estado)}">
+      ${esc(f.medio)}: ${esc(ESTADO_FUENTE[f.estado] || f.estado)}${['ok', 'parcial'].includes(f.estado) ? ` · ${f.notas} ${plural(f.notas, 'nota', 'notas')}` : ''}</li>`).join('')}</ul>
+    ${avisoFuentes(r)}
+    ${filas ? `<table class="tabla radar-tabla">
+      <caption>Barrios con notas centradas en ellos, en orden alfabético. Tocá un número para ver las notas que lo respaldan.</caption>
+      <thead><tr><th scope="col">Barrio</th><th scope="col">Notas publicadas</th><th scope="col">Aperturas reportadas</th></tr></thead>
+      <tbody>${filas}</tbody></table>`
+      : '<p class="nota">Ninguna nota del período se centró en un barrio porteño.</p>'}
+    <p class="fuente">Las menciones al pasar y las comparaciones no suman. Una apertura cuenta solo si la nota informa local, dirección y una fecha de apertura dentro del período.
+      ${sinBarrio ? `<button class="boton-texto" type="button" data-radar-sin-barrio>${sinBarrio} ${plural(sinBarrio, 'nota', 'notas')} sin barrio asignado</button>` : ''}</p>
+  </details>`;
+}
+
+function prensaFila(barrio) {
+  const fila = estado.radar?.disponible && estado.radar.barrios.find((x) => x.barrio === barrio);
+  if (!fila || !(fila.notas || fila.aperturas)) return '';
+  const partes = [`${fila.notas} ${plural(fila.notas, 'nota', 'notas')}`];
+  if (fila.aperturas) partes.push(`${fila.aperturas} ${plural(fila.aperturas, 'apertura', 'aperturas')}`);
+  return `<span class="fila-prensa">En la prensa: ${partes.join(' · ')}</span>`;
+}
+
+function renderNotaRadar(n) {
+  const republicada = n.republicaciones?.length
+    ? `<p class="fuente">También publicada en: ${n.republicaciones.map((x) => `<a href="${esc(x.url)}" target="_blank" rel="noopener">${esc(x.medio)}, ${fechaCorta(x.fecha_publicacion)}</a>`).join(' · ')}</p>` : '';
+  return `<li class="radar-nota">
+    <p class="radar-meta">${fechaCorta(n.fecha_publicacion)} · ${esc(n.medio)} · ${esc(n.tema_nombre)}</p>
+    <a href="${esc(n.url)}" target="_blank" rel="noopener">${esc(n.titular)}</a>
+    <p class="fuente">${esc(n.resumen)}${n.fecha_hecho ? ` Fecha del hecho: ${fechaCorta(n.fecha_hecho)}.` : ''}</p>
+    ${republicada}</li>`;
+}
+
+function renderAperturaRadar(a) {
+  return `<li class="radar-nota">
+    <p class="radar-meta">Apertura el ${fechaCorta(a.fecha_apertura)}${a.barrio ? ` · ${esc(a.barrio)}` : ''}</p>
+    <strong>${esc(a.local)}</strong>, ${esc(a.direccion)}
+    ${a.fechas_informadas.length > 1 ? `<p class="fuente">Las notas informan fechas distintas: ${a.fechas_informadas.map(fechaCorta).join(', ')}.</p>` : ''}
+    <p class="fuente">${plural(a.notas.length, 'Lo respalda', 'Lo respaldan')}: ${a.notas.map((n) => `<a href="${esc(n.url)}" target="_blank" rel="noopener">${esc(n.medio)}, ${fechaCorta(n.fecha_publicacion)}</a>`).join(' · ')}</p></li>`;
+}
+
+function coberturaAperturas(barrio) {
+  return (estado.radar?.aperturas_sin_conteo || []).filter((a) => a.barrio === barrio);
+}
+
+function renderRadarFicha(barrio) {
+  const r = estado.radar;
+  if (!r?.disponible) return '';
+  const d = r.detalle[barrio] || { notas: [], aperturas: [] };
+  const fila = r.barrios.find((b) => b.barrio === barrio);
+  const extra = coberturaAperturas(barrio);
+  return `<section class="radar radar-ficha" aria-labelledby="titulo-prensa">
+    <h2 id="titulo-prensa">En la prensa</h2>
+    <p class="fuente">Radar de tendencias barriales, ${periodoRadar(r)}. Cobertura de los medios monitoreados, no demanda medida.</p>
+    ${avisoFuentes(r)}
+    <dl class="hechos"><dt>Notas publicadas</dt><dd>${d.notas.length}</dd><dt>Aperturas reportadas</dt><dd>${d.aperturas.length}</dd></dl>
+    ${d.notas.length ? `<ul class="radar-notas">${d.notas.map(renderNotaRadar).join('')}</ul>`
+      : '<p class="nota">Ninguna nota del período se centró en este barrio.</p>'}
+    ${d.aperturas.length ? `<h3>Aperturas reportadas</h3><ul class="radar-notas">${d.aperturas.map(renderAperturaRadar).join('')}</ul>` : ''}
+    ${extra.length ? `<h3>Cobertura de aperturas que no suma</h3><ul class="radar-notas">${extra.map((a) => `<li class="radar-nota">
+      ${a.local ? `<strong>${esc(a.local)}</strong>` : 'Local sin nombre identificado'}: ${esc(a.motivo)}.
+      <a href="${esc(a.nota.url)}" target="_blank" rel="noopener">${esc(a.nota.medio)}</a></li>`).join('')}</ul>` : ''}
+    ${fila?.incidentales ? `<p class="fuente">Además, ${fila.incidentales} ${plural(fila.incidentales, 'nota lo nombra', 'notas lo nombran')} al pasar o como comparación. No suman.</p>` : ''}
+  </section>`;
+}
+
+function abrirRadar(contenido) {
+  $('#radar-contenido').innerHTML = contenido;
+  $('#dialogo-radar').showModal();
+}
+
+function detalleRadar(barrio, tipo) {
+  const r = estado.radar;
+  const d = r.detalle[barrio] || { notas: [], aperturas: [] };
+  if (tipo === 'aperturas') {
+    abrirRadar(`<h3>Aperturas reportadas en ${esc(barrio)}</h3>
+      <p class="nota">${periodoRadar(r)}. Cada apertura agrupa las notas que informan el mismo local y la misma dirección. No es un censo: solo incluye lo que publicaron los medios monitoreados.</p>
+      <ul class="radar-notas">${d.aperturas.map(renderAperturaRadar).join('')}</ul>`);
+    return;
+  }
+  abrirRadar(`<h3>Notas publicadas sobre ${esc(barrio)}</h3>
+    <p class="nota">${periodoRadar(r)}. Notas centradas en el barrio: lo nombran en el titular, la bajada o un subtítulo, o varias veces sin usarlo como comparación.</p>
+    <ul class="radar-notas">${d.notas.map(renderNotaRadar).join('')}</ul>`);
+}
+
+function detalleSinBarrio() {
+  const r = estado.radar;
+  abrirRadar(`<h3>Notas sin barrio asignado</h3>
+    <p class="nota">${periodoRadar(r)}. Tratan sobre la Ciudad en general, otra ciudad o un tema sin un barrio puntual, o lo nombran de forma ambigua.</p>
+    <ul class="radar-notas">${r.sin_barrio.map(renderNotaRadar).join('')}</ul>`);
+}
+
+function detalleFuentesRadar() {
+  const r = estado.radar;
+  abrirRadar(`<h3>Estado de las fuentes</h3>
+    <p class="nota">Período ${periodoRadar(r)}. Cada medio se recolecta y se guarda por separado: si uno falla, se conservan sus datos anteriores y la falla se informa.</p>
+    <table class="tabla"><thead><tr><th>Medio</th><th>Estado</th><th>Notas</th><th>Recolectado</th></tr></thead><tbody>
+    ${r.fuentes.map((f) => `<tr><td><a href="${esc(f.seccion)}" target="_blank" rel="noopener">${esc(f.medio)}</a></td>
+      <td>${esc(ESTADO_FUENTE[f.estado] || f.estado)}</td><td>${['ok', 'parcial'].includes(f.estado) ? f.notas : '—'}</td>
+      <td>${fechaHora(f.recolectado_en)}</td></tr>`).join('')}</tbody></table>
+    ${r.fuentes.map((f) => `<p class="fuente"><strong>${esc(f.medio)}.</strong> ${esc(f.metodo)}
+      ${f.cobertura_desde ? ` Los listados llegaron hasta el ${fechaCorta(f.cobertura_desde)}.` : ''}
+      ${f.motivo ? ` Observaciones: ${esc(f.motivo)}` : ''}
+      ${f.ultimo_intento && f.ultimo_intento.fecha !== f.recolectado_en ? ` Último intento: ${fechaHora(f.ultimo_intento.fecha)}, ${esc(ESTADO_FUENTE[f.ultimo_intento.estado] || f.ultimo_intento.estado)}.` : ''}</p>`).join('')}
+    <p class="fuente">Se guardan medio, titular, enlace, fechas, barrios, tema y un resumen propio. No se guarda el texto de las notas ni se leen notas de acceso restringido.</p>`);
+}
+
+async function cargarRadar() {
+  try {
+    estado.radar = await api('/api/radar');
+  } catch (error) {
+    estado.radar = { disponible: false, motivo: `No se pudo cargar el radar: ${error.message}` };
+  }
 }
 
 function renderPanel() {
   if (estado.seleccionado) renderFicha();
   else renderLista();
+  pintarAvisos();
 }
 
 /* Mapa */
@@ -241,6 +593,10 @@ mapa.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-r
 const mapaListo = new Promise((resolver) => mapa.on('load', resolver));
 new ResizeObserver(() => mapa.resize()).observe(document.querySelector('.mapa'));
 const popup = new maplibregl.Popup({ closeButton: false, closeOnClick: false, offset: 10, maxWidth: '18rem' });
+// Lista de avisos de un punto, con enlaces. Se cierra a mano al tocar otro lugar del mapa.
+const popupAviso = new maplibregl.Popup({ closeButton: true, closeOnClick: false, offset: 12, maxWidth: '20rem',
+  className: 'popup-avisos' });
+popupAviso.on('close', () => { estado.pinAbierto = null; });
 
 async function prepararMapa() {
   const [formas] = await Promise.all([api('/api/mapa/barrios'), mapaListo]);
@@ -249,7 +605,7 @@ async function prepararMapa() {
   if (!estado.seleccionado) encuadrar(null, true);
   const simbolo = mapa.getStyle().layers.find((capa) => capa.type === 'symbol')?.id;
   mapa.addSource('barrios', { type: 'geojson', data: formas, promoteId: 'barrio' });
-  for (const id of ['ruido', 'delitos', 'riesgo', 'verdes', 'subte', 'escuelas', 'salud']) {
+  for (const id of ['ruido', 'delitos', 'radios', 'inmueble', 'riesgo', 'verdes', 'subte', 'escuelas', 'salud', 'avisos']) {
     mapa.addSource(id, { type: 'geojson', data: VACIO });
   }
   const sel = ['boolean', ['feature-state', 'sel'], false];
@@ -291,6 +647,19 @@ async function prepararMapa() {
   mapa.addLayer({ id: 'subte', type: 'circle', source: 'subte',
     paint: { 'circle-radius': 6.5, 'circle-color': ['match', ['get', 'line'], ...Object.entries(SUBTE).flat(), '#55626B'],
       'circle-stroke-color': '#FFFFFF', 'circle-stroke-width': 2 } });
+  // Avisos que encajan: relleno si la ubicación publicada es coherente con el barrio, hueco si es aproximada.
+  // Un punto con varios avisos (un mismo edificio) se dibuja más grande.
+  mapa.addLayer({ id: 'avisos', type: 'circle', source: 'avisos',
+    paint: {
+      'circle-radius': ['interpolate', ['linear'], ['get', 'cantidad'], 1, 5, 5, 8, 20, 11],
+      'circle-color': ['case', ['get', 'aproximada'], '#FFFFFF', COLOR.aviso],
+      'circle-stroke-color': ['case', ['get', 'aproximada'], COLOR.aviso, '#FFFFFF'],
+      'circle-stroke-width': ['case', ['get', 'aproximada'], 2, 1.4],
+    } });
+  mapa.addLayer({ id: 'radios', type: 'line', source: 'radios',
+    paint: { 'line-color': '#6A4FB3', 'line-width': ['case', ['get', 'seleccionado'], 2.5, 1], 'line-dasharray': [3, 2] } });
+  mapa.addLayer({ id: 'inmueble', type: 'circle', source: 'inmueble',
+    paint: { 'circle-radius': 7, 'circle-color': '#6A4FB3', 'circle-stroke-color': '#FFFFFF', 'circle-stroke-width': 2 } });
 
   const puntos = ['subte', 'salud', 'escuelas'];
   const conTexto = [...puntos, 'verdes', 'riesgo', 'ruido', 'delitos'];
@@ -298,6 +667,13 @@ async function prepararMapa() {
   mapa.on('mousemove', (evento) => {
     const barrio = mapa.queryRenderedFeatures(evento.point, { layers: ['barrios-relleno'] })[0];
     marcarHover(barrio ? barrio.id : null, 'mapa');
+    const pin = mapa.queryRenderedFeatures(evento.point, { layers: ['avisos'] })[0];
+    if (pin) {
+      mapa.getCanvas().style.cursor = 'pointer';
+      if (estado.pinAbierto === pin.properties.clave) popup.remove();
+      else popup.setLngLat(pin.geometry.coordinates).setHTML(esc(textoPin(pin.properties.clave))).addTo(mapa);
+      return;
+    }
     const elemento = mapa.queryRenderedFeatures(evento.point, { layers: conTexto })[0];
     const texto = elemento ? textoElemento(elemento) : (barrio && !estado.seleccionado ? textoBarrio(barrio.id) : null);
     mapa.getCanvas().style.cursor = barrio || elemento ? 'pointer' : '';
@@ -306,6 +682,12 @@ async function prepararMapa() {
   });
   mapa.on('mouseout', () => { popup.remove(); marcarHover(null, 'mapa'); });
   mapa.on('click', (evento) => {
+    const pin = mapa.queryRenderedFeatures(evento.point, { layers: ['avisos'] })[0];
+    if (pin) {
+      abrirPin(pin.properties.clave);
+      return;
+    }
+    popupAviso.remove();
     const elemento = mapa.queryRenderedFeatures(evento.point, { layers: conTexto })[0];
     if (elemento) {
       popup.setLngLat(evento.lngLat).setHTML(esc(textoElemento(elemento))).addTo(mapa);
@@ -314,6 +696,62 @@ async function prepararMapa() {
     const barrio = mapa.queryRenderedFeatures(evento.point, { layers: ['barrios-relleno'] })[0];
     if (barrio && barrio.id !== estado.seleccionado) seleccionar(barrio.id);
   });
+  pintarAvisos();
+}
+
+/* Pines de los avisos */
+
+function claveUbicacion(a) {
+  return `${a.lat.toFixed(6)},${a.lon.toFixed(6)}`;
+}
+
+function gruposAvisos() {
+  const grupos = new Map();
+  for (const a of estado.avisos) {
+    if (!a.ubicacion) continue;
+    const clave = claveUbicacion(a);
+    if (!grupos.has(clave)) grupos.set(clave, []);
+    grupos.get(clave).push(a);
+  }
+  return grupos;
+}
+
+function pintarAvisos() {
+  const fuente = mapa.getSource('avisos');
+  if (!fuente) return;
+  const grupos = estado.seleccionado ? gruposAvisos() : new Map();
+  fuente.setData({ type: 'FeatureCollection', features: [...grupos].map(([clave, lista]) => ({
+    type: 'Feature', geometry: { type: 'Point', coordinates: [lista[0].lon, lista[0].lat] },
+    properties: { clave, cantidad: lista.length, aproximada: lista.every((a) => a.ubicacion === 'aproximada') },
+  })) });
+  if (estado.pinAbierto && !grupos.has(estado.pinAbierto)) popupAviso.remove();
+}
+
+function textoPin(clave) {
+  const lista = gruposAvisos().get(clave) || [];
+  if (lista.length === 1) {
+    const a = lista[0];
+    return `${dinero(a.precio, a.moneda)} · ${a.superficie} m² · ${a.ambientes} amb.${a.ubicacion === 'aproximada' ? ' Ubicación aproximada.' : ''}`;
+  }
+  const precios = lista.map((a) => a.precio);
+  return `${lista.length} avisos en este punto, de ${dinero(Math.min(...precios), lista[0].moneda)} a ${dinero(Math.max(...precios), lista[0].moneda)}. Tocá para verlos.`;
+}
+
+function abrirPin(clave) {
+  const lista = gruposAvisos().get(clave);
+  if (!lista) return;
+  popup.remove();
+  estado.pinAbierto = clave;
+  const filas = lista.map((a) => `<li><strong>${esc(dinero(a.precio, a.moneda))}</strong> · ${a.superficie} m² · ${a.ambientes} amb.
+    ${a.enlace ? `<a href="${esc(a.enlace)}" target="_blank" rel="noopener">Ver aviso</a>` : ''}</li>`).join('');
+  const nota = lista.every((a) => a.ubicacion === 'aproximada')
+    ? 'Ubicación aproximada: el punto publicado cae a entre 150 y 500 m del barrio.'
+    : 'Punto publicado por la fuente, sin precisión declarada.';
+  popupAviso.setLngLat([lista[0].lon, lista[0].lat])
+    .setHTML(`<p class="pin-titulo">${lista.length === 1 ? '1 aviso' : `${lista.length} avisos`} en este punto</p>
+      <ul class="pin-lista">${filas}</ul><p class="pin-nota">${nota}</p>`)
+    .addTo(mapa);
+  estado.pinAbierto = clave;
 }
 
 function textoBarrio(nombre) {
@@ -328,8 +766,9 @@ function textoElemento(f) {
     return `Nivel exterior típico de ${p.tipico} a ${p.tipico + 5} dBA. El máximo en la celda es de ${p.maximo} a ${p.maximo + 5} dBA.`;
   }
   if (f.layer.id === 'delitos') {
-    const tipo = estado.delitos.tipo ? ` de ${estado.delitos.tipo.toLowerCase()}` : '';
-    return `${p.hechos} ${plural(p.hechos, 'hecho registrado', 'hechos registrados')}${tipo} en ${mes(estado.delitosDatos.periodo)}.`;
+    const detalle = JSON.parse(typeof p.por_anio === 'string' ? p.por_anio : JSON.stringify(p.por_anio));
+    const altos = JSON.parse(typeof p.anios_altos === 'string' ? p.anios_altos : JSON.stringify(p.anios_altos));
+    return `Celda de 200 m · ${Object.entries(detalle).map(([y, n]) => `${y}: ${n}`).join(' · ')} hechos. ${estado.delitos.tipo}; ${estado.delitos.franja}. Años de concentración alta: ${altos.join(', ') || 'ninguno'}. La celda puede cruzar el círculo; los conteos por radio usan cada registro.`;
   }
   return `${String(p.tooltip || p.name || '').split(' · ').join('. ')}.`.replace(/\.\.$/, '.');
 }
@@ -380,6 +819,17 @@ function encuadrar(nombre, inmediato = false) {
   mapa.fitBounds(nombre ? limites(nombre) : limitesCiudad(), { padding: relleno, duration: duracion });
 }
 
+function encuadrarPin(pin) {
+  const dlat = 1100 / 111320;
+  const dlon = dlat / Math.cos(pin.lat * Math.PI / 180);
+  const alto = mapa.getContainer().clientHeight;
+  const controles = document.querySelector('.mapa-arriba').getBoundingClientRect().height;
+  mapa.fitBounds([[pin.lon - dlon, pin.lat - dlat], [pin.lon + dlon, pin.lat + dlat]], {
+    padding: { top: Math.min(controles + 25, alto * 0.3), bottom: celular() ? alto * 0.44 : 50, left: 30, right: 45 },
+    duration: reducido ? 0 : 500,
+  });
+}
+
 /* Capas del barrio elegido */
 
 function claveCapa(clave) {
@@ -390,7 +840,7 @@ async function actualizarCapas() {
   const barrio = estado.seleccionado;
   const fijas = ['subte', 'verdes', 'escuelas', 'salud', 'ruido', 'riesgo'];
   if (!barrio) {
-    fijas.concat('delitos').forEach((id) => mapa.getSource(id)?.setData(VACIO));
+    fijas.concat('delitos', 'radios', 'inmueble').forEach((id) => mapa.getSource(id)?.setData(VACIO));
     renderControles();
     renderLeyenda();
     return;
@@ -404,7 +854,7 @@ async function actualizarCapas() {
       if (barrio !== estado.seleccionado) return;
       faltan.forEach((c) => { estado.capasDatos[claveCapa(c)] = respuesta[c]; });
     }
-    if (estado.capas.has('delitos')) await cargarDelitos();
+    if (estado.capas.has('delitos') && !await cargarDelitos()) return;
   } catch (error) {
     mostrarAvisoMapa(`No se pudieron cargar las capas: ${error.message}`);
   }
@@ -412,21 +862,34 @@ async function actualizarCapas() {
   for (const c of fijas) mapa.getSource(c)?.setData(estado.capas.has(c) ? estado.capasDatos[claveCapa(c)] || VACIO : VACIO);
   const delitos = estado.capas.has('delitos') && estado.delitosDatos?.disponible ? estado.delitosDatos.celdas : VACIO;
   mapa.getSource('delitos')?.setData(delitos);
+  const d = estado.capas.has('delitos') && estado.delitosDatos?.disponible ? estado.delitosDatos : null;
+  mapa.getSource('radios')?.setData(d?.radios || VACIO);
+  mapa.getSource('inmueble')?.setData(d?.inmueble ? { type: 'FeatureCollection', features: [{ type: 'Feature',
+    geometry: { type: 'Point', coordinates: [d.inmueble.lon, d.inmueble.lat] }, properties: {} }] } : VACIO);
   renderControles();
   renderLeyenda();
+  renderPanel();
 }
 
 async function cargarDelitos() {
+  const secuencia = ++estado.pedidoDelitos;
   const pedido = new URLSearchParams({ barrio: estado.seleccionado, modo: estado.modo, operacion: estado.operacion });
-  if (estado.delitos.periodo) pedido.set('periodo', estado.delitos.periodo);
-  if (estado.delitos.tipo) pedido.set('tipo', estado.delitos.tipo);
-  const datos = await api(`/api/delitos?${pedido}`);
+  for (const clave of ['tipo', 'franja', 'radio', 'inmueble']) if (estado.delitos[clave]) pedido.set(clave, estado.delitos[clave]);
+  if (estado.delitos.anio && estado.delitos.anio !== 'persistencia') pedido.set('anio', estado.delitos.anio);
+  const datos = await api(`/api/delitos/concentracion?${pedido}`);
+  if (secuencia !== estado.pedidoDelitos) return false;
   if (datos.disponible) {
-    datos.cortes = cortesQuintiles(datos.celdas.features.map((f) => f.properties.hechos));
-    for (const f of datos.celdas.features) f.properties.paso = pasoDelito(f.properties.hechos, datos.cortes);
-    estado.delitos.periodo = datos.periodo;
+    if (!estado.delitos.anio) estado.delitos.anio = datos.persistencia.disponible ? 'persistencia' : String(datos.anios.at(-1));
+    const persistencia = estado.delitos.anio === 'persistencia';
+    for (const f of datos.celdas.features) {
+      const p = f.properties;
+      p.hechos = persistencia ? p.anios_altos.length : (p.por_anio[estado.delitos.anio] || 0);
+      p.paso = persistencia ? Math.min(4, p.hechos) : [5, 10, 20, 50].filter((n) => p.hechos >= n).length;
+    }
+    datos.celdas.features = datos.celdas.features.filter((f) => persistencia ? f.properties.persistente : f.properties.hechos > 0);
   }
   estado.delitosDatos = datos;
+  return true;
 }
 
 function mostrarAvisoMapa(texto) {
@@ -463,12 +926,12 @@ function renderControles() {
   if (estado.seleccionado && estado.capas.has('delitos') && estado.delitosDatos) {
     const d = estado.delitosDatos;
     if (d.disponible) {
-      const tipos = Object.keys(d.tipos).sort();
       partes.push(`<div class="control-flotante">
-        <label>Mes <select data-control="periodo">${d.periodos.map((p) =>
-          `<option value="${p}"${p === d.periodo ? ' selected' : ''}>${esc(mes(p))}</option>`).join('')}</select></label>
-        <label>Tipo <select data-control="tipo"><option value="">Todos</option>${tipos.map((t) =>
-          `<option value="${esc(t)}"${t === estado.delitos.tipo ? ' selected' : ''}>${esc(t)}</option>`).join('')}</select></label>
+        <label>Vista <select data-control="anio">${[['persistencia', 'Persistencia entre años'], ...d.anios.map((y) => [String(y), String(y)])].map(([v, t]) => `<option value="${v}"${v === estado.delitos.anio ? ' selected' : ''}>${t}</option>`).join('')}</select></label>
+        <label>Tipo <select data-control="tipo">${[['todos', 'Robos y hurtos'], ['robo', 'Robos · fuerza o violencia'], ['hurto', 'Hurtos · sin violencia']].map(([v, t]) => `<option value="${v}"${v === estado.delitos.tipo ? ' selected' : ''}>${t}</option>`).join('')}</select></label>
+        <label>Horario <select data-control="franja">${[['todas', 'Todos los horarios'], ['diurno', 'Día · 06–19:59'], ['nocturno', 'Noche · 20–05:59'], ['sin_dato', 'Sin horario informado']].map(([v, t]) => `<option value="${v}"${v === estado.delitos.franja ? ' selected' : ''}>${t}</option>`).join('')}</select></label>
+        ${d.inmueble ? `<label>Radio <select data-control="radio">${[250, 500, 1000].map((r) => `<option value="${r}"${String(r) === estado.delitos.radio ? ' selected' : ''}>${numero.format(r)} m</option>`).join('')}</select></label><button class="boton-texto" type="button" data-quitar-inmueble>Vista general</button>` : ''}
+        <p class="fuente">${d.celdas.features.length ? `${d.celdas.features.length} celdas visibles` : estado.delitos.anio === 'persistencia' ? 'Sin celdas persistentes con estos filtros; no implica ausencia de delitos.' : 'Sin registros geolocalizados con estos filtros; no implica ausencia de delitos.'}</p>
       </div>`);
     } else {
       partes.push(`<p class="control-flotante">${esc(d.motivo)}</p>`);
@@ -479,29 +942,6 @@ function renderControles() {
 
 function muestra(color, etiqueta) {
   return `<li><span class="chip-muestra" style="background:${color}"></span>${esc(etiqueta)}</li>`;
-}
-
-/* Cortes por quintiles de las celdas a la vista, para que cada tono reúna una parte parecida. */
-function cortesQuintiles(valores) {
-  const orden = [...valores].sort((a, b) => a - b);
-  const cortes = [0.2, 0.4, 0.6, 0.8].map((q) => orden[Math.min(orden.length - 1, Math.floor(q * orden.length))]);
-  return [...new Set(cortes)].filter((c) => c < orden.at(-1));
-}
-
-function pasoDelito(hechos, cortes) {
-  const paso = cortes.filter((c) => hechos > c).length;
-  return cortes.length >= 4 ? paso : Math.round((paso * 4) / Math.max(1, cortes.length));
-}
-
-function rangosDelitos(maximo, cortes) {
-  const grupos = new Map();
-  for (let n = 1; n <= maximo; n += 1) {
-    const paso = pasoDelito(n, cortes);
-    if (!grupos.has(paso)) grupos.set(paso, []);
-    grupos.get(paso).push(n);
-  }
-  return [...grupos].map(([paso, ns]) => [DELITOS[paso],
-    ns.length === 1 ? `${ns[0]} ${plural(ns[0], 'hecho', 'hechos')}` : `${ns[0]} a ${ns.at(-1)} hechos`]);
 }
 
 function renderLeyenda() {
@@ -515,6 +955,13 @@ function renderLeyenda() {
   }
   const bloques = [];
   const notas = [];
+  const conPunto = estado.avisos.filter((a) => a.ubicacion);
+  if (conPunto.length) {
+    const pin = (hueco, etiqueta) => `<li><span class="chip-muestra chip-pin${hueco ? ' chip-pin-hueco' : ''}"></span>${esc(etiqueta)}</li>`;
+    bloques.push(`<h3>Avisos que encajan</h3><ul class="leyenda-items">${pin(false, 'Punto publicado')}${
+      conPunto.some((a) => a.ubicacion === 'aproximada') ? pin(true, 'Aproximado') : ''}</ul>`);
+    notas.push(`<li><strong>Avisos.</strong> ${esc(NOTA_AVISOS)}</li>`);
+  }
   for (const c of CAPAS) {
     if (!estado.capas.has(c.clave)) continue;
     let items = [];
@@ -530,7 +977,10 @@ function renderLeyenda() {
     } else if (c.clave === 'delitos') {
       const d = estado.delitosDatos;
       if (!d?.disponible) continue;
-      items = d.maximo ? rangosDelitos(d.maximo, d.cortes).map(([color, texto]) => muestra(color, texto)) : [];
+      items = estado.delitos.anio === 'persistencia'
+        ? [...new Set(d.celdas.features.map((f) => f.properties.hechos))].sort((a, b) => a - b).map((n) => muestra(DELITOS[Math.min(4, n)], `Concentración alta en ${n} años`))
+        : ['1–4', '5–9', '10–19', '20–49', '50 o más'].map((r, i) => muestra(DELITOS[i], `${r} hechos / celda · ${estado.delitos.anio}`));
+      if (d.inmueble) items.push(muestra('#6A4FB3', `Pin del aviso · círculos 250, 500 y 1.000 m`));
     }
     const titulo = c.clave === 'ruido' ? `Ruido ${estado.ruido === 'diurno' ? 'de día' : 'de noche'}` : c.nombre;
     bloques.push(`<h3>${esc(titulo)}</h3>${items.length ? `<ul class="leyenda-items">${items.join('')}</ul>` : ''}`);
@@ -552,6 +1002,7 @@ function renderLeyenda() {
 
 async function cargarEstado() {
   estado.info = await api(`/api/estado?${new URLSearchParams({ modo: estado.modo, operacion: estado.operacion })}`);
+  $('#abrir-preferencias-texto').hidden = !estado.info.interpretar_preferencias;
 }
 
 async function cargarBarrios() {
@@ -575,7 +1026,11 @@ async function seleccionar(nombre) {
   estado.verTodos = false;
   estado.avisos = [];
   estado.delitosDatos = null;
+  estado.delitos.inmueble = '';
+  estado.pedidoDelitos += 1;
+  estado.lugares = { ...lugaresIniciales(estado.lugares.tipo), pedido: estado.lugares.pedido + 1 };
   popup.remove();
+  popupAviso.remove();
   if (nombre && mapa.getSource('barrios')) mapa.setFeatureState({ source: 'barrios', id: nombre }, { sel: true });
   estado.capas = new Set(nombre ? estado.prefs : []);
   pintarCoropletas();
@@ -584,6 +1039,8 @@ async function seleccionar(nombre) {
   renderPanel();
   $('#contenido').scrollTop = 0;
   if (celular()) plegarPanel(false);
+  estado.parecidos = { barrio: null, datos: null, error: '' };
+  cargarParecidos();
   try {
     await cargarAvisos();
     if (nombre === estado.seleccionado) renderPanel();
@@ -601,6 +1058,9 @@ function recargar() {
     try {
       await cargarBarrios();
       await cargarAvisos();
+      cargarParecidos();
+      if (!estado.avisos.some((a) => a.id === estado.delitos.inmueble)) estado.delitos.inmueble = '';
+      if (estado.capas.has('delitos')) await actualizarCapas();
       renderPanel();
       renderLeyenda();
     } catch (error) {
@@ -622,7 +1082,12 @@ function sincronizarControles() {
   $('#etiqueta-presupuesto').textContent = alquiler ? 'Hasta por mes' : 'Hasta';
   $('#presupuesto').value = numero.format(estado.presupuesto);
   $('#superficie').value = estado.superficie;
-  $('#ambientes').value = `${estado.ambientes}${estado.ambientesOMas ? '+' : ''}`;
+  const ambientes = $('#ambientes');
+  const valor = String(estado.ambientes) + (estado.ambientesOMas ? '+' : '');
+  if (![...ambientes.options].some((o) => o.value === valor)) {
+    ambientes.add(new Option(estado.ambientes + ' ambientes' + (estado.ambientesOMas ? ' o más' : ''), valor));
+  }
+  ambientes.value = valor;
   $('#nivel').value = estado.nivel;
   $('#franja-demo').hidden = estado.modo !== 'demo';
   $('#preferencias').innerHTML = `<legend hidden>Lo que me importa</legend>${PREFERENCIAS.map((p) => `
@@ -639,6 +1104,13 @@ function enteroDe(texto) {
 }
 
 async function cambiarContexto() {
+  // Invalida antes de los awaits para no mostrar un resultado de la base anterior.
+  estado.pedidoDelitos += 1;
+  estado.delitosDatos = null;
+  estado.delitos = { anio: '', tipo: 'todos', franja: 'todas', radio: '500', inmueble: '' };
+  estado.avisos = [];
+  for (const id of ['delitos', 'radios', 'inmueble']) mapa.getSource(id)?.setData(VACIO);
+  renderPanel();
   sincronizarControles();
   guardar();
   try {
@@ -646,8 +1118,6 @@ async function cambiarContexto() {
     await cargarBarrios();
     if (estado.seleccionado) {
       await cargarAvisos();
-      estado.delitosDatos = null;
-      estado.delitos = { periodo: null, tipo: '' };
       await actualizarCapas();
     }
     renderPanel();
@@ -664,7 +1134,132 @@ function plegarPanel(expandir) {
   $('#panel-asa').textContent = expandir ? 'Ver mapa' : 'Ver lista';
 }
 
+function conectarPreferencias() {
+  const dialogo = $('#dialogo-preferencias');
+  const interpretar = $('#interpretar-preferencias');
+  const revisar = $('#revisar-preferencias');
+  const salida = $('#estado-preferencias');
+  let pedido;
+  let capas = [];
+  let requiereConfirmacion = false;
+  const opciones = (items) => items.map(([id, label]) =>
+    '<option value="' + esc(id) + '">' + esc(label) + '</option>').join('');
+
+  function presentar(propuesta) {
+    const valores = Object.fromEntries(propuesta.campos.map((c) => [c.clave, c.valor]));
+    const barrios = [...new Set(propuesta.campos.filter((c) => c.clave === 'barrio').map((c) => c.valor))];
+    capas = propuesta.campos.filter((c) => c.clave === 'capa').map((c) => c.valor);
+    const barrio = barrios.length === 1 ? barrios[0] : barrios.length ? '' : estado.seleccionado || '';
+    const campos = [
+      ['operacion', 'Operación', valores.operacion ?? estado.operacion, [['venta', 'Comprar'], ['alquiler', 'Alquilar']]],
+      ['moneda', 'Moneda', valores.moneda ?? estado.moneda, [['USD', 'USD'], ['ARS', 'ARS']]],
+      ['presupuesto', 'Presupuesto máximo', valores.presupuesto ?? estado.presupuesto, 1000000000],
+      ['superficie', 'Superficie cubierta mínima (m²)', valores.superficie ?? estado.superficie, 2000],
+      ['ambientes', 'Ambientes', valores.ambientes ?? estado.ambientes, 20],
+      ['ambientes_o_mas', 'Cantidad de ambientes', valores.ambientes_o_mas ?? String(estado.ambientesOMas),
+        [['false', 'Exacta'], ['true', 'O más']]],
+      ['barrio', 'Barrio', barrio, [['', 'Comparación general'], ...[...new Set([
+        ...barrios, ...(barrio ? [barrio] : []), ...estado.barrios.map((b) => b.barrio)
+      ])].sort((a, b) => a.localeCompare(b, 'es')).map((b) => [b, b])]],
+    ];
+    $('#campos-preferencias').innerHTML = campos.map(([clave, label, valor, tipo]) => {
+      const origen = clave === 'barrio' && barrios.length > 1 ? 'Elegí un barrio o compará todos'
+        : clave in valores ? 'De tu descripción' : 'Valor actual';
+      const control = Array.isArray(tipo)
+        ? '<select name="' + clave + '">' + opciones(tipo) + '</select>'
+        : '<input type="number" name="' + clave + '" required min="1" step="1" max="' + tipo + '">';
+      return '<label>' + label + control + '<small>' + origen + '</small></label>';
+    }).join('');
+    campos.forEach(([clave, , valor]) => { revisar.elements.namedItem(clave).value = valor; });
+    const avisos = [
+      ...propuesta.dudas.map((d) => 'Revisá «' + d.evidencia + '» (' + d.campo + ').'),
+      ...propuesta.no_soportadas.map((c) => 'No se aplicará «' + c.evidencia + '»' +
+        (c.obligatoria ? ' (requisito indicado).' : '.')),
+      ...capas.map((c) => 'Capa del mapa: ' + PREFERENCIAS.find((p) => p.clave === c)?.nombre + '.'),
+    ];
+    requiereConfirmacion = propuesta.dudas.length > 0 || barrios.length > 1 ||
+      propuesta.no_soportadas.some((c) => c.obligatoria);
+    $('#avisos-preferencias').innerHTML = avisos.map((aviso) => '<li>' + esc(aviso) + '</li>').join('');
+    $('#confirmar-preferencias').hidden = !requiereConfirmacion;
+    $('#confirmacion-preferencias').checked = false;
+    revisar.hidden = false;
+  }
+
+  $('#abrir-preferencias-texto').addEventListener('click', () => dialogo.showModal());
+  $('#cancelar-preferencias').addEventListener('click', () => dialogo.close());
+  dialogo.addEventListener('close', () => {
+    pedido?.abort();
+    pedido = null;
+    interpretar.reset();
+    interpretar.querySelector('button').disabled = false;
+    revisar.hidden = true;
+    $('#campos-preferencias').replaceChildren();
+    $('#avisos-preferencias').replaceChildren();
+    salida.textContent = '';
+    capas = [];
+  });
+  interpretar.addEventListener('input', () => {
+    pedido?.abort();
+    pedido = null;
+    interpretar.querySelector('button').disabled = false;
+    revisar.hidden = true;
+    salida.textContent = '';
+  });
+  interpretar.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    if (pedido) return;
+    const actual = new AbortController();
+    pedido = actual;
+    const boton = interpretar.querySelector('button');
+    boton.disabled = true;
+    revisar.hidden = true;
+    salida.textContent = 'Interpretando…';
+    try {
+      const propuesta = await api('/api/preferencias/interpretar', {
+        method: 'POST', signal: actual.signal, headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ texto: $('#texto-preferencias').value }),
+      });
+      if (pedido === actual) {
+        presentar(propuesta);
+        salida.textContent = '';
+      }
+    } catch (error) {
+      if (pedido === actual) salida.textContent = error.message;
+    } finally {
+      if (pedido === actual) {
+        pedido = null;
+        boton.disabled = false;
+      }
+    }
+  });
+  revisar.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    if (revisar.hidden) return;
+    const f = new FormData(revisar);
+    if (f.get('operacion') === 'venta' && f.get('moneda') !== 'USD') {
+      salida.textContent = 'Para comprar, elegí USD.';
+      return;
+    }
+    if (requiereConfirmacion && !$('#confirmacion-preferencias').checked) {
+      salida.textContent = 'Confirmá que revisaste los avisos antes de aplicar.';
+      return;
+    }
+    clearTimeout(espera);
+    estado.operacion = f.get('operacion');
+    estado.moneda = f.get('moneda');
+    estado.presupuesto = Number(f.get('presupuesto'));
+    estado.superficie = Number(f.get('superficie'));
+    estado.ambientes = Number(f.get('ambientes'));
+    estado.ambientesOMas = f.get('ambientes_o_mas') === 'true';
+    capas.forEach((capa) => estado.prefs.add(capa));
+    dialogo.close();
+    await cambiarContexto();
+    await seleccionar(f.get('barrio') || null);
+  });
+}
+
 function conectarEventos() {
+  conectarPreferencias();
   document.querySelectorAll('[data-operacion]').forEach((boton) => boton.addEventListener('click', () => {
     if (estado.operacion === boton.dataset.operacion) return;
     estado.operacion = boton.dataset.operacion;
@@ -730,10 +1325,47 @@ function conectarEventos() {
     sincronizarControles();
     guardar();
     renderPanel();
+    cargarParecidos();
   });
   $('#nivel').addEventListener('change', (e) => { cambiarNivel(e.target.value); });
 
   $('#contenido').addEventListener('click', async (e) => {
+    const inmueble = e.target.closest('[data-inmueble]');
+    if (inmueble) {
+      estado.delitos.inmueble = inmueble.dataset.inmueble;
+      estado.capas.add('delitos');
+      estado.delitosDatos = null;
+      renderChips(); renderPanel();
+      await actualizarCapas();
+      const pin = estado.delitosDatos?.inmueble;
+      if (pin) { if (celular()) plegarPanel(false); encuadrarPin(pin); }
+      return;
+    }
+    const ubicar = e.target.closest('[data-ubicar]');
+    if (ubicar) {
+      const aviso = estado.avisos.find((a) => a.id === ubicar.dataset.ubicar);
+      if (aviso?.ubicacion) {
+        if (celular()) plegarPanel(false);
+        encuadrarPin(aviso);
+        abrirPin(claveUbicacion(aviso));
+      }
+      return;
+    }
+    const tipoLugar = e.target.closest('[data-lugares-tipo]');
+    if (tipoLugar) {
+      if (tipoLugar.dataset.lugaresTipo !== estado.lugares.tipo) {
+        estado.lugares.tipo = tipoLugar.dataset.lugaresTipo;
+        if (estado.lugares.fase === 'inicial') renderFicha(); else cargarLugares();
+      }
+      return;
+    }
+    if (e.target.closest('#cargar-lugares')) { cargarLugares(); return; }
+    if (e.target.closest('#lugares-todos')) { estado.lugares.todos = true; renderFicha(); return; }
+    if (e.target.closest('#lugares-menos')) { estado.lugares.minResenas = MIN_RESENAS_BAJO; renderFicha(); return; }
+    const numero = e.target.closest('[data-radar-barrio]');
+    if (numero) { detalleRadar(numero.dataset.radarBarrio, numero.dataset.radarTipo); return; }
+    if (e.target.closest('[data-radar-fuentes]')) { detalleFuentesRadar(); return; }
+    if (e.target.closest('[data-radar-sin-barrio]')) { detalleSinBarrio(); return; }
     const fila = e.target.closest('[data-barrio]');
     if (fila) { seleccionar(fila.dataset.barrio); return; }
     if (e.target.closest('#volver')) { seleccionar(null); return; }
@@ -741,6 +1373,9 @@ function conectarEventos() {
     if (e.target.closest('#crear-alerta')) crearAlerta(e.target.closest('#crear-alerta'));
     if (e.target.closest('#ver-todos')) { estado.verTodos = true; renderFicha(); }
   });
+  $('#contenido').addEventListener('toggle', (e) => {
+    if (e.target.matches('.radar-lista')) estado.radarAbierto = e.target.open;
+  }, true);
   $('#contenido').addEventListener('mouseover', (e) => {
     const fila = e.target.closest('.fila');
     marcarHover(fila ? fila.dataset.barrio : null, 'lista');
@@ -753,15 +1388,16 @@ function conectarEventos() {
     const clave = chip.dataset.capa;
     if (estado.capas.has(clave)) estado.capas.delete(clave); else estado.capas.add(clave);
     chip.setAttribute('aria-pressed', estado.capas.has(clave));
+    renderPanel();
     actualizarCapas();
   });
   $('#capa-controles').addEventListener('change', (e) => {
     const control = e.target.dataset.control;
     if (control === 'nivel') cambiarNivel(e.target.value);
-    if (control === 'periodo') { estado.delitos.periodo = e.target.value; actualizarCapas(); }
-    if (control === 'tipo') { estado.delitos.tipo = e.target.value; actualizarCapas(); }
+    if (['anio', 'tipo', 'franja', 'radio'].includes(control)) { estado.delitos[control] = e.target.value; actualizarCapas(); }
   });
   $('#capa-controles').addEventListener('click', (e) => {
+    if (e.target.closest('[data-quitar-inmueble]')) { estado.delitos.inmueble = ''; actualizarCapas(); encuadrar(estado.seleccionado); }
     const boton = e.target.closest('[data-ruido]');
     if (boton && boton.dataset.ruido !== estado.ruido) { estado.ruido = boton.dataset.ruido; actualizarCapas(); }
   });
@@ -778,22 +1414,37 @@ function cambiarNivel(nivel) {
   sincronizarControles();
   renderPanel();
   actualizarCapas();
+  if (estado.prefs.has('escuelas')) cargarParecidos();
 }
 
 async function crearAlerta(boton) {
   const salida = $('#estado-alerta');
+  const campoMail = $('#mail-alerta');
+  const email = campoMail ? campoMail.value.trim() : '';
+  if (campoMail && email && !campoMail.checkValidity()) {
+    salida.className = 'estado error';
+    salida.textContent = 'Revisá el mail: no parece una dirección válida.';
+    campoMail.focus();
+    return;
+  }
   boton.disabled = true;
   try {
-    const { creada } = await api(`/api/busquedas?${new URLSearchParams({ modo: estado.modo, operacion: estado.operacion })}`, {
+    const { creada, correo } = await api(`/api/busquedas?${new URLSearchParams({ modo: estado.modo, operacion: estado.operacion })}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ barrio: estado.seleccionado, presupuesto: estado.presupuesto,
-        superficie: estado.superficie, ambientes: estado.ambientes, moneda: estado.moneda }),
+        superficie: estado.superficie, ambientes: estado.ambientes, moneda: estado.moneda,
+        ambientes_o_mas: estado.ambientesOMas,
+        ...(email ? { email, consentimiento: true } : {}) }),
     });
-    salida.className = 'estado ok';
-    salida.textContent = creada
+    const local = creada
       ? 'Alerta creada. Cuando entre un aviso nuevo que encaje, lo vas a ver en Mis alertas.'
       : 'Ya tenías una alerta con estos mismos filtros.';
+    salida.className = correo && !correo.enviado ? 'estado error' : 'estado ok';
+    salida.textContent = !correo ? local
+      : correo.enviado ? `${local} También te vamos a escribir a ${email}.`
+        : `${local} No se activó el aviso por correo: ${correo.motivo}`;
+    if (correo && correo.enviado) campoMail.value = '';
   } catch (error) {
     salida.className = 'estado error';
     salida.textContent = `No se creó la alerta: ${error.message}`;
@@ -818,11 +1469,12 @@ async function abrirAlertas() {
       <h3>Alertas creadas</h3>
       <table class="tabla"><thead><tr><th>Barrio</th><th>Hasta</th><th>Desde</th><th>Ambientes</th></tr></thead><tbody>
       ${busquedas.map((b) => `<tr><td>${esc(b.barrio)}</td><td>${dinero(b.presupuesto, b.moneda)}</td>
-        <td>${b.superficie} m²</td><td>${b.ambientes}</td></tr>`).join('')}</tbody></table>
+        <td>${b.superficie} m²</td><td>${b.ambientes}${b.ambientes_o_mas ? ' o más' : ''}</td></tr>`).join('')}</tbody></table>
       <h3>Avisos nuevos que encajan</h3>
       ${alertas.length ? `<table class="tabla"><thead><tr><th>Barrio</th><th>Precio publicado</th><th>Cubierta</th><th>Amb.</th><th></th></tr></thead><tbody>
       ${alertas.map((a) => `<tr><td>${esc(a.barrio)}</td><td>${dinero(a.precio, a.moneda)}</td><td>${a.superficie} m²</td>
-        <td>${a.ambientes}</td><td>${a.enlace ? `<a href="${esc(a.enlace)}" target="_blank" rel="noopener">Ver aviso</a>` : 'Ejemplo'}</td></tr>`).join('')}
+        <td>${a.ambientes}</td><td>${{ baja: 'Ya no está publicado', reservado: 'Reservado' }[a.estado]
+          ?? (a.enlace ? `<a href="${esc(a.enlace)}" target="_blank" rel="noopener">Ver aviso</a>` : 'Ejemplo')}</td></tr>`).join('')}
       </tbody></table>` : '<p class="nota">Todavía no entró ningún aviso nuevo que encaje. Los avisos que ya estaban cuando creaste la alerta no cuentan.</p>'}`;
   } catch (error) {
     contenido.innerHTML = `<p class="vacio">No se pudieron cargar las alertas: ${esc(error.message)}</p>`;
@@ -857,7 +1509,7 @@ async function iniciar() {
   renderChips();
   $('#contenido').innerHTML = '<p class="nota">Cargando barrios…</p>';
   try {
-    await Promise.all([cargarEstado(), cargarBarrios()]);
+    await Promise.all([cargarEstado(), cargarBarrios(), cargarRadar()]);
     renderPanel();
   } catch (error) {
     $('#contenido').innerHTML = `<p class="vacio">No se pudieron cargar los barrios: ${esc(error.message)}.

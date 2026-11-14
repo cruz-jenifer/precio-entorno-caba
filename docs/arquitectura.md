@@ -178,6 +178,7 @@ Una flecha de A a B significa que A importa B. `badata_poi`, `store`, `matching`
 | `eda_delitos` | 313 | Informe exploratorio de delitos 2024–2025 y dataset `barrio_mes.csv` | CSV de delitos | `data/processed/delitos/` y figuras |
 | `eda_avisos` | 253 | Informe exploratorio de la captura de venta | Captura de venta | `data/processed/avisos/` y figuras |
 | `modelo` | 356 | Pipeline del capstone: variables, partición por grupos, placebo, controles y puntos de interés | Avisos, delitos y POI | `data/processed/modelo*/` |
+| `radar` y `radar_clasificar` | 652 y 479 | Radar de tendencias barriales: recolecta notas de Clarín, LA NACION y TN por feed, sitemap o sección pública, las clasifica por barrio, tema y aperturas, y arma el boletín de `/api/radar`. Ver [radar.md](radar.md). | Feeds y notas de los medios | `data/local/radar/` |
 | `app.py` | 304 | Interfaz: operación, modo, preferencias, comparación, mapa del entorno, contexto de delitos, búsquedas, alertas e importación | Las cuatro bases SQLite | Las cuatro bases SQLite |
 
 ## 5. Base de datos
@@ -249,7 +250,8 @@ erDiagram
 Las líneas continuas son claves foráneas declaradas, con `PRAGMA foreign_keys = ON`. Las punteadas son relaciones que se resuelven por consulta, sin clave foránea.
 
 **Reglas que viven en la base:**
-- **Deduplicación por ID:** `INSERT OR IGNORE` en `listings`. Un aviso ya cargado no se actualiza, así que no hay historial de precios.
+- **Deduplicación por ID:** `INSERT OR IGNORE` en `listings`. Si un aviso ya cargado reaparece con otro precio, se actualiza `price` y se agrega una fila a `listing_prices`.
+- **Vigencia:** `status` (`activo`, `no_visto`, `reservado`, `baja`), `status_at` y `last_seen` en `listings`. Solo un barrido completo de una fuente marca bajas, y hacen falta dos seguidos. `Store.listings()` devuelve solo los vigentes. Detalle en `docs/etl.md`, sección 4 bis.
 - **Alertas al importar:** por cada aviso nuevo, un `INSERT … SELECT` busca en `searches` las búsquedas que cumplen todo esto:
   - mismo barrio;
   - presupuesto mayor o igual al precio;
@@ -303,7 +305,7 @@ Apify se usa solo con un tope explícito de gasto. El proyecto no usa la librer�
 
 ## 8. Make
 
-Make solo recibe alertas. No lee la base ni tiene credenciales del proyecto: el único vínculo es la URL del webhook, guardada en el `.env`.
+Make recibe el resumen de **cada corrida**: con alertas, sin novedades o con error. No lee la base ni tiene credenciales del proyecto: el único vínculo es la URL del webhook, guardada en el `.env`. Con eso, Make cumple tres funciones: registro de ejecución, aviso de fallos y un resumen por búsqueda.
 
 ```mermaid
 sequenceDiagram
@@ -312,54 +314,162 @@ sequenceDiagram
   participant A as actualizar.py
   participant S as Sitios autorizados
   participant DB as SQLite
-  participant M as Make (webhook)
-  participant G as Gmail
+  participant M as Make (webhook + Router)
   participant SH as Google Sheets
+  participant G as Gmail
   W->>A: cada 2 días, 9:00 · venta y después alquiler
   A->>S: captura educada · 200 avisos recientes por sitio
   S-->>A: avisos
   A->>DB: importa · genera alertas
   DB-->>A: alertas nuevas
-  alt hay alertas nuevas
-    A->>M: POST JSON (1 reintento)
-    loop por cada alerta (Iterator)
-      M->>G: correo al usuario
-      M->>SH: fila en la planilla
+  A->>M: POST JSON siempre, también si falló (1 reintento)
+  A->>A: línea en actualizaciones.jsonl
+  M->>SH: ruta 1 · fila en «Corridas»
+  alt estado = error
+    M->>G: ruta 2 · correo de fallo al equipo
+  end
+  opt cantidad > 0
+    loop por cada búsqueda (Iterator sobre busquedas)
+      M->>G: ruta 3 · un correo con todos sus avisos
+    end
+    loop por cada alerta (Iterator sobre alertas)
+      M->>SH: ruta 4 · fila en «Alertas»
     end
   end
-  A->>A: línea en actualizaciones.jsonl
 ```
 
-**Lo que viaja a Make** (ejemplo ficticio; los campos son los de `ALERT_FIELDS` y nunca incluyen datos personales):
+**Lo que viaja a Make** (ejemplo ficticio). Los campos de cada alerta son los de `ALERT_FIELDS` y nunca incluyen datos personales.
 
 ```json
 {
+  "tipo": "corrida",
   "fecha": "2026-11-09T12:00:00+00:00",
+  "operacion": "alquiler",
   "catalogo": "inmobiliarias-alquiler",
+  "estado": "ok",
+  "error": null,
+  "sitios": "remax: completo · century21: completo · mob: completo",
+  "leidos": 600, "nuevos": 12, "repetidos": 588, "descartados": 0,
   "cantidad": 1,
   "alertas": [{
-    "operacion": "alquiler",
+    "operacion": "alquiler", "busqueda": 3, "aviso": "mob:00000", "barrio": "Caballito",
+    "precio": 750000, "moneda": "ARS", "precio_usd": 750000, "expensas_ars": 210000,
+    "superficie_m2": 44, "ambientes": 3, "url": "https://…"
+  }],
+  "busquedas": [{
     "busqueda": 3,
-    "aviso": "mob:00000",
-    "barrio": "Caballito",
-    "precio": 750000,
-    "moneda": "ARS",
-    "precio_usd": null,
-    "expensas_ars": 210000,
-    "superficie_m2": 44,
-    "ambientes": 3,
-    "url": "https://…"
+    "descripcion": "Caballito · hasta ARS 800.000 · 40 m² o más · 3 ambientes",
+    "cantidad": 1,
+    "asunto": "1 aviso nuevo · Caballito · hasta ARS 800.000 · 40 m² o más · 3 ambientes",
+    "texto": "- Caballito · ARS 750.000 · expensas ARS 210.000 · 44 m² · 3 amb.\n  https://…",
+    "html": "<p><strong>Caballito · …</strong></p><ul><li>… <a href=\"https://…\">Ver aviso</a></li></ul>…",
+    "avisos": ["mob:00000"]
   }]
 }
 ```
 
+- **`estado`:** `ok` si todos los sitios terminaron completos, `parcial` si alguno quedó detenido o con error, y `error` si la corrida falló. Con `error`, los conteos llegan en `null` y `error` trae el tipo y el mensaje (hasta 300 caracteres).
+- **`busquedas`:** las mismas alertas, agrupadas. El `html` ya viene escapado y solo enlaza URLs http(s), así que Make lo pega tal cual en el cuerpo del correo.
+- **`alertas`:** se mantiene igual que antes. El escenario anterior, que recorría `alertas`, sigue funcionando.
+
 **El escenario:**
-- **Nombre:** «Precio y Entorno CABA - Alertas», en la región us2, activo desde el 7 de noviembre de 2026.
-- **Módulos:** webhook personalizado → Iterator sobre `alertas` → Gmail (envío) → Google Sheets (agregar fila).
-- **Planilla:** «Precio y Entorno CABA - Alertas (venta y alquiler)». Tiene operación, precio, moneda, expensas y los datos del aviso, más `valoracion` y `motivo` para la validación con una inmobiliaria.
+- **Nombre:** «Precio y Entorno CABA - Alertas», en la región us2. Estuvo activo del 7 al 9 de noviembre de 2026. Ese día lo reemplazaron los escenarios de la sección 8.1 y quedó inactivo, sin borrar.
+- **Diseño propuesto, no implementado:** webhook personalizado → Router con cuatro rutas. El escenario real recorría `alertas` y mandaba un correo y una fila por cada una.
+
+| Ruta | Filtro | Módulos | Para qué |
+| --- | --- | --- | --- |
+| 1 · Registro | ninguno | Google Sheets › Add a row en «Corridas»: fecha, operación, estado, sitios, leídos, nuevos, repetidos, descartados, cantidad y error | Registro de ejecución |
+| 2 · Fallo | `estado` = `error` | Gmail › Send an email al equipo, con `error` y `fecha` | Fallo controlado |
+| 3 · Resumen | `cantidad` > 0 | Iterator sobre `busquedas` → Gmail › Send an email con asunto `asunto` y cuerpo HTML `html` | Un correo por búsqueda, no por aviso |
+| 4 · Detalle | `cantidad` > 0 | Iterator sobre `alertas` → Google Sheets › Add a row en «Alertas» | Una fila por alerta, con `valoracion` y `motivo` para validar |
+
+- **Corridas que faltan:** un segundo escenario, programado una vez por día, busca la última fila de «Corridas» y manda un correo si tiene más de 3 días. Cubre el caso en que la PC estuvo apagada y `actualizar.py` no llegó a correr.
+- **Destinatarios por búsqueda (opcional):** una pestaña «Búsquedas» con número de búsqueda y correo del responsable. En la ruta 3, un Search rows por `busqueda` elige el destinatario. Los correos quedan en la planilla y no pasan por el repositorio.
+- **Planilla:** «Precio y Entorno CABA - Alertas (venta y alquiler)». La pestaña «Alertas» tiene operación, precio, moneda, expensas y los datos del aviso, más `valoracion` y `motivo` para la validación con una inmobiliaria. La pestaña «Corridas» es nueva.
+- **Operaciones de Make:** por corrida, 1 del webhook, 1 de la fila de registro, 1 por búsqueda con avisos y 1 por alerta. Antes eran 2 por alerta.
 - **Seguridad:** el código solo acepta URLs https de `*.make.com`. Un fallo de envío queda registrado y no frena la actualización.
+- **Código de salida:** `actualizar.py` termina con código 1 si la corrida falló, así el Programador de tareas también lo muestra.
 - **Vencimiento:** la conexión de Gmail vence el 6 de mayo de 2027.
-- **Prueba sin capturar:** `python -m precio_entorno.actualizar --probar-make` envía una alerta ficticia.
+- **Prueba sin capturar:** `python -m precio_entorno.actualizar --probar-make [alertas|sin-novedades|error]` envía una corrida ficticia de cada tipo (catálogo `prueba-ficticia`). Para que Make reconozca los campos nuevos, poner el webhook en «Redetermine data structure» y enviar primero `--probar-make alertas`.
+
+### 8.1 Actor de alertas
+
+La dinámica de destino deja a Make como orquestador. Make lee las búsquedas activas de la planilla, lanza en Apify el Actor propio `precio-entorno-alertas` y le manda a cada persona sus departamentos nuevos. Con esto, la PC ya no necesita estar encendida. Los mails de las personas quedan en la planilla, y al Actor solo llegan los criterios de búsqueda.
+
+```mermaid
+sequenceDiagram
+  participant M as Make (programado)
+  participant SH as Sheets «Búsquedas»
+  participant AP as Actor precio-entorno-alertas
+  participant KV as Almacén «precio-entorno-vistos»
+  participant G as Gmail
+  M->>SH: búsquedas activas (sin mails)
+  M->>AP: Run Actor · entrada = criterios
+  AP->>KV: IDs ya vistos por operación
+  AP->>AP: captura educada · valida · descarta lo visto · cruza
+  AP->>KV: IDs vistos actualizados
+  AP-->>M: dataset (un ítem por búsqueda con avisos) + OUTPUT (resumen)
+  M->>SH: mail de cada búsqueda
+  M->>G: un correo por persona
+```
+
+| Pieza | Archivo | Qué hace |
+| --- | --- | --- |
+| Núcleo | `precio_entorno/actor_alertas.py` | Valida la entrada, captura con `run_capture`, valida con `parse_listings`, descarta los IDs vistos y cruza con `matching.matches`. No depende del SDK y se prueba sin red. |
+| Entrada | `precio_entorno/actor_main.py` | Usa el SDK `apify`: lee la entrada, carga y guarda los IDs vistos en el almacén con nombre, publica el dataset y el registro `OUTPUT` |
+| Configuración | `.actor/actor.json`, `.actor/input_schema.json`, `.actor/Dockerfile`, `.actor/requirements.txt` | Imagen `apify/actor-python:3.13` con el paquete y nada más; `.dockerignore` deja afuera datos, `.env` y notebooks |
+
+- **Entrada:** `busquedas` (id, operacion, barrio, presupuesto, moneda, superficie, ambientes, ambientesOMas), `sitios` (solo los de `DEFAULT_SITES`), `maxAvisosPorSitio` (1–200, 50 por defecto), `alertarPrimeraCorrida` y `autorizacionConfirmada`, que es obligatoria.
+- **Línea de base:** la primera corrida de cada operación solo guarda los IDs vigentes y no alerta, salvo que `alertarPrimeraCorrida` sea verdadero. Así no llega un correo con todo el catálogo.
+- **Salida:** un ítem del dataset por búsqueda con avisos nuevos (`busqueda`, `operacion`, `descripcion`, `cantidad`, `asunto`, `texto`, `html`, `avisos` y `alertas`), con el mismo formato que el webhook. El registro `OUTPUT` trae el `estado` (`ok`, `parcial` o `error`) y los conteos por operación.
+- **Fallos:** un sitio bloqueado deja la corrida `parcial` y no la frena. Un fallo inesperado deja la corrida en FAILED con el `OUTPUT` completo, y los IDs vistos de esa operación no se tocan.
+- **Costo:** el Actor no cobra por evento, así que el tope es de plataforma: memoria × duración. Con 512 MB y un *timeout* de 900 s, una corrida no puede pasar de 0,125 unidades de cómputo.
+- **Prueba local:** `python -m unittest tests.test_actor_alertas`.
+
+**Alta de búsquedas desde la web.** Con datos reales, la ficha del barrio tiene un campo de mail opcional junto a «Crear alerta». La API guarda la búsqueda en SQLite, como siempre, y además manda un alta al webhook `MAKE_BUSQUEDAS_WEBHOOK_URL`. El mail no se guarda en la base local ni en los registros. Si el webhook no está configurado, la alerta local se crea igual y la web avisa que el correo no quedó activo.
+
+```json
+{
+  "tipo": "alta",
+  "fecha": "2026-11-09T12:00:00+00:00",
+  "busqueda": {"id": "k3Jx9…", "operacion": "venta", "barrio": "Boedo", "presupuesto": 100000,
+               "moneda": "USD", "superficie": 35, "ambientes": 2, "ambientesOMas": false},
+  "descripcion": "Boedo · hasta USD 100.000 · 35 m² o más · 2 ambientes",
+  "email": "persona@example.com"
+}
+```
+
+El `id` es aleatorio (`secrets.token_urlsafe`): identifica la búsqueda ante el Actor y sirve de clave para la baja. Dos personas con los mismos filtros tienen dos altas distintas.
+
+**Escenarios de Make, activos desde el 9 de noviembre de 2026.** Los crea `python -m precio_entorno.make_escenarios crear` por la API de Make (región us2) con el token `MAKE_API_TOKEN` del `.env`. Los blueprints se arman en ese módulo y no guardan secretos en Git. La URL del webhook queda en el `.env` como `MAKE_BUSQUEDAS_WEBHOOK_URL`, y `python -m precio_entorno.make_escenarios estado` lista los escenarios.
+
+| Escenario | ID | Disparador | Módulos |
+| --- | --- | --- | --- |
+| Precio y Entorno CABA - Búsquedas | 6964615 | Webhook `precio-entorno-busquedas`, inmediato | Router. **Alta** (`tipo` = alta): Sheets › Add a row en «Busquedas» con `activa` = si → respuesta `{"ok": true}`. **Baja** (`?tipo=baja&id=…`): Sheets › Search rows por `id` → Update a row con `activa` = no y `fecha_baja` → página «Listo» |
+| Precio y Entorno CABA - Alertas con Apify | 6964616 | Programado cada 2 días | Sheets › Search rows con `activa` = si → Text aggregator, que arma el JSON de criterios **sin** `email` → Apify › Run an Actor (`precio-entorno-alertas`, sincrónico) → Router. **Registro:** fila en «Corridas» (fecha, estado, mensaje, corrida, costo) y Gmail al equipo si el estado no es SUCCEEDED. **Avisos:** Apify › Get dataset items → por cada búsqueda, Sheets › Search rows por `id` y `activa` = si → Gmail al `email` con `asunto`, `html` y el enlace de baja → una fila por aviso en la pestaña de alertas (`Untitled`) |
+
+- **Planilla:** «Precio y Entorno CABA - Alertas (venta y alquiler)», con las pestañas `Untitled` (alertas), `Busquedas` y `Corridas`. «Busquedas» va sin tilde porque Make no lee nombres de pestaña con caracteres no ASCII en el rango ("Unable to parse range"). Los encabezados los escribe `make_escenarios encabezados`.
+- **Plan Free de Make:** permite 2 escenarios activos. Para dejarles lugar a estos dos se desactivaron `humo_firms_nrt_diario` (de otro proyecto, sin borrarlo) y el escenario anterior «Precio y Entorno CABA - Alertas» (6946933). Con este último inactivo, el webhook de `actualizar.py` y la tarea de Windows ya no mandan correos.
+- **Conexiones:** Gmail y Google son las del escenario anterior. La de Apify, `Apify cuenta 4`, solo habilita *Run an Actor* y *Get Dataset Items*.
+
+**Prueba de punta a punta (9/11).**
+1. **Alta y baja:** una búsqueda `prueba-1` entró como fila en «Busquedas» y el enlace de baja la dejó con `activa` = no.
+2. **Línea de base:** se vació el almacén de IDs vistos del piloto y se corrió una línea de base con 100 avisos por sitio: 283 de venta y 250 de alquiler, los cuatro sitios completos, USD 0,016.
+3. **Alertas:** se borraron de ese almacén los IDs de RE/MAX de venta y se dio de alta `prueba-2` (Palermo, hasta USD 600.000, 30 m², 1 ambiente o más). Make leyó la búsqueda, corrió el Actor (1 min, USD 0,002), recibió 10 avisos nuevos, mandó el correo y escribió las filas.
+4. **Ejecución doble:** la prueba corrió dos veces en paralelo, porque Make ejecuta el escenario al activarlo y además se pidió una ejecución por la API. Por eso hay filas y correos duplicados de `prueba-2`. Para no repetirlo, no hay que lanzar ejecuciones manuales justo después de activar el escenario.
+5. **Cierre:** `prueba-2` quedó dada de baja.
+
+**Piloto del 9 de noviembre de 2026.** El Actor está en la cuenta 4 de Apify (privado, ID `3wcrJJOBg9qg00cHl`). Se subió por la API, sin el CLI, con la entrada `.actor/piloto-input.json`: dos búsquedas de venta en Caballito y Almagro, 12 avisos por sitio, 512 MB y 900 s.
+
+| Corrida | Duración | Leídos | Nuevos | Alertas | Costo |
+| --- | --- | --- | --- | --- | --- |
+| 1 · con `alertarPrimeraCorrida` | 59 s | 36 | 36 | 1 (Almagro) | USD 0,0010 |
+| 2 · un minuto después | 63 s | 36 | 11 | 0 | USD 0,0006 |
+| 3 · con la ventana de Migliorisi corregida | 23 s | 24 | 1 | 0 | USD 0,0008 |
+
+- **Acceso desde Apify:** Century 21, Migliorisi y RE/MAX respondieron completos desde las IPs de Apify. Mob da 0 avisos en venta porque solo publica alquileres. El ERROR de curl del registro corresponde al `robots.txt` de la API de RE/MAX, que entra en un bucle de redirecciones y se trata como inexistente, igual que desde la PC.
+- **Corrección:** en la corrida 2, Migliorisi devolvió 12 avisos más viejos, porque el tope contaba solo los avisos desconocidos y el adaptador seguía de página en página. Ahora las fichas conocidas cuentan dentro de la ventana de recientes (`scrape_migliorisi`), y la corrida 3 lo confirmó.
+- **Gasto total del piloto:** unos USD 0,008, contando las dos construcciones de la imagen. La cuenta 4 quedó en USD 4,138 de 5.
 
 ## 9. Análisis y modelo
 
@@ -393,6 +503,9 @@ sequenceDiagram
 | --- | --- | --- |
 | `APIFY_TOKEN` a `APIFY_TOKEN_4` | Corridas de Apify, una cuenta por línea | Rotar: se expusieron en una sesión de trabajo anterior |
 | `MAKE_WEBHOOK_URL` | Envío de alertas | En uso |
+| `MAKE_BUSQUEDAS_WEBHOOK_URL` | Altas de búsquedas con aviso por correo, desde la web | En uso; lo escribe `make_escenarios crear` |
+| `MAKE_API_TOKEN` | Crear y revisar los escenarios por la API de Make | En uso: scopes `scenarios:read`, `scenarios:write`, `scenarios:run`, `hooks:read`, `hooks:write` y `connections:read` |
+| `MAKE_EQUIPO_EMAIL` | Destinatario de los avisos de corridas fallidas | En uso |
 | `ML_CLIENT_ID`, `ML_CLIENT_SECRET` | App de Mercado Libre | Quitar: la vía quedó cerrada (403) |
 
 - El código nunca imprime valores del `.env`, solo nombres de variables.

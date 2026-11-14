@@ -73,6 +73,20 @@ class AdapterTests(unittest.TestCase):
         self.assertEqual((listings[0]['latitude'], listings[0]['total_area_m2']), (-34.618, 48.0))
         self.assertEqual(dict(skipped), {'fuera_de_caba': 1, 'fuera_de_alcance': 1})
         self.assert_no_contacts(listings)
+        # Sin datos del edificio, los campos opcionales quedan vacíos.
+        self.assertEqual([listings[0][k] for k in ('age_years', 'condition', 'garages', 'floor')], [None] * 4)
+
+    def test_century21_building_fields(self):
+        page = c21_page([c21_item('1', construction_year=1960, property_condition='Muy Bueno', garage=1, addr_floor='9°F'),
+                         c21_item('2', construction_year=2028, property_condition='En construcción', addr_floor='PB'),
+                         c21_item('3', construction_year=0, property_condition='Raro', garage=None, addr_floor='')], 3)
+        listings, _, _ = parse_century21(page, CAPTURED)
+        fields = [[l[k] for k in ('age_years', 'condition', 'garages', 'floor')] for l in listings]
+        self.assertEqual(fields, [[66, 'Muy Bueno', 1, 9], [0, 'En construcción', None, 0], [None, 'Raro', None, None]])
+        valid, report = parse_listings(json.dumps(listings).encode(), 'avisos.json', CATALOG)
+        self.assertEqual([v['condition'] for v in valid], ['muy bueno', 'en construcción', None])
+        self.assertEqual(report.invalid['condition'], 1)   # Un estado desconocido no se inventa.
+        self.assertEqual([v['age_years'] for v in valid], [66, 0, None])
 
     def test_migliorisi_list_and_detail(self):
         page = ('<a href="/propiedad/ver/a1/depto"> <div class="x"> <img title="DEPARTAMENTO. 2 ambientes.  '
@@ -90,6 +104,11 @@ class AdapterTests(unittest.TestCase):
                           listing['total_area_m2'], listing['rooms'], listing['neighborhood']),
                          (1100540, 'USD', 52.5, 56.5, 2, 'Almagro'))
         self.assert_no_contacts([listing])
+        self.assertIsNone(listing['age_years'])
+        aged = detail + '<td>Antiguedad</td><td>40 años</td>'
+        self.assertEqual(parse_migliorisi_detail(aged, '/propiedad/ver/a1/depto', 'a1', '', CAPTURED)[0]['age_years'], 40)
+        new = detail + '<td>Antigüedad:</td><td>A estrenar</td>'
+        self.assertEqual(parse_migliorisi_detail(new, '/propiedad/ver/a1/depto', 'a1', '', CAPTURED)[0]['age_years'], 0)
         decimal = detail.replace('52,5 m2', '37.49 m2').replace('1.100.540', '888.888')
         listing, _, _ = parse_migliorisi_detail(decimal, '/propiedad/ver/a1/depto', 'a1', '', CAPTURED)
         self.assertEqual((listing['covered_area_m2'], listing['price']), (37.49, None))

@@ -5,7 +5,7 @@ from pathlib import Path
 
 import streamlit as st
 
-from precio_entorno import entorno, mapa
+from precio_entorno import concentracion, entorno, mapa
 from precio_entorno.bases import demo_rentals, operation_path
 from precio_entorno.importing import BARRIOS, import_crimes, import_listings, usable_pin
 from precio_entorno.inmobiliarias import CATALOGS
@@ -30,9 +30,9 @@ def file_digest(path, stamp):
     return sha256(Path(path).read_bytes()).hexdigest()
 
 
-@st.cache_data(show_spinner='Ubicando hechos registrados…')
-def crime_map(path, digest, period, kind, bbox):
-    return entorno.crime_cells(path, period, kind, bbox)
+@st.cache_resource(show_spinner='Preparando los años del Mapa del Delito…')
+def crime_index(signature):
+    return concentracion.CrimeIndex([item[0] for item in signature])
 
 
 def money(value, currency):
@@ -96,7 +96,8 @@ if not demo:
     word = 'precios publicados' if operation == 'venta' else 'alquileres publicados'
     st.caption(f'Catálogo {source} · {len(in_currency)} avisos aptos para comparar {word} en {currency} · '
                f'{sum(map(usable_pin, in_currency))} también tienen pin utilizable.')
-    st.caption('El contexto se cruza por barrio. Un pin utilizable tiene coordenadas plausibles '
+    st.caption('La comparación general resume el barrio. La capa de registros permite elegir un inmueble '
+               'y contar hechos en tres radios. Un pin utilizable tiene coordenadas plausibles '
                'y precisión de hasta 100 m declarada por la fuente.')
 if operation == 'alquiler':
     st.caption('Precios de alquiler mensuales publicados, sin expensas. No se convierten pesos a dólares.')
@@ -127,6 +128,7 @@ def environment_map():
                       key=f"layers-{'|'.join(prefs)}") or []
     controls = st.columns(3)
     noise_period, crime, crime_label, school = 'diurno', None, '', level
+    analysis, focus, radius, persistent = None, None, 500, False
     if 'Escuelas' in active and 'Escuelas' not in prefs:
         school = controls[0].selectbox('Nivel educativo', mapa.LEVEL_NAMES, index=1, format_func=str.capitalize)
     if 'Ruido' in active:
@@ -137,31 +139,82 @@ def environment_map():
         if demo:
             st.info('En la demo los delitos son ficticios y no se ubican en el mapa.')
         else:
-            crime_file, periods = store.crime_periods()
-            path = ROOT / 'data/raw' / crime_file['filename'] if crime_file else None
-            if not crime_file:
-                st.info('Cargá el CSV del Mapa del Delito para ver esta capa.')
-            elif not path.exists() or file_digest(str(path), path.stat().st_mtime) != crime_file['digest']:
-                st.info(f"Para ubicar los hechos, guardá {crime_file['filename']} en data/raw/. "
-                        'Tiene que ser el mismo archivo que se cargó.')
+            paths = concentracion.source_paths(ROOT / 'data/raw')
+            if not paths:
+                crime_file, _ = store.crime_periods()
+                path = ROOT / 'data/raw' / crime_file['filename'] if crime_file else None
+                if path and path.exists() and file_digest(str(path), path.stat().st_mtime) == crime_file['digest']:
+                    paths = (path,)
+            if not paths:
+                st.info('Faltan CSV anuales oficiales en data/raw/ o el archivo que se importó, con su misma huella.')
             else:
-                c1, c2 = st.columns(2)
-                period = c1.selectbox('Mes del hecho', periods, key='map-period')
-                bbox = entorno.bbox_of(layers['barrios'], neighborhood)
-                crime, kinds = crime_map(str(path), crime_file['digest'], period, None, bbox)
-                kind = c2.selectbox('Tipo de delito', ['Todos'] + sorted(kinds), key='map-kind')
-                if kind != 'Todos':
-                    crime = crime_map(str(path), crime_file['digest'], period, kind, bbox)[0]
-                crime_label = f"{period} · {'todos los tipos' if kind == 'Todos' else kind}"
-                if not crime:
-                    st.info('No hay hechos con coordenadas para ese mes y tipo en la zona.')
-    deck, legend = mapa.build(layers, neighborhood, active, school, noise_period, crime, crime_label)
+                try:
+                    index = crime_index(tuple((str(p), p.stat().st_mtime_ns, p.stat().st_size) for p in paths))
+                    c1, c2, c3 = st.columns(3)
+                    chosen = c1.selectbox('Vista de registros', ['Persistencia'] + index.years, key='crime-year')
+                    kind = c2.selectbox('Tipo', ['todos', 'robo', 'hurto'], key='crime-kind',
+                                        format_func=lambda k: {'todos': 'Robos y hurtos', 'robo': 'Robo · fuerza o violencia', 'hurto': 'Hurto · sin violencia'}[k])
+                    band = c3.selectbox('Horario', ['todas', 'diurno', 'nocturno', 'sin_dato'], key='crime-band',
+                                        format_func=lambda b: {'todas': 'Todos', 'diurno': 'Día · 06–19:59', 'nocturno': 'Noche · 20–05:59', 'sin_dato': 'Sin horario'}[b])
+                    candidates = {i['id']: i for i in listings if i['neighborhood'] == neighborhood and usable_pin(i)}
+                    selected = st.selectbox('Entorno de un inmueble', [''] + list(candidates),
+                                            format_func=lambda i: f"{i} · {money(candidates[i]['price'], candidates[i]['currency'])}" if i else 'Vista general · celdas de 200 m')
+                    radius = st.select_slider('Radio acumulativo (m)', options=list(concentracion.RADIOS), value=500)
+                    persistent = chosen == 'Persistencia'
+                    analysis = index.analyze(entorno.bbox_of(layers['barrios'], neighborhood),
+                                             candidates.get(selected), radius, kind, band,
+                                             None if persistent else chosen)
+                    focus = analysis['inmueble']
+                    crime = [dict(cell, hechos=len(cell['anios_altos']))
+                             for cell in analysis['celdas'] if cell['persistente']] if persistent else [
+                                 cell for cell in analysis['celdas'] if cell['hechos'] > 0]
+                    crime_label = f"{', '.join(map(str, index.years)) if persistent else chosen} · {kind} · {band} · celda de 200 m"
+                    if not crime:
+                        st.info('Sin celdas persistentes con estos filtros; no implica ausencia de delitos.' if persistent
+                                else 'Sin registros geolocalizados con estos filtros; no implica ausencia de delitos.')
+                except (OSError, ValueError) as error:
+                    st.error(f'No se pudo analizar el Mapa del Delito: {error}')
+    deck, legend = mapa.build(layers, neighborhood, active, school, noise_period, crime, crime_label,
+                              focus=focus, radius=radius, persistence=persistent)
     st.pydeck_chart(deck, height=520)
     if legend:
         st.markdown(mapa.legend_html(legend), unsafe_allow_html=True)
     for layer in active:
         if layer != 'Delitos registrados' or crime:
             st.caption(mapa.NOTES[layer])
+    if analysis:
+        st.markdown('**Registros y contexto**')
+        st.write(concentracion.LIMITACIONES[0])
+        if analysis['revision_2025']:
+            st.warning(analysis['revision_2025'])
+            st.markdown(f'[Ficha oficial de 2025]({concentracion.REVISION_URL})')
+        st.caption(analysis['unidad'])
+        if analysis['resumen_radios']:
+            import pandas as pd
+            summary = pd.DataFrame(analysis['resumen_radios'])
+            selected_summary = summary[summary['radio_m'] == radius]
+            if kind != 'todos':
+                selected_summary = selected_summary[selected_summary['tipo'] == kind]
+            chart = selected_summary.pivot(index='anio', columns='tipo', values='total' if band == 'todas' else band)
+            chart.index = chart.index.astype(str)
+            st.bar_chart(chart, stack=False, x_label='Año del hecho', y_label=f'Hechos registrados a {radius} m')
+            st.caption(f'Gráfico: {kind}, horario {band}. Los años con meses faltantes son parciales, sin anualizar.')
+            st.dataframe(summary.rename(columns={'anio': 'Año', 'radio_m': 'Radio (m)', 'tipo': 'Tipo',
+                                                  'diurno': 'Día', 'nocturno': 'Noche', 'sin_dato': 'Sin horario',
+                                                  'total': 'Total'}), hide_index=True)
+            st.caption('Conteos acumulativos sin filtros de tipo ni horario. No sumar radios. '
+                       f"Precisión informada del pin del aviso: {focus['precision_m']} m.")
+        else:
+            st.caption('Elegí un inmueble con pin preciso para comparar los tres radios. No se usa el centro del barrio.')
+        with st.expander('Persistencia, cobertura y limitaciones'):
+            st.write(analysis['persistencia']['definicion'])
+            if not analysis['persistencia']['disponible']:
+                st.info('Faltan dos años con registros observados en los 12 meses para evaluar persistencia.')
+            st.dataframe(analysis['cobertura'], hide_index=True)
+            for note in analysis['limitaciones'][1:]:
+                st.write(note)
+            st.json(analysis['calidad'])
+            st.dataframe(analysis['fuentes'], hide_index=True)
     summary = layers['resumen'][neighborhood]
     with st.expander(f'Ficha de {neighborhood}'):
         facts = {'Comuna': summary['comuna'], 'Superficie del barrio (ha)': summary['area_ha']}
@@ -284,7 +337,9 @@ if alerts:
     for a in alerts:
         row = {'Búsqueda': a['search_id'], 'Aviso': a['id'], 'Barrio': a['neighborhood'],
                'Precio publicado': money(a['price'], a['currency']),
-               'Superficie cubierta (m²)': a['covered_area'], 'Ambientes': a['rooms']}
+               'Superficie cubierta (m²)': a['covered_area'], 'Ambientes': a['rooms'],
+               'Vigencia': {'baja': 'Ya no está publicado', 'reservado': 'Reservado',
+                            'no_visto': 'No visto en el último barrido'}.get(a.get('status'), 'Publicado')}
         if operation == 'alquiler':
             row['Expensas'] = money(a.get('expenses'), 'ARS')
         if not demo:

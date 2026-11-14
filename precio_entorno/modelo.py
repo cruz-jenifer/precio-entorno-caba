@@ -217,11 +217,15 @@ def comparables(train, test):
     return np.array(preds), dict(levels)
 
 
-def boosting(train, test, features, seed):
+def boosting_model(features, seed):
     from sklearn.ensemble import HistGradientBoostingRegressor
-    model = HistGradientBoostingRegressor(
+    return HistGradientBoostingRegressor(
         loss='absolute_error', learning_rate=0.05, max_iter=300, min_samples_leaf=10,
         categorical_features=[f in ('barrio_code', 'agency_code') for f in features], random_state=seed)
+
+
+def boosting(train, test, features, seed):
+    model = boosting_model(features, seed)
     model.fit(train[features], train['precio_m2'])
     return model.predict(test[features])
 

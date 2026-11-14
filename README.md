@@ -2,6 +2,12 @@
 
 Prototipo local de búsqueda inmobiliaria. Una persona ingresa sus preferencias, compara barrios, guarda una búsqueda y recibe una alerta cuando aparece un aviso que coincide. Los delitos registrados se muestran como contexto y se analizan por separado para el capstone.
 
+El [plan de entrega del capstone](docs/plan-capstone.md) reúne el cronograma de la profesora, las evidencias del repositorio y los pendientes para Analytics, Inference y la defensa comercial.
+
+La [entrega de Producto 1 del 12/11](docs/entrega-12-11.md) incluye la auditoría de cumplimiento, muestras analíticas, diccionario, guion de demo y acciones de cierre por rol.
+
+La [guía del flujo de trabajo](docs/flujo-de-trabajo.md) conecta la operación del producto con Analytics, Inference y el seguimiento en Trello.
+
 ## Ejecutar en Windows
 
 Desde la carpeta `precio-entorno-caba`, en PowerShell:
@@ -28,6 +34,7 @@ Abrí http://127.0.0.1:8000. La API corre solo en la computadora local y su docu
 - **Mapa de la ciudad:** cada barrio tiene un tono según cuántos avisos encajan. Al pasar el cursor por un barrio en la lista, se resalta en el mapa, y al revés.
 - **Ficha del barrio:** al elegir un barrio, el mapa se acerca y la lista pasa a ser su ficha, con el entorno, los avisos que encajan y el botón **Crear alerta**. Los botones sobre el mapa encienden y apagan cada capa.
 - **Datos de ejemplo y reales:** el selector de arriba a la derecha cambia de base. En los datos de ejemplo, una franja avisa que los avisos y los delitos son ficticios.
+- **Registros cerca del aviso:** en datos reales, **Ver registros cerca** abre radios de 250, 500 y 1.000 m para avisos con pin preciso. Se separan robos y hurtos, día y noche, con comparación anual y persistencia. Se usan los CSV anuales oficiales locales y se muestra la advertencia de revisión del informe ejecutivo de 2025. Ver [metodología y límites](docs/mapa-registros.md).
 - **Celular:** el mapa ocupa la pantalla y la lista sube desde abajo.
 
 El diseño está descripto en [docs/ui.md](docs/ui.md).
@@ -176,7 +183,35 @@ Las capas se generan una vez con los archivos de `data/raw/badata-entorno/` y `d
 python -m precio_entorno.entorno
 ```
 
+El mismo comando cuenta por barrio los restaurantes, cafés y bares de la captura de OpenStreetMap más reciente (`data/raw/osm-AAAAMMDD/`). La ficha los muestra con la cita «© colaboradores de OpenStreetMap». Con `--sin-osm` se omiten.
+
 El detalle de cada fuente está en [docs/datos.md](docs/datos.md#capas-del-entorno-buenos-aires-data).
+
+### Barrios parecidos
+
+La ficha de cada barrio sugiere 3 barrios con un entorno parecido, para descubrir opciones que la persona no tenía en cuenta. Primero van los que tienen avisos que encajan con la búsqueda.
+
+- **Qué compara:** solo el entorno. Entran estaciones de subte, espacio verde, escuelas del nivel elegido y salud pública (las cuatro por superficie), ruido de día, riesgo hídrico y gastronomía de OSM. Los precios y los delitos no entran en la comparación.
+- **Cómo:** cada capa se lleva a una escala de 0 a 1 entre el mínimo y el máximo de CABA, logarítmica para las densidades. Lo que la persona marcó en «Me importa» pesa doble.
+- **Qué muestra:** no hay puntaje. Cada sugerencia dice en qué se parece («Ruido de día: 84 % y 82 % en Almagro») y en qué difiere («Más espacio verde: 2,4 contra 0,2 en Almagro»). Como información aparte, da la mediana de los avisos que encajan y la diferencia con el barrio elegido.
+
+Lo calcula `precio_entorno/parecidos.py` y lo sirve `/api/barrios/{barrio}/parecidos`, con los mismos filtros que `/api/barrios` más `prefs` y `nivel`.
+
+### Dónde comer (Google Places)
+
+La ficha del barrio muestra los restaurantes, cafés y bares más valorados en Google. Los datos salen de la API oficial de Places (New), nunca de una extracción de Google Maps. La sección aparece solo con datos reales y con la clave configurada.
+
+- **Cuándo consulta:** solo cuando la persona toca «Ver los más valorados en Google» o cambia el tipo de lugar. Cada consulta hace hasta 2 llamadas de Text Search Enterprise.
+- **Qué guarda:** nada de Google. Las calificaciones no se guardan ni se cachean, no se dibujan en el mapa y no alimentan el modelo.
+- **Qué muestra:** los lugares dentro del barrio con al menos 200 reseñas, ordenados por calificación. Si no hay, ofrece bajar el mínimo a 50.
+
+Para habilitarla:
+
+1. Crear un proyecto de Google Cloud con facturación activa y habilitar Places API (New). Lleva tarjeta, aunque el uso quede dentro del tramo gratis.
+2. Poner una cuota diaria en la consola (por ejemplo, 30 llamadas por día) y una alerta de presupuesto.
+3. Copiar la clave en `.env` como `GOOGLE_MAPS_API_KEY`. Opcional: `PRECIO_ENTORNO_LUGARES_TOPE_MES`, el tope mensual de llamadas, que por defecto es 900, debajo de las 1.000 gratis.
+
+El servidor cuenta cada llamada por mes en `data/local/lugares-consumo.sqlite3`, fuera de Git, y deja de consultar al llegar al tope. Las reglas de Google que dan forma a la sección están en [docs/ui.md](docs/ui.md#dónde-comer-google-places-en-vivo).
 
 ## Captura de inmobiliarias autorizadas
 
@@ -211,6 +246,20 @@ El [informe de avisos](docs/eda-avisos.md) describe la calidad de la captura, la
 python -m precio_entorno.eda_avisos data/raw/inmobiliarias-20261107
 ```
 
+## EDA de oportunidades (Colab)
+
+El notebook [`notebooks/eda_oportunidades.ipynb`](notebooks/eda_oportunidades.ipynb) explora los datos reales pensando en la app: confianza de la mediana por barrio, qué mueve el USD/m² dentro de un barrio, umbrales de presupuesto, barrios parecidos y más accesibles, avisos por debajo de sus comparables, relación precio/alquiler y posibles duplicados con precio distinto. Cada sección cierra con una propuesta para la app. Son precios de publicación, no tasaciones.
+
+1. Generar el paquete de datos, que queda en `data/processed/eda-colab/eda_bundle.zip` (fuera de Git, sin contactos de anunciantes):
+
+   ```powershell
+   python -m precio_entorno.eda_colab
+   ```
+
+2. Abrir el notebook en Colab y subir el .zip cuando lo pida, o dejarlo en `MyDrive/precio-entorno-caba/`. Localmente, lo encuentra solo.
+
+El notebook se genera desde `notebooks/build_eda_oportunidades.py`: editar ese archivo y volver a correrlo. El tipo de cambio de la sección de alquiler (`TC_ARS_POR_USD`) es un supuesto que hay que actualizar.
+
 ## Informe exploratorio de delitos
 
 El [informe](docs/eda-delitos.md) analiza los CSV oficiales de 2024 y 2025 por tipo, mes, franja y barrio. Todavía no hay datos publicados de 2026. Para regenerar sus tablas y gráficos con todos los `data/raw/delitos_20*.csv`:
@@ -225,6 +274,14 @@ El [pipeline del modelo](docs/modelo.md) cruza los avisos con los delitos de los
 
 ```powershell
 python -m precio_entorno.modelo data/raw/<carpeta>/avisos.json --catalogo zonaprop
+```
+
+### Comparación de seis modelos
+
+`precio_entorno.comparar_modelos` entrena seis modelos de scikit-learn con la misma partición: regresión lineal, árbol de decisión, random forest, HistGradientBoosting, MLP y ElasticNet. La mediana de comparables queda como referencia. Ganan los ensambles: HistGradientBoosting llega a 469 USD/m² en la validación cruzada, y a 410 al sumar antigüedad y cocheras. Los resultados y su lectura están en [docs/modelo.md](docs/modelo.md#comparación-de-seis-modelos--14-de-noviembre-de-2026).
+
+```powershell
+python -m precio_entorno.comparar_modelos --control-inmobiliaria
 ```
 
 ## Datos reales en la app y validación
@@ -259,15 +316,36 @@ schtasks /Delete /TN "PrecioEntornoCABA\Actualizar avisos" /F
 
 ### Alertas por correo con Make
 
-Si `MAKE_WEBHOOK_URL` está en el entorno o en `.env`, cada actualización con alertas nuevas las envía a ese webhook de Make. La URL tiene que ser `https` en un dominio `*.make.com`. Por cada alerta viajan la búsqueda, el aviso, el barrio, el precio, la superficie, los ambientes y el enlace, sin datos personales. Si el envío falla, se reintenta una vez y el resultado queda en `actualizaciones.jsonl`, sin detener la actualización.
+Si `MAKE_WEBHOOK_URL` está en el entorno o en `.env`, cada actualización envía su resumen a ese webhook de Make, haya alertas o no, y también si falló. La URL tiene que ser `https` en un dominio `*.make.com`. Viajan el estado de la corrida (`ok`, `parcial` o `error`), los conteos y las alertas nuevas, sueltas y agrupadas por búsqueda con un resumen listo para el correo. De cada aviso viajan la búsqueda, el ID, el barrio, el precio, la superficie, los ambientes y el enlace, sin datos personales. Si el envío falla, se reintenta una vez y el resultado queda en `actualizaciones.jsonl`, sin detener la actualización. Si la corrida falla, `actualizar.py` termina con código 1.
 
-El escenario **"Precio y Entorno CABA - Alertas"** (Make, región us2) está activo desde el 7 de noviembre de 2026. Recibe el webhook, recorre `alertas` y, por cada una, envía un correo con Gmail y agrega una fila en la planilla de Google Sheets "Precio y Entorno CABA - Alertas (venta y alquiler)". La planilla tiene operación, precio, moneda, expensas y los datos del aviso, más `valoracion` y `motivo` para la validación con la inmobiliaria. La primera planilla, "Precio y Entorno CABA - Alertas", quedó sin uso y solo tiene una fila de prueba. Las conexiones de Google se autorizan desde un navegador que permita ventanas emergentes, y la de Gmail vence el 6 de mayo de 2027. Para probarlo con una alerta ficticia, sin capturar ni importar:
+El escenario **"Precio y Entorno CABA - Alertas"**, que recibía este webhook, quedó inactivo el 9 de noviembre de 2026. Desde entonces, las alertas por correo las orquesta Make con Apify. «Precio y Entorno CABA - Búsquedas» recibe las altas y bajas de la web. «Precio y Entorno CABA - Alertas con Apify» corre cada 2 días el Actor `precio-entorno-alertas` y escribe a cada persona. Los dos escenarios se crean con `python -m precio_entorno.make_escenarios crear` y están descritos en la [arquitectura](docs/arquitectura.md#81-actor-de-alertas). Ambos usan la planilla de Google Sheets "Precio y Entorno CABA - Alertas (venta y alquiler)". La planilla tiene operación, precio, moneda, expensas y los datos del aviso, más `valoracion` y `motivo` para la validación con la inmobiliaria. La primera planilla, "Precio y Entorno CABA - Alertas", quedó sin uso y solo tiene una fila de prueba. Las conexiones de Google se autorizan desde un navegador que permita ventanas emergentes, y la de Gmail vence el 6 de mayo de 2027. Para probar cada ruta con una corrida ficticia, sin capturar ni importar:
 
 ```powershell
-python -m precio_entorno.actualizar --probar-make
+python -m precio_entorno.actualizar --probar-make alertas
+python -m precio_entorno.actualizar --probar-make sin-novedades
+python -m precio_entorno.actualizar --probar-make error
 ```
 
 La tarea corre solo con la sesión de Windows iniciada. Si una inmobiliaria retira el permiso o empieza a bloquear, quitá su sitio con `--sitios` en `scripts/actualizar.cmd` o deshabilitá la tarea. El [protocolo de validación](docs/validacion-inmobiliaria.md) y su [planilla](docs/plantillas/registro-validacion.csv) guían la prueba de dos semanas con una inmobiliaria: tiempo ahorrado, alertas útiles, costo operativo y disposición a pagar.
+
+## Pipeline Analytics con Make, Apify y Looker Studio
+
+Make baja de Google Drive los avisos crudos y se los pasa al Actor `precio-entorno-analytics` de Apify, que hace el ETL. Guarda en Drive el CSV limpio y se lo pasa al mismo Actor para el EDA. Después carga las seis tablas en una planilla de Google, de donde lee el dashboard de Looker Studio. El recorrido, los costos, cómo correrlo en la demo y la guía del dashboard están en [docs/pipeline-analytics.md](docs/pipeline-analytics.md).
+
+```powershell
+python -m precio_entorno.pipeline_analytics etl data/raw/venta-consolidada-20261108/avisos.json
+python -m precio_entorno.pipeline_analytics eda data/processed/pipeline/dataset_limpio.csv
+```
+
+## Radar de tendencias barriales
+
+Capa editorial de la comparación: cuenta las notas inmobiliarias de Clarín, LA NACION y TN centradas en cada barrio y las aperturas de locales que esas notas reportan con fecha. Mide la cobertura de los medios monitoreados, no la demanda inmobiliaria. Está separada de los avisos, los delitos y los datos de ejemplo.
+
+```bash
+python -m precio_entorno.radar
+```
+
+Toma las notas de los siete días calendario anteriores, guarda cada medio por separado en `data/local/radar/` y muestra el boletín. La interfaz web lo lee de `/api/radar`. La tarea de Windows **PrecioEntornoCABA\Radar de noticias** lo corre los lunes a las 9:00 con [scripts/radar.cmd](scripts/radar.cmd). Fuentes, permisos, reglas de barrios y aperturas, fallas y límites: [docs/radar.md](docs/radar.md).
 
 ## Organización
 

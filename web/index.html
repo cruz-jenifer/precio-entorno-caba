@@ -72,10 +72,33 @@
           </label>
         </div>
       </div>
+      <button class="boton-filtro" id="abrir-preferencias-texto" type="button" hidden>Describí tu búsqueda</button>
     </form>
   </header>
 
   <p class="franja-demo" id="franja-demo">Datos de ejemplo. Los avisos y los delitos son ficticios. El mapa y el entorno son datos abiertos reales.</p>
+
+  <dialog id="dialogo-preferencias" class="preferencias-dialogo" aria-labelledby="titulo-preferencias">
+    <h2 id="titulo-preferencias">Describí tu búsqueda</h2>
+    <form id="interpretar-preferencias">
+      <label for="texto-preferencias">¿Qué estás buscando?</label>
+      <textarea id="texto-preferencias" maxlength="2000" rows="3" required
+        placeholder="Comprar en Almagro, hasta 120 mil dólares, dos ambientes o más"></textarea>
+      <button type="submit">Interpretar</button>
+    </form>
+    <p id="estado-preferencias" role="status"></p>
+    <form id="revisar-preferencias" hidden>
+      <h3>Revisá los filtros</h3>
+      <div id="campos-preferencias" class="preferencias-campos"></div>
+      <ul id="avisos-preferencias"></ul>
+      <label id="confirmar-preferencias" hidden>
+        <input type="checkbox" id="confirmacion-preferencias">
+        Revisé los datos dudosos y acepto los filtros elegidos. Las condiciones sin filtro no se aplicarán.
+      </label>
+      <button type="submit">Aplicar filtros</button>
+    </form>
+    <button id="cancelar-preferencias" type="button">Cancelar</button>
+  </dialog>
 
   <main class="vista">
     <section class="panel" id="panel" aria-label="Barrios">
@@ -107,6 +130,14 @@
       <button class="boton-texto" type="button" data-cerrar>Cerrar</button>
     </div>
     <div id="fuentes-contenido"></div>
+  </dialog>
+
+  <dialog class="dialogo" id="dialogo-radar" aria-labelledby="titulo-radar-detalle">
+    <div class="dialogo-cabeza">
+      <h2 id="titulo-radar-detalle">Radar de tendencias barriales</h2>
+      <button class="boton-texto" type="button" data-cerrar>Cerrar</button>
+    </div>
+    <div id="radar-contenido"></div>
   </dialog>
 
   <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>

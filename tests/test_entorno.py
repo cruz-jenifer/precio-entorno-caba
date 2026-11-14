@@ -126,6 +126,8 @@ class EntornoTests(unittest.TestCase):
         self.assertEqual(len(sources['barrios']['sha256']), 64)
         self.assertTrue(sources['subte']['url'].startswith('https://cdn.buenosaires.gob.ar/'))
         self.assertIn('CC-BY 2.5 AR', sources['cesac']['licencia'])
+        self.assertNotIn('gastronomia', sources)
+        self.assertNotIn('gastronomia', self.summary['Almagro'])
 
     def test_comparison_columns_follow_preferences_without_a_score(self):
         self.assertEqual(entorno.comparison_columns(self.summary['Caballito'], []), {})
@@ -169,6 +171,47 @@ class CrimeCellsTests(unittest.TestCase):
             self.assertEqual([c['hechos'] for c in cells], [4])
             robos, _ = entorno.crime_cells(path, '2025-03', kind='Robo', bbox=(-58.46, -34.63, -58.43, -34.60))
             self.assertEqual([c['hechos'] for c in robos], [3])
+
+
+class GastronomiaOsmTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.root = Path(self.temp.name)
+        self.poi, self.raw = build_sources(self.root)
+        self.osm = self.root / 'raw' / 'osm-20261107'
+        self.osm.mkdir(parents=True)
+        lugares = {
+            'restaurantes': [{'name': 'R1', 'lat': -34.615, 'lon': -58.435}, {'name': 'R2', 'lat': -34.615, 'lon': -58.445},
+                             {'name': 'Afuera', 'lat': -34.615, 'lon': -58.30}, {'name': 'Sin punto'}],
+            'cafes': [{'name': 'C1', 'latitude': -34.612, 'longitude': -58.432}],
+            'bares': [],
+        }
+        for name, items in lugares.items():
+            (self.osm / f'{name}.json').write_text(json.dumps(items), encoding='utf-8')
+        self.write_runs(restaurantes=(4, 100))
+
+    def tearDown(self):
+        self.temp.cleanup()
+
+    def write_runs(self, **runs):
+        (self.osm / 'corridas.json').write_text(json.dumps(
+            [{'nombre': n, 'puntos': p, 'max_items': m} for n, (p, m) in runs.items()]), encoding='utf-8')
+
+    def test_counts_food_places_by_barrio_with_osm_source(self):
+        self.assertEqual(entorno.latest_osm(self.root / 'raw'), self.osm)
+        summary = entorno.convert(self.poi, self.raw, self.root / 'out', osm_dir=self.osm)
+        self.assertEqual(summary['Almagro']['gastronomia'],
+                         {'restaurantes': 1, 'cafes': 1, 'bares': 0, 'captura': '2026-11-07'})
+        self.assertEqual(summary['Caballito']['gastronomia']['restaurantes'], 1)
+        sources = {s['capa']: s for s in entorno.load(self.root / 'out')['fuentes']['fuentes']}
+        self.assertIn('OpenStreetMap', sources['gastronomia']['licencia'])
+        self.assertEqual(sources['gastronomia']['periodo'], 'Captura del 2026-11-07')
+
+    def test_truncated_capture_is_not_used(self):
+        self.write_runs(restaurantes=(100, 100))
+        with self.assertWarns(UserWarning):
+            summary = entorno.convert(self.poi, self.raw, self.root / 'out', osm_dir=self.osm)
+        self.assertNotIn('gastronomia', summary['Almagro'])
 
 
 if __name__ == '__main__':

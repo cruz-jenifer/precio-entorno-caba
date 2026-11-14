@@ -23,8 +23,9 @@ NOTES = {
               'No describe el interior de un departamento.'),
     'Riesgo hídrico': ('Riesgo hídrico: áreas de prevención publicadas en 2020. '
                        'Que una dirección caiga dentro es un dato para investigar en la visita.'),
-    'Delitos registrados': ('Delitos: hechos registrados por celda de 200 m en el mes elegido. Los conteos reflejan '
-                            'también diferencias de exposición, registro y denuncia. No son un puntaje de seguridad.'),
+    'Delitos registrados': ('Hechos registrados por celda de 200 m, con período y franja explícitos. '
+                            'Más peatones pueden concentrar más eventos y existe subregistro. '
+                            'Los conteos no equivalen a probabilidad individual de victimización.'),
 }
 
 
@@ -80,7 +81,8 @@ def crime_legend(top):
              if c[0] == c[-1] else f'{c[0]}–{c[-1]} hechos') for step, c in sorted(groups.items())]
 
 
-def build(capas, barrio, active, level='primario', noise_period='diurno', crime=None, crime_label=''):
+def build(capas, barrio, active, level='primario', noise_period='diurno', crime=None, crime_label='',
+          focus=None, radius=500, persistence=False):
     """Devuelve las capas de pydeck, la vista y la leyenda de las capas activas."""
     import pydeck as pdk
 
@@ -108,14 +110,18 @@ def build(capas, barrio, active, level='primario', noise_period='diurno', crime=
         legend.append((hex_color(COLORS['riesgo']), 'Área de prevención por riesgo hídrico'))
 
     if 'Delitos registrados' in active and crime:
-        top = max(cell['hechos'] for cell in crime)
-        rows = [dict(cell, color=crime_color(cell['hechos'], top),
-                     tooltip=f"{cell['hechos']} hechos registrados · {crime_label}") for cell in crime]
+        def color(n):
+            step = min(4, n) if persistence else sum(n >= v for v in (5, 10, 20, 50))
+            return CRIME_RAMP[step] + [CRIME_ALPHA[step]]
+        rows = [dict(cell, color=color(cell['hechos']),
+                     tooltip=(f"Concentración alta en {cell['hechos']} años · {crime_label}" if persistence
+                              else f"{cell['hechos']} hechos registrados · {crime_label}")) for cell in crime]
         layers.append(pdk.Layer('ColumnLayer', rows, get_position=['lon', 'lat'], get_fill_color='color',
                                 radius=200 / math.sqrt(2), disk_resolution=4, angle=45,
                                 extruded=False, pickable=True))
-        legend += [(color, ('Delitos registrados por celda: ' if i == 0 else '') + label)
-                   for i, (color, label) in enumerate(crime_legend(top))]
+        legend += ([(hex_color(color(n)), f'Concentración alta en {n} años') for n in sorted({c['hechos'] for c in crime})]
+                   if persistence else [(hex_color(CRIME_RAMP[i]), f'{label} hechos / celda')
+                                        for i, label in enumerate(('1–4', '5–9', '10–19', '20–49', '50 o más'))])
 
     if 'Plazas y parques' in active:
         layers.append(pdk.Layer('GeoJsonLayer', features_in(capas['verdes'], bbox),
@@ -150,7 +156,19 @@ def build(capas, barrio, active, level='primario', noise_period='diurno', crime=
         lines = sorted({s['line'] for s in stations if in_bbox(s['lon'], s['lat'], tight)})
         legend += [(SUBTE_COLORS.get(line, '#555555'), f'Línea {line}') for line in lines]
 
-    deck = pdk.Deck(layers=layers, initial_view_state=pdk.ViewState(**view(tight)), map_style=None,
+    if focus:
+        rings = [{'lon': focus['lon'], 'lat': focus['lat'], 'radius': r,
+                  'width': 3 if r == radius else 1, 'tooltip': f'Radio acumulativo de {r} m en línea recta'}
+                 for r in (250, 500, 1000)]
+        layers.append(pdk.Layer('ScatterplotLayer', rings, get_position=['lon', 'lat'], get_radius='radius',
+                                filled=False, stroked=True, get_line_color=[106, 79, 179],
+                                get_line_width='width', line_width_units='pixels', pickable=True))
+        layers.append(pdk.Layer('ScatterplotLayer', [dict(focus, tooltip='Pin publicado del aviso')],
+                                get_position=['lon', 'lat'], get_fill_color=[106, 79, 179],
+                                get_radius=20, radius_min_pixels=7, pickable=True))
+        legend.append(('#6A4FB3', 'Aviso y radios de 250, 500 y 1.000 m'))
+    initial = {'longitude': focus['lon'], 'latitude': focus['lat'], 'zoom': 14} if focus else view(tight)
+    deck = pdk.Deck(layers=layers, initial_view_state=pdk.ViewState(**initial), map_style=None,
                     tooltip={'html': '{tooltip}', 'style': {'fontSize': '12px', 'maxWidth': '320px'}})
     return deck, legend
 

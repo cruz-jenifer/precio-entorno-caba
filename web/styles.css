@@ -901,3 +901,73 @@ button, input, select { font: inherit; color: inherit; }
 .radar-resumen { font-size: var(--t-chico); color: var(--asfalto-suave); }
 .radar-lista .nota { margin-top: 0.75rem; }
 .fila-prensa { grid-column: 1 / -1; font-size: var(--t-chico); color: var(--jacaranda-oscuro); }
+
+/* Revisión de preferencias escritas */
+.preferencias-dialogo { width: min(36rem, calc(100vw - 2rem)); max-height: 85dvh; overflow: auto; }
+.preferencias-dialogo form, .preferencias-dialogo label { display: grid; gap: .4rem; }
+.preferencias-dialogo form { margin-block: 1rem; }
+.preferencias-dialogo [hidden] { display: none; }
+.preferencias-dialogo textarea { width: 100%; box-sizing: border-box; font: inherit; }
+.preferencias-campos { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 13rem), 1fr)); gap: .65rem; }
+.preferencias-campos :is(input, select) { min-width: 0; font: inherit; }
+.preferencias-dialogo button { justify-self: start; }
+
+/* Barrios parecidos: sin puntaje, con motivos */
+.lista-parecidos { list-style: none; margin: 0.5rem 0 0; padding: 0; border-top: 1px solid var(--cordon); }
+.parecido { padding: 0.625rem 0; border-bottom: 1px solid var(--cordon); }
+.parecido-boton {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.125rem;
+  width: 100%;
+  min-height: 2.75rem;
+  padding: 0;
+  border: 0;
+  background: none;
+  text-align: left;
+  cursor: pointer;
+}
+.parecido-nombre { font-weight: 650; color: var(--jacaranda-oscuro); text-decoration: underline; text-underline-offset: 3px; text-decoration-color: var(--cordon); }
+.parecido-boton:hover .parecido-nombre { text-decoration-color: currentColor; }
+.parecido-precio { font-size: var(--t-chico); font-variant-numeric: tabular-nums; }
+.parecido-motivos { list-style: none; margin: 0.375rem 0 0; padding: 0; display: grid; gap: 0.125rem; font-size: var(--t-chico); color: var(--asfalto-suave); }
+.parecido-motivos li { display: grid; grid-template-columns: 1rem 1fr; }
+.motivo-marca { font-weight: 700; color: var(--asfalto); }
+
+/* Dónde comer: lista de Google, sin pines en el mapa */
+.lugares-encabezado { display: flex; align-items: baseline; justify-content: space-between; gap: 0.75rem; }
+.lugares-encabezado h2 { margin-bottom: 0.5rem; }
+.atribucion-google { font-size: var(--t-chico); font-weight: 600; color: var(--asfalto-suave); white-space: nowrap; }
+.chips-lugar { display: flex; flex-wrap: wrap; gap: 0.375rem; margin-bottom: 0.5rem; }
+.chip-lugar {
+  min-height: 2.25rem;
+  padding: 0 0.875rem;
+  border: 1px solid var(--cordon);
+  border-radius: 999px;
+  background: var(--papel);
+  cursor: pointer;
+}
+.chip-lugar[aria-pressed='true'] { border-color: var(--jacaranda); background: var(--jacaranda-tinte); color: var(--jacaranda-oscuro); font-weight: 600; }
+.boton-secundario {
+  min-height: 2.75rem;
+  margin-top: 0.5rem;
+  padding: 0 1rem;
+  border: 1px solid var(--cordon);
+  border-radius: var(--radio-control);
+  background: var(--papel);
+  font-weight: 600;
+  cursor: pointer;
+}
+.boton-secundario:hover { border-color: var(--asfalto-suave); }
+.lugares { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--cordon); }
+.lugar {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  column-gap: 0.75rem;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid var(--cordon);
+}
+.lugar-nombre { font-weight: 600; min-width: 0; overflow-wrap: anywhere; }
+.lugar-datos { grid-column: 1; color: var(--asfalto-suave); font-size: var(--t-chico); font-variant-numeric: tabular-nums; }
+.lugar-enlace { grid-column: 2; grid-row: 1 / span 2; align-self: center; font-size: var(--t-chico); white-space: nowrap; }

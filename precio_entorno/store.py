@@ -16,12 +16,20 @@ VIGENTES = ('activo', 'no_visto')
 MAX_FALTANTES = 0.3
 
 
+SEARCH_COLUMNS = """
+    id INTEGER PRIMARY KEY, neighborhood TEXT NOT NULL, budget INTEGER NOT NULL,
+    min_area INTEGER NOT NULL, rooms INTEGER NOT NULL, currency TEXT NOT NULL DEFAULT 'USD',
+    rooms_or_more INTEGER NOT NULL DEFAULT 0 CHECK (rooms_or_more IN (0, 1)),
+    UNIQUE (neighborhood, budget, min_area, rooms, currency, rooms_or_more)
+"""
+
+
 class Store:
     def __init__(self, path: Path):
         path.parent.mkdir(parents=True, exist_ok=True)
         self.path = path
         with closing(self.connect()) as db:
-            db.executescript("""
+            db.executescript(f"""
                 CREATE TABLE IF NOT EXISTS listings (
                     id TEXT PRIMARY KEY, neighborhood TEXT NOT NULL,
                     price INTEGER NOT NULL, covered_area INTEGER NOT NULL, rooms INTEGER NOT NULL,
@@ -47,18 +55,28 @@ class Store:
                     hour INTEGER, count INTEGER NOT NULL, event_id TEXT NOT NULL
                 );
                 CREATE TABLE IF NOT EXISTS searches (
-                    id INTEGER PRIMARY KEY, neighborhood TEXT NOT NULL, budget INTEGER NOT NULL,
-                    min_area INTEGER NOT NULL, rooms INTEGER NOT NULL, currency TEXT NOT NULL DEFAULT 'USD',
-                    UNIQUE (neighborhood, budget, min_area, rooms, currency)
+                    {SEARCH_COLUMNS}
                 );
                 CREATE TABLE IF NOT EXISTS alerts (
                     search_id INTEGER REFERENCES searches(id), listing_id TEXT REFERENCES listings(id),
                     PRIMARY KEY (search_id, listing_id)
                 );
             """)
+            # Reemplazar la tabla padre sin cambiar los IDs de las búsquedas ni las alertas.
+            db.execute("PRAGMA foreign_keys = OFF")
+            db.execute("BEGIN IMMEDIATE")
+            if 'rooms_or_more' not in {row['name'] for row in db.execute('PRAGMA table_info(searches)')}:
+                columns = {row['name'] for row in db.execute('PRAGMA table_info(searches)')}
+                currency = 'currency' if 'currency' in columns else "'USD'"
+                db.execute(f"CREATE TABLE searches_new ({SEARCH_COLUMNS})")
+                db.execute(f"""
+                    INSERT INTO searches_new (id, neighborhood, budget, min_area, rooms, currency)
+                    SELECT id, neighborhood, budget, min_area, rooms, {currency} FROM searches
+                """)
+                db.execute("DROP TABLE searches")
+                db.execute("ALTER TABLE searches_new RENAME TO searches")
             # Bases creadas antes de sumar alquileres o los datos del edificio: se agregan las columnas nuevas.
-            for table, column, kind in (('searches', 'currency', "TEXT NOT NULL DEFAULT 'USD'"),
-                                        ('listing_details', 'expenses', 'REAL'),
+            for table, column, kind in (('listing_details', 'expenses', 'REAL'),
                                         ('listing_details', 'age_years', 'INTEGER'),
                                         ('listing_details', 'condition', 'TEXT'),
                                         ('listing_details', 'garages', 'INTEGER'),
@@ -82,6 +100,7 @@ class Store:
                 WHERE NOT EXISTS (SELECT 1 FROM listing_prices p WHERE p.listing_id = l.id)
             """)
             db.commit()
+            db.execute('PRAGMA foreign_keys = ON')
 
     def connect(self):
         db = sqlite3.connect(self.path)
@@ -144,7 +163,8 @@ class Store:
         return db.execute("""
             INSERT OR IGNORE INTO alerts (search_id, listing_id)
             SELECT id, :id FROM searches WHERE neighborhood = :neighborhood
-                AND budget >= :price AND min_area <= :covered_area AND rooms = :rooms
+                AND budget >= :price AND min_area <= :covered_area
+                AND (rooms = :rooms OR (rooms_or_more = 1 AND rooms < :rooms))
                 AND currency = :currency
         """, dict(item, currency=currency)).rowcount
 
@@ -214,12 +234,12 @@ class Store:
             db.execute("DROP TABLE seen")
             return {**result, 'aplicado': True}
 
-    def save_search(self, neighborhood, budget, min_area, rooms, currency='USD'):
+    def save_search(self, neighborhood, budget, min_area, rooms, currency='USD', or_more=False):
         with closing(self.connect()) as db, db:
             return bool(db.execute("""
-                INSERT OR IGNORE INTO searches (neighborhood, budget, min_area, rooms, currency)
-                VALUES (?, ?, ?, ?, ?)
-            """, (neighborhood, budget, min_area, rooms, currency)).rowcount)
+                INSERT OR IGNORE INTO searches (neighborhood, budget, min_area, rooms, currency, rooms_or_more)
+                VALUES (?, ?, ?, ?, ?, ?)
+            """, (neighborhood, budget, min_area, rooms, currency, int(or_more))).rowcount)
 
     def listings(self, include_inactive=False):
         """Avisos vigentes (`activo` o `no_visto`). Con `include_inactive`, también los reservados y dados de baja."""

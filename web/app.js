@@ -47,6 +47,16 @@ const esc = (texto) => String(texto ?? '').replace(/[&<>"']/g, (c) => (
   { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const $ = (selector) => document.querySelector(selector);
 
+/* «Dónde comer»: datos de Google consultados a pedido. No se guardan ni se dibujan en el mapa. */
+const TIPOS_LUGAR = [['restaurantes', 'Restaurantes'], ['cafes', 'Cafés'], ['bares', 'Bares']];
+const MIN_RESENAS = 200;
+const MIN_RESENAS_BAJO = 50;
+const LUGARES_VISIBLES = 5;
+
+function lugaresIniciales(tipo) {
+  return { tipo, fase: 'inicial', datos: null, minResenas: MIN_RESENAS, todos: false, pedido: 0, mensaje: '' };
+}
+
 function leerGuardado() {
   try { return JSON.parse(localStorage.getItem('precio-entorno-filtros')) || {}; } catch { return {}; }
 }
@@ -77,6 +87,8 @@ const estado = {
   hover: null,
   leyendaCerrada: window.matchMedia('(max-width: 820px)').matches,
   leyendaAbierta: false,
+  lugares: lugaresIniciales('restaurantes'),
+  parecidos: { barrio: null, datos: null, error: '' },
 };
 
 function guardar() {
@@ -164,6 +176,22 @@ function renderLista() {
 
 /* Panel: ficha del barrio */
 
+const lugaresOsm = (g) => g.restaurantes + g.cafes + g.bares;
+const densidadOsm = (e) => (e.area_ha ? (lugaresOsm(e.gastronomia) / e.area_ha) * 100 : null);
+
+function textoGastronomia(e) {
+  const g = e.gastronomia;
+  const valores = estado.barrios.map((b) => (b.entorno?.gastronomia ? densidadOsm(b.entorno) : null))
+    .filter((v) => v != null).sort((a, b) => a - b);
+  const medio = Math.floor(valores.length / 2);
+  const mediana = valores.length ? (valores.length % 2 ? valores[medio] : (valores[medio - 1] + valores[medio]) / 2) : null;
+  const densidad = densidadOsm(e);
+  return `${numero.format(lugaresOsm(g))} registrados en OpenStreetMap: ${g.restaurantes} ${plural(g.restaurantes, 'restaurante', 'restaurantes')}, `
+    + `${g.cafes} ${plural(g.cafes, 'café', 'cafés')} y ${g.bares} ${plural(g.bares, 'bar', 'bares')}`
+    + (densidad == null ? '' : `. ${numero.format(Math.round(densidad))} cada 100 ha`)
+    + (mediana == null ? '' : ` (barrio mediano: ${numero.format(Math.round(mediana))})`);
+}
+
 function renderFicha() {
   const b = estado.barrios.find((x) => x.barrio === estado.seleccionado);
   if (!b) return;
@@ -181,6 +209,7 @@ function renderFicha() {
       ['Plazas y parques', e.verdes_cantidad
         ? `${e.verdes_cantidad} ${plural(e.verdes_cantidad, 'plaza o parque', 'plazas y parques')}, ${decimal.format(e.verdes_ha)} ha`
         : 'Ninguno en el inventario'],
+      ...(e.gastronomia ? [['Cafés, bares y restaurantes', textoGastronomia(e)]] : []),
       [`Escuelas de nivel ${estado.nivel}`, `${total}, de las que ${escuelas.Estatal || 0} son de gestión estatal`],
       ['Salud', `${e.cesac} CeSAC y ${e.hospitales} ${plural(e.hospitales, 'hospital', 'hospitales')}`],
       ['Ruido de día', dia == null ? 'Sin cobertura suficiente' : `70 dBA o más en el ${dia} % de las celdas relevadas`],
@@ -224,7 +253,10 @@ function renderFicha() {
       ${ficha.length ? `<h2>Entorno</h2>
         <dl class="hechos">${ficha.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join('')}</dl>
         <p class="fuente">Datos abiertos de Buenos Aires Data, por barrio oficial. Describen el barrio, no un departamento.
+          ${e?.gastronomia ? `Cafés, bares y restaurantes: © colaboradores de OpenStreetMap${e.gastronomia.captura ? `, captura del ${fechaCorta(e.gastronomia.captura)}` : ''}. La cobertura depende de quién mapea cada zona.` : ''}
           <button class="boton-texto" type="button" data-fuentes>Ver fuentes</button></p>` : ''}
+      ${renderParecidos(b.barrio)}
+      ${renderLugares(b.barrio)}
       ${b.coincidencias ? `<h2>Avisos que encajan</h2>
         <table class="avisos">
           <thead><tr><th>Precio publicado</th><th>Cubierta</th><th>Amb.</th>${alquiler ? '<th>Expensas</th>' : ''}<th><span hidden>Enlace</span></th><th>Mapa</th></tr></thead>
@@ -236,6 +268,112 @@ function renderFicha() {
       ${renderAnalisisDelitos()}
       ${renderRadarFicha(b.barrio)}
     </article>`;
+}
+
+function textoPrecioParecido(p, barrio) {
+  if (!p.coincidencias) return 'Ningún aviso encaja con tu búsqueda';
+  const base = `${p.coincidencias} ${plural(p.coincidencias, 'aviso encaja', 'avisos encajan')}, mediana ${dinero(p.mediana, estado.moneda)}`;
+  if (p.diferencia_mediana == null) return base;
+  if (p.diferencia_mediana === 0) return `${base}, igual que en ${barrio}`;
+  return `${base}, ${dinero(Math.abs(p.diferencia_mediana), estado.moneda)} ${p.diferencia_mediana < 0 ? 'menos' : 'más'} que en ${barrio}`;
+}
+
+function renderParecidos(barrio) {
+  const p = estado.parecidos;
+  if (p.barrio !== barrio || (!p.datos && !p.error)) return '';
+  if (p.error) return `<section class="parecidos"><h2>Barrios parecidos</h2><p class="fuente">${esc(p.error)}</p></section>`;
+  if (!p.datos.length) return '';
+  const elegidas = PREFERENCIAS.filter((x) => estado.prefs.has(x.clave)).map((x) => x.nombre.toLowerCase());
+  const items = p.datos.map((x) => `<li class="parecido">
+      <button type="button" class="parecido-boton" data-barrio="${esc(x.barrio)}">
+        <span class="parecido-nombre">${esc(x.barrio)}</span>
+        <span class="parecido-precio">${esc(textoPrecioParecido(x, barrio))}</span>
+      </button>
+      <ul class="parecido-motivos">
+        ${x.parecido_en.map((m) => `<li><span class="motivo-marca" aria-hidden="true">=</span>${esc(m.texto)}</li>`).join('')}
+        ${x.diferencias.map((m) => `<li class="motivo-difiere"><span class="motivo-marca" aria-hidden="true">≠</span>${esc(m.texto)}</li>`).join('')}
+      </ul>
+    </li>`).join('');
+  return `<section class="parecidos" aria-labelledby="titulo-parecidos">
+      <h2 id="titulo-parecidos">Barrios parecidos</h2>
+      <p class="fuente">Por su entorno, no por su precio.${elegidas.length ? ` Pesa doble lo que marcaste: ${esc(enumerar(elegidas))}.` : ''}
+        Primero, los que tienen avisos que encajan con tu búsqueda.</p>
+      <ol class="lista-parecidos">${items}</ol>
+    </section>`;
+}
+
+async function cargarParecidos() {
+  const barrio = estado.seleccionado;
+  if (!barrio) return;
+  const params = consulta({ nivel: estado.nivel });
+  estado.prefs.forEach((clave) => params.append('prefs', clave));
+  try {
+    const datos = await api(`/api/barrios/${encodeURIComponent(barrio)}/parecidos?${params}`);
+    if (barrio !== estado.seleccionado) return;
+    estado.parecidos = { barrio, datos: datos.parecidos, error: '' };
+  } catch (error) {
+    if (barrio !== estado.seleccionado) return;
+    estado.parecidos = { barrio, datos: null, error: `No se pudieron calcular los barrios parecidos: ${error.message}` };
+  }
+  renderPanel();
+}
+
+function renderLugares(barrio) {
+  if (estado.modo !== 'real' || !estado.info?.lugares) return '';
+  const l = estado.lugares;
+  const tipos = TIPOS_LUGAR.map(([clave, nombre]) => `<button type="button" class="chip-lugar" data-lugares-tipo="${clave}"
+      aria-pressed="${l.tipo === clave}">${nombre}</button>`).join('');
+  const nombreTipo = TIPOS_LUGAR.find(([clave]) => clave === l.tipo)[1].toLowerCase();
+  let cuerpo;
+  if (l.fase === 'inicial') {
+    cuerpo = `<p class="fuente">Se consulta a Google solo cuando lo pedís.</p>
+      <button class="boton-secundario" type="button" id="cargar-lugares">Ver los más valorados en Google</button>`;
+  } else if (l.fase === 'cargando') {
+    cuerpo = '<p class="fuente" role="status">Consultando a Google…</p>';
+  } else if (l.fase === 'error') {
+    cuerpo = `<p>${esc(l.mensaje)}</p>
+      <p class="fuente">Mientras tanto, las capas del mapa siguen disponibles.</p>`;
+  } else {
+    const filtrados = l.datos.lugares.filter((x) => x.resenas >= l.minResenas);
+    const visibles = l.todos ? filtrados : filtrados.slice(0, LUGARES_VISIBLES);
+    const filas = visibles.map((x) => `<li class="lugar">
+        <span class="lugar-nombre">${esc(x.nombre)}</span>
+        <span class="lugar-datos">★ ${decimal.format(x.nota)}, ${numero.format(x.resenas)} ${plural(x.resenas, 'reseña', 'reseñas')}${x.precio ? `, ${esc(x.precio)}` : ''}</span>
+        ${x.enlace ? `<a class="lugar-enlace" href="${esc(x.enlace)}" target="_blank" rel="noopener">Abrir en Maps</a>` : ''}
+      </li>`).join('');
+    cuerpo = filtrados.length
+      ? `<ol class="lugares">${filas}</ol>
+        ${filtrados.length > visibles.length ? `<button class="boton-texto" type="button" id="lugares-todos">Ver los ${filtrados.length} más valorados</button>` : ''}`
+      : `<p>Google no devolvió ${nombreTipo} con al menos ${numero.format(l.minResenas)} reseñas en ${esc(barrio)}.</p>
+        ${l.minResenas > MIN_RESENAS_BAJO ? `<button class="boton-texto" type="button" id="lugares-menos">Mostrar los que tienen al menos ${MIN_RESENAS_BAJO}</button>` : ''}`;
+    cuerpo += `<p class="fuente">Los más valorados entre los ${l.datos.en_barrio} lugares de ${esc(barrio)} que devolvió Google,
+      con al menos ${numero.format(l.minResenas)} reseñas. Calificaciones de usuarios de Google, no de Precio y Entorno.
+      Se consultan al momento y no se guardan.</p>`;
+  }
+  return `<section class="lugares-google" aria-labelledby="titulo-lugares">
+      <div class="lugares-encabezado"><h2 id="titulo-lugares">Dónde comer</h2><span class="atribucion-google">Google Maps</span></div>
+      <div class="chips-lugar" role="group" aria-label="Tipo de lugar">${tipos}</div>
+      ${cuerpo}
+    </section>`;
+}
+
+async function cargarLugares() {
+  const barrio = estado.seleccionado;
+  if (!barrio) return;
+  const l = estado.lugares;
+  const pedido = l.pedido + 1;
+  Object.assign(l, { fase: 'cargando', pedido, todos: false, minResenas: MIN_RESENAS });
+  renderFicha();
+  try {
+    const datos = await api(`/api/barrios/${encodeURIComponent(barrio)}/lugares?${new URLSearchParams({ tipo: l.tipo, modo: estado.modo })}`);
+    if (barrio !== estado.seleccionado || pedido !== estado.lugares.pedido) return;
+    if (datos.disponible) Object.assign(l, { fase: 'listo', datos });
+    else Object.assign(l, { fase: 'error', mensaje: datos.motivo === 'cupo' ? 'La consulta a Google no está disponible por este mes.' : datos.mensaje });
+  } catch (error) {
+    if (barrio !== estado.seleccionado || pedido !== estado.lugares.pedido) return;
+    Object.assign(l, { fase: 'error', mensaje: `No se pudo consultar a Google: ${error.message}` });
+  }
+  renderFicha();
 }
 
 function renderAnalisisDelitos() {
@@ -864,6 +1002,7 @@ function renderLeyenda() {
 
 async function cargarEstado() {
   estado.info = await api(`/api/estado?${new URLSearchParams({ modo: estado.modo, operacion: estado.operacion })}`);
+  $('#abrir-preferencias-texto').hidden = !estado.info.interpretar_preferencias;
 }
 
 async function cargarBarrios() {
@@ -889,9 +1028,10 @@ async function seleccionar(nombre) {
   estado.delitosDatos = null;
   estado.delitos.inmueble = '';
   estado.pedidoDelitos += 1;
+  estado.lugares = { ...lugaresIniciales(estado.lugares.tipo), pedido: estado.lugares.pedido + 1 };
   popup.remove();
-  if (nombre && mapa.getSource('barrios')) mapa.setFeatureState({ source: 'barrios', id: nombre }, { sel: true });
   popupAviso.remove();
+  if (nombre && mapa.getSource('barrios')) mapa.setFeatureState({ source: 'barrios', id: nombre }, { sel: true });
   estado.capas = new Set(nombre ? estado.prefs : []);
   pintarCoropletas();
   encuadrar(nombre);
@@ -899,6 +1039,8 @@ async function seleccionar(nombre) {
   renderPanel();
   $('#contenido').scrollTop = 0;
   if (celular()) plegarPanel(false);
+  estado.parecidos = { barrio: null, datos: null, error: '' };
+  cargarParecidos();
   try {
     await cargarAvisos();
     if (nombre === estado.seleccionado) renderPanel();
@@ -916,6 +1058,7 @@ function recargar() {
     try {
       await cargarBarrios();
       await cargarAvisos();
+      cargarParecidos();
       if (!estado.avisos.some((a) => a.id === estado.delitos.inmueble)) estado.delitos.inmueble = '';
       if (estado.capas.has('delitos')) await actualizarCapas();
       renderPanel();
@@ -939,7 +1082,12 @@ function sincronizarControles() {
   $('#etiqueta-presupuesto').textContent = alquiler ? 'Hasta por mes' : 'Hasta';
   $('#presupuesto').value = numero.format(estado.presupuesto);
   $('#superficie').value = estado.superficie;
-  $('#ambientes').value = `${estado.ambientes}${estado.ambientesOMas ? '+' : ''}`;
+  const ambientes = $('#ambientes');
+  const valor = String(estado.ambientes) + (estado.ambientesOMas ? '+' : '');
+  if (![...ambientes.options].some((o) => o.value === valor)) {
+    ambientes.add(new Option(estado.ambientes + ' ambientes' + (estado.ambientesOMas ? ' o más' : ''), valor));
+  }
+  ambientes.value = valor;
   $('#nivel').value = estado.nivel;
   $('#franja-demo').hidden = estado.modo !== 'demo';
   $('#preferencias').innerHTML = `<legend hidden>Lo que me importa</legend>${PREFERENCIAS.map((p) => `
@@ -986,7 +1134,132 @@ function plegarPanel(expandir) {
   $('#panel-asa').textContent = expandir ? 'Ver mapa' : 'Ver lista';
 }
 
+function conectarPreferencias() {
+  const dialogo = $('#dialogo-preferencias');
+  const interpretar = $('#interpretar-preferencias');
+  const revisar = $('#revisar-preferencias');
+  const salida = $('#estado-preferencias');
+  let pedido;
+  let capas = [];
+  let requiereConfirmacion = false;
+  const opciones = (items) => items.map(([id, label]) =>
+    '<option value="' + esc(id) + '">' + esc(label) + '</option>').join('');
+
+  function presentar(propuesta) {
+    const valores = Object.fromEntries(propuesta.campos.map((c) => [c.clave, c.valor]));
+    const barrios = [...new Set(propuesta.campos.filter((c) => c.clave === 'barrio').map((c) => c.valor))];
+    capas = propuesta.campos.filter((c) => c.clave === 'capa').map((c) => c.valor);
+    const barrio = barrios.length === 1 ? barrios[0] : barrios.length ? '' : estado.seleccionado || '';
+    const campos = [
+      ['operacion', 'Operación', valores.operacion ?? estado.operacion, [['venta', 'Comprar'], ['alquiler', 'Alquilar']]],
+      ['moneda', 'Moneda', valores.moneda ?? estado.moneda, [['USD', 'USD'], ['ARS', 'ARS']]],
+      ['presupuesto', 'Presupuesto máximo', valores.presupuesto ?? estado.presupuesto, 1000000000],
+      ['superficie', 'Superficie cubierta mínima (m²)', valores.superficie ?? estado.superficie, 2000],
+      ['ambientes', 'Ambientes', valores.ambientes ?? estado.ambientes, 20],
+      ['ambientes_o_mas', 'Cantidad de ambientes', valores.ambientes_o_mas ?? String(estado.ambientesOMas),
+        [['false', 'Exacta'], ['true', 'O más']]],
+      ['barrio', 'Barrio', barrio, [['', 'Comparación general'], ...[...new Set([
+        ...barrios, ...(barrio ? [barrio] : []), ...estado.barrios.map((b) => b.barrio)
+      ])].sort((a, b) => a.localeCompare(b, 'es')).map((b) => [b, b])]],
+    ];
+    $('#campos-preferencias').innerHTML = campos.map(([clave, label, valor, tipo]) => {
+      const origen = clave === 'barrio' && barrios.length > 1 ? 'Elegí un barrio o compará todos'
+        : clave in valores ? 'De tu descripción' : 'Valor actual';
+      const control = Array.isArray(tipo)
+        ? '<select name="' + clave + '">' + opciones(tipo) + '</select>'
+        : '<input type="number" name="' + clave + '" required min="1" step="1" max="' + tipo + '">';
+      return '<label>' + label + control + '<small>' + origen + '</small></label>';
+    }).join('');
+    campos.forEach(([clave, , valor]) => { revisar.elements.namedItem(clave).value = valor; });
+    const avisos = [
+      ...propuesta.dudas.map((d) => 'Revisá «' + d.evidencia + '» (' + d.campo + ').'),
+      ...propuesta.no_soportadas.map((c) => 'No se aplicará «' + c.evidencia + '»' +
+        (c.obligatoria ? ' (requisito indicado).' : '.')),
+      ...capas.map((c) => 'Capa del mapa: ' + PREFERENCIAS.find((p) => p.clave === c)?.nombre + '.'),
+    ];
+    requiereConfirmacion = propuesta.dudas.length > 0 || barrios.length > 1 ||
+      propuesta.no_soportadas.some((c) => c.obligatoria);
+    $('#avisos-preferencias').innerHTML = avisos.map((aviso) => '<li>' + esc(aviso) + '</li>').join('');
+    $('#confirmar-preferencias').hidden = !requiereConfirmacion;
+    $('#confirmacion-preferencias').checked = false;
+    revisar.hidden = false;
+  }
+
+  $('#abrir-preferencias-texto').addEventListener('click', () => dialogo.showModal());
+  $('#cancelar-preferencias').addEventListener('click', () => dialogo.close());
+  dialogo.addEventListener('close', () => {
+    pedido?.abort();
+    pedido = null;
+    interpretar.reset();
+    interpretar.querySelector('button').disabled = false;
+    revisar.hidden = true;
+    $('#campos-preferencias').replaceChildren();
+    $('#avisos-preferencias').replaceChildren();
+    salida.textContent = '';
+    capas = [];
+  });
+  interpretar.addEventListener('input', () => {
+    pedido?.abort();
+    pedido = null;
+    interpretar.querySelector('button').disabled = false;
+    revisar.hidden = true;
+    salida.textContent = '';
+  });
+  interpretar.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    if (pedido) return;
+    const actual = new AbortController();
+    pedido = actual;
+    const boton = interpretar.querySelector('button');
+    boton.disabled = true;
+    revisar.hidden = true;
+    salida.textContent = 'Interpretando…';
+    try {
+      const propuesta = await api('/api/preferencias/interpretar', {
+        method: 'POST', signal: actual.signal, headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ texto: $('#texto-preferencias').value }),
+      });
+      if (pedido === actual) {
+        presentar(propuesta);
+        salida.textContent = '';
+      }
+    } catch (error) {
+      if (pedido === actual) salida.textContent = error.message;
+    } finally {
+      if (pedido === actual) {
+        pedido = null;
+        boton.disabled = false;
+      }
+    }
+  });
+  revisar.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    if (revisar.hidden) return;
+    const f = new FormData(revisar);
+    if (f.get('operacion') === 'venta' && f.get('moneda') !== 'USD') {
+      salida.textContent = 'Para comprar, elegí USD.';
+      return;
+    }
+    if (requiereConfirmacion && !$('#confirmacion-preferencias').checked) {
+      salida.textContent = 'Confirmá que revisaste los avisos antes de aplicar.';
+      return;
+    }
+    clearTimeout(espera);
+    estado.operacion = f.get('operacion');
+    estado.moneda = f.get('moneda');
+    estado.presupuesto = Number(f.get('presupuesto'));
+    estado.superficie = Number(f.get('superficie'));
+    estado.ambientes = Number(f.get('ambientes'));
+    estado.ambientesOMas = f.get('ambientes_o_mas') === 'true';
+    capas.forEach((capa) => estado.prefs.add(capa));
+    dialogo.close();
+    await cambiarContexto();
+    await seleccionar(f.get('barrio') || null);
+  });
+}
+
 function conectarEventos() {
+  conectarPreferencias();
   document.querySelectorAll('[data-operacion]').forEach((boton) => boton.addEventListener('click', () => {
     if (estado.operacion === boton.dataset.operacion) return;
     estado.operacion = boton.dataset.operacion;
@@ -1052,6 +1325,7 @@ function conectarEventos() {
     sincronizarControles();
     guardar();
     renderPanel();
+    cargarParecidos();
   });
   $('#nivel').addEventListener('change', (e) => { cambiarNivel(e.target.value); });
 
@@ -1067,6 +1341,27 @@ function conectarEventos() {
       if (pin) { if (celular()) plegarPanel(false); encuadrarPin(pin); }
       return;
     }
+    const ubicar = e.target.closest('[data-ubicar]');
+    if (ubicar) {
+      const aviso = estado.avisos.find((a) => a.id === ubicar.dataset.ubicar);
+      if (aviso?.ubicacion) {
+        if (celular()) plegarPanel(false);
+        encuadrarPin(aviso);
+        abrirPin(claveUbicacion(aviso));
+      }
+      return;
+    }
+    const tipoLugar = e.target.closest('[data-lugares-tipo]');
+    if (tipoLugar) {
+      if (tipoLugar.dataset.lugaresTipo !== estado.lugares.tipo) {
+        estado.lugares.tipo = tipoLugar.dataset.lugaresTipo;
+        if (estado.lugares.fase === 'inicial') renderFicha(); else cargarLugares();
+      }
+      return;
+    }
+    if (e.target.closest('#cargar-lugares')) { cargarLugares(); return; }
+    if (e.target.closest('#lugares-todos')) { estado.lugares.todos = true; renderFicha(); return; }
+    if (e.target.closest('#lugares-menos')) { estado.lugares.minResenas = MIN_RESENAS_BAJO; renderFicha(); return; }
     const numero = e.target.closest('[data-radar-barrio]');
     if (numero) { detalleRadar(numero.dataset.radarBarrio, numero.dataset.radarTipo); return; }
     if (e.target.closest('[data-radar-fuentes]')) { detalleFuentesRadar(); return; }
@@ -1119,6 +1414,7 @@ function cambiarNivel(nivel) {
   sincronizarControles();
   renderPanel();
   actualizarCapas();
+  if (estado.prefs.has('escuelas')) cargarParecidos();
 }
 
 async function crearAlerta(boton) {
@@ -1138,6 +1434,7 @@ async function crearAlerta(boton) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ barrio: estado.seleccionado, presupuesto: estado.presupuesto,
         superficie: estado.superficie, ambientes: estado.ambientes, moneda: estado.moneda,
+        ambientes_o_mas: estado.ambientesOMas,
         ...(email ? { email, consentimiento: true } : {}) }),
     });
     const local = creada
@@ -1172,7 +1469,7 @@ async function abrirAlertas() {
       <h3>Alertas creadas</h3>
       <table class="tabla"><thead><tr><th>Barrio</th><th>Hasta</th><th>Desde</th><th>Ambientes</th></tr></thead><tbody>
       ${busquedas.map((b) => `<tr><td>${esc(b.barrio)}</td><td>${dinero(b.presupuesto, b.moneda)}</td>
-        <td>${b.superficie} m²</td><td>${b.ambientes}</td></tr>`).join('')}</tbody></table>
+        <td>${b.superficie} m²</td><td>${b.ambientes}${b.ambientes_o_mas ? ' o más' : ''}</td></tr>`).join('')}</tbody></table>
       <h3>Avisos nuevos que encajan</h3>
       ${alertas.length ? `<table class="tabla"><thead><tr><th>Barrio</th><th>Precio publicado</th><th>Cubierta</th><th>Amb.</th><th></th></tr></thead><tbody>
       ${alertas.map((a) => `<tr><td>${esc(a.barrio)}</td><td>${dinero(a.precio, a.moneda)}</td><td>${a.superficie} m²</td>
@@ -1198,16 +1495,6 @@ async function abrirFuentes() {
       ${fuentes.map((f) => `<tr><td>${esc(f.titulo)}</td><td>${esc(f.periodo)}</td>
         <td>${f.url ? `<a href="${esc(f.url)}" target="_blank" rel="noopener">${esc(f.archivo)}</a>` : esc(f.archivo)}</td></tr>`).join('')}
       </tbody></table>
-    const ubicar = e.target.closest('[data-ubicar]');
-    if (ubicar) {
-      const aviso = estado.avisos.find((a) => a.id === ubicar.dataset.ubicar);
-      if (aviso?.ubicacion) {
-        if (celular()) plegarPanel(false);
-        encuadrarPin(aviso);
-        abrirPin(claveUbicacion(aviso));
-      }
-      return;
-    }
       <h3>Avisos y delitos</h3>
       <p class="nota">${estado.modo === 'demo' ? 'En la demo, los avisos y los delitos son ficticios.'
         : `Avisos del catálogo autorizado ${esc(catalogo || 'sin cargar')}, con precios de publicación. Delitos del Mapa del Delito de CABA${estado.info?.delitos ? `, archivo ${esc(estado.info.delitos.archivo)}` : ''}.`}</p>`;

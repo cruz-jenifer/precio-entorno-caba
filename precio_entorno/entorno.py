@@ -15,6 +15,10 @@ y `data/raw/badata-poi/`:
 Cada punto se asigna al barrio cuyo polígono lo contiene. El porcentaje de ruido se calcula
 sobre las celdas relevadas del barrio y el de riesgo hídrico, sobre las muestras de la grilla
 que caen dentro del barrio.
+
+Gastronomía (opcional): restaurantes, cafés y bares de OpenStreetMap (licencia ODbL, «© colaboradores
+de OpenStreetMap»), de la captura más reciente en `data/raw/osm-AAAAMMDD/`. Solo se cuentan por barrio.
+Si alguna categoría llegó al tope de puntos de su corrida, la captura está incompleta y no se usa.
 """
 
 import argparse
@@ -75,6 +79,7 @@ SOURCES = {
     'hospitales': ('poi', 'hospitales.geojson', None, 'Hospitales', 'Ministerio de Salud'),
 }
 SUBTE_COLORS = {'A': '#18CCCC', 'B': '#EB0909', 'C': '#233AA8', 'D': '#02A17A', 'E': '#AE3D97', 'H': '#FFD600'}
+GASTRONOMIA = ('restaurantes', 'cafes', 'bares')
 
 
 def polygons(geometry):
@@ -334,7 +339,39 @@ def digest(path):
     return sha256(path.read_bytes()).hexdigest()
 
 
-def convert(poi_dir, entorno_dir, target, downloaded=None):
+def latest_osm(raw_dir):
+    """Carpeta `osm-AAAAMMDD` más reciente que tenga las tres categorías de gastronomía, o None."""
+    found = sorted(p for p in Path(raw_dir).glob('osm-[0-9]*')
+                   if p.is_dir() and all((p / f'{name}.json').exists() for name in GASTRONOMIA))
+    return found[-1] if found else None
+
+
+def osm_capture_date(folder):
+    stamp = folder.name.removeprefix('osm-')
+    return f'{stamp[:4]}-{stamp[4:6]}-{stamp[6:8]}' if len(stamp) == 8 and stamp.isdigit() else None
+
+
+def gastronomy(osm_dir, barrios):
+    """Conteos por barrio de restaurantes, cafés y bares de OSM; None si la captura está incompleta."""
+    runs_path = osm_dir / 'corridas.json'
+    runs = {r['nombre']: r for r in read(runs_path)} if runs_path.exists() else {}
+    truncated = [name for name in GASTRONOMIA
+                 if name in runs and runs[name].get('puntos', 0) >= runs[name].get('max_items', math.inf)]
+    if truncated:
+        warnings.warn(f"OSM incompleto en {', '.join(truncated)}: no se usa la gastronomía.")
+        return None
+    counts = defaultdict(Counter)
+    for name in GASTRONOMIA:
+        items = read(osm_dir / f'{name}.json')
+        coords = [(i.get('lon', i.get('longitude')), i.get('lat', i.get('latitude'))) for i in items]
+        coords = [c for c in coords if isinstance(c[0], (int, float)) and isinstance(c[1], (int, float))]
+        for barrio in barrios.of(coords) if coords else []:
+            if barrio:
+                counts[barrio][name] += 1
+    return counts
+
+
+def convert(poi_dir, entorno_dir, target, downloaded=None, osm_dir=None):
     from pyproj import Transformer
 
     target.mkdir(parents=True, exist_ok=True)
@@ -391,6 +428,10 @@ def convert(poi_dir, entorno_dir, target, downloaded=None):
             cx = int((cell[0] - grid.west) / grid.dlon) // grid.sub
             cell.append(names[cell_barrio[cy, cx]])
 
+    osm_dir = Path(osm_dir) if osm_dir else None
+    food = gastronomy(osm_dir, barrios) if osm_dir else None
+    capture = osm_capture_date(osm_dir) if osm_dir else None
+
     summary = {}
     for index, name in enumerate(names):
         within = city == index
@@ -419,6 +460,8 @@ def convert(poi_dir, entorno_dir, target, downloaded=None):
             'ruido': noise_summary,
             'riesgo_hidrico': share(risk, within),
         }
+        if food is not None:
+            summary[name]['gastronomia'] = {**{k: food[name][k] for k in GASTRONOMIA}, 'captura': capture}
 
     barrio_features = []
     for feature in read(path['barrios'])['features']:
@@ -431,6 +474,13 @@ def convert(poi_dir, entorno_dir, target, downloaded=None):
         sources.append({'capa': name, 'titulo': title, 'archivo': file, 'periodo': period,
                         'url': CDN + url if url else None, 'sha256': digest(path[name]),
                         'licencia': 'CC-BY 2.5 AR · Buenos Aires Data'})
+    if food is not None:
+        combined = sha256(b''.join((osm_dir / f'{n}.json').read_bytes() for n in GASTRONOMIA)).hexdigest()
+        sources.append({'capa': 'gastronomia', 'titulo': 'Restaurantes, cafés y bares',
+                        'archivo': ', '.join(f'{n}.json' for n in GASTRONOMIA),
+                        'periodo': f'Captura del {capture}' if capture else 'Captura de OpenStreetMap',
+                        'url': 'https://www.openstreetmap.org/copyright', 'sha256': combined,
+                        'licencia': 'ODbL · © colaboradores de OpenStreetMap'})
     write = lambda name, data: (target / name).write_text(json.dumps(data, ensure_ascii=False) + '\n', encoding='utf-8')
     write('barrios.geojson', {'type': 'FeatureCollection', 'features': barrio_features})
     write('verdes.geojson', {'type': 'FeatureCollection', 'features': greens})
@@ -541,9 +591,15 @@ def main():
     parser.add_argument('--poi', type=Path, default=ROOT / 'data/raw/badata-poi')
     parser.add_argument('--entorno', type=Path, default=ROOT / 'data/raw/badata-entorno')
     parser.add_argument('--destino', type=Path, default=ROOT / 'data/processed/entorno')
+    parser.add_argument('--osm', type=Path, default=None,
+                        help='Captura de OpenStreetMap para gastronomía (por defecto, la osm-AAAAMMDD más reciente).')
+    parser.add_argument('--sin-osm', action='store_true', help='No sumar la gastronomía de OpenStreetMap.')
     args = parser.parse_args()
-    summary = convert(args.poi, args.entorno, args.destino)
-    print(json.dumps({'barrios': len(summary), 'destino': str(args.destino)}, ensure_ascii=False))
+    osm_dir = None if args.sin_osm else (args.osm or latest_osm(ROOT / 'data/raw'))
+    summary = convert(args.poi, args.entorno, args.destino, osm_dir=osm_dir)
+    with_food = any('gastronomia' in s for s in summary.values())
+    print(json.dumps({'barrios': len(summary), 'destino': str(args.destino),
+                      'gastronomia': str(osm_dir) if with_food else None}, ensure_ascii=False))
 
 
 if __name__ == '__main__':

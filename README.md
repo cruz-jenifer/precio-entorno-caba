@@ -183,7 +183,35 @@ Las capas se generan una vez con los archivos de `data/raw/badata-entorno/` y `d
 python -m precio_entorno.entorno
 ```
 
+El mismo comando cuenta por barrio los restaurantes, cafés y bares de la captura de OpenStreetMap más reciente (`data/raw/osm-AAAAMMDD/`). La ficha los muestra con la cita «© colaboradores de OpenStreetMap». Con `--sin-osm` se omiten.
+
 El detalle de cada fuente está en [docs/datos.md](docs/datos.md#capas-del-entorno-buenos-aires-data).
+
+### Barrios parecidos
+
+La ficha de cada barrio sugiere 3 barrios con un entorno parecido, para descubrir opciones que la persona no tenía en cuenta. Primero van los que tienen avisos que encajan con la búsqueda.
+
+- **Qué compara:** solo el entorno. Entran estaciones de subte, espacio verde, escuelas del nivel elegido y salud pública (las cuatro por superficie), ruido de día, riesgo hídrico y gastronomía de OSM. Los precios y los delitos no entran en la comparación.
+- **Cómo:** cada capa se lleva a una escala de 0 a 1 entre el mínimo y el máximo de CABA, logarítmica para las densidades. Lo que la persona marcó en «Me importa» pesa doble.
+- **Qué muestra:** no hay puntaje. Cada sugerencia dice en qué se parece («Ruido de día: 84 % y 82 % en Almagro») y en qué difiere («Más espacio verde: 2,4 contra 0,2 en Almagro»). Como información aparte, da la mediana de los avisos que encajan y la diferencia con el barrio elegido.
+
+Lo calcula `precio_entorno/parecidos.py` y lo sirve `/api/barrios/{barrio}/parecidos`, con los mismos filtros que `/api/barrios` más `prefs` y `nivel`.
+
+### Dónde comer (Google Places)
+
+La ficha del barrio muestra los restaurantes, cafés y bares más valorados en Google. Los datos salen de la API oficial de Places (New), nunca de una extracción de Google Maps. La sección aparece solo con datos reales y con la clave configurada.
+
+- **Cuándo consulta:** solo cuando la persona toca «Ver los más valorados en Google» o cambia el tipo de lugar. Cada consulta hace hasta 2 llamadas de Text Search Enterprise.
+- **Qué guarda:** nada de Google. Las calificaciones no se guardan ni se cachean, no se dibujan en el mapa y no alimentan el modelo.
+- **Qué muestra:** los lugares dentro del barrio con al menos 200 reseñas, ordenados por calificación. Si no hay, ofrece bajar el mínimo a 50.
+
+Para habilitarla:
+
+1. Crear un proyecto de Google Cloud con facturación activa y habilitar Places API (New). Lleva tarjeta, aunque el uso quede dentro del tramo gratis.
+2. Poner una cuota diaria en la consola (por ejemplo, 30 llamadas por día) y una alerta de presupuesto.
+3. Copiar la clave en `.env` como `GOOGLE_MAPS_API_KEY`. Opcional: `PRECIO_ENTORNO_LUGARES_TOPE_MES`, el tope mensual de llamadas, que por defecto es 900, debajo de las 1.000 gratis.
+
+El servidor cuenta cada llamada por mes en `data/local/lugares-consumo.sqlite3`, fuera de Git, y deja de consultar al llegar al tope. Las reglas de Google que dan forma a la sección están en [docs/ui.md](docs/ui.md#dónde-comer-google-places-en-vivo).
 
 ## Captura de inmobiliarias autorizadas
 
@@ -248,6 +276,14 @@ El [pipeline del modelo](docs/modelo.md) cruza los avisos con los delitos de los
 python -m precio_entorno.modelo data/raw/<carpeta>/avisos.json --catalogo zonaprop
 ```
 
+### Comparación de seis modelos
+
+`precio_entorno.comparar_modelos` entrena seis modelos de scikit-learn con la misma partición: regresión lineal, árbol de decisión, random forest, HistGradientBoosting, MLP y ElasticNet. La mediana de comparables queda como referencia. Ganan los ensambles: HistGradientBoosting llega a 469 USD/m² en la validación cruzada, y a 410 al sumar antigüedad y cocheras. Los resultados y su lectura están en [docs/modelo.md](docs/modelo.md#comparación-de-seis-modelos--14-de-noviembre-de-2026).
+
+```powershell
+python -m precio_entorno.comparar_modelos --control-inmobiliaria
+```
+
 ## Datos reales en la app y validación
 
 La base `data/local/real.sqlite3` tiene cargado el catálogo consolidado y el Mapa del Delito de 2025. Al 8 de noviembre de 2026 suma 1.535 avisos, de los que 18 son de Clarín Inmuebles. Para generar alertas reales:
@@ -291,6 +327,15 @@ python -m precio_entorno.actualizar --probar-make error
 ```
 
 La tarea corre solo con la sesión de Windows iniciada. Si una inmobiliaria retira el permiso o empieza a bloquear, quitá su sitio con `--sitios` en `scripts/actualizar.cmd` o deshabilitá la tarea. El [protocolo de validación](docs/validacion-inmobiliaria.md) y su [planilla](docs/plantillas/registro-validacion.csv) guían la prueba de dos semanas con una inmobiliaria: tiempo ahorrado, alertas útiles, costo operativo y disposición a pagar.
+
+## Pipeline Analytics con Make, Apify y Looker Studio
+
+Make baja de Google Drive los avisos crudos y se los pasa al Actor `precio-entorno-analytics` de Apify, que hace el ETL. Guarda en Drive el CSV limpio y se lo pasa al mismo Actor para el EDA. Después carga las seis tablas en una planilla de Google, de donde lee el dashboard de Looker Studio. El recorrido, los costos, cómo correrlo en la demo y la guía del dashboard están en [docs/pipeline-analytics.md](docs/pipeline-analytics.md).
+
+```powershell
+python -m precio_entorno.pipeline_analytics etl data/raw/venta-consolidada-20261108/avisos.json
+python -m precio_entorno.pipeline_analytics eda data/processed/pipeline/dataset_limpio.csv
+```
 
 ## Radar de tendencias barriales
 

@@ -48,7 +48,7 @@ def subscription(search_id, operation, search, email, now):
     """
     criteria = {'id': search_id, 'operacion': operation, 'barrio': search['barrio'],
                 'presupuesto': search['presupuesto'], 'moneda': search['moneda'], 'superficie': search['superficie'],
-                'ambientes': search['ambientes'], 'ambientesOMas': bool(search.get('ambientesOMas'))}
+                'ambientes': search['ambientes'], 'ambientesOMas': bool(search.get('ambientes_o_mas', search.get('ambientesOMas')))}
     description = describe_search({'neighborhood': search['barrio'], 'budget': search['presupuesto'],
                                    'currency': search['moneda'], 'min_area': search['superficie'],
                                    'rooms': search['ambientes'], 'or_more': criteria['ambientesOMas']})
@@ -64,7 +64,7 @@ def money(value, currency):
 
 def describe_search(search):
     """Texto corto de una búsqueda guardada, para el asunto y el cuerpo del correo."""
-    rooms = f"{search['rooms']} ambientes" + (' o más' if search.get('or_more') else '')
+    rooms = f"{search['rooms']} ambientes" + (' o más' if search.get('or_more', search.get('rooms_or_more')) else '')
     return (f"{search['neighborhood']} · hasta {money(search['budget'], search.get('currency'))} · "
             f"{search['min_area']:g} m² o más · {rooms}")
 

@@ -1,0 +1,108 @@
+# Pipeline Analytics: Drive → Apify → Drive → Apify → Sheets → Looker Studio
+
+Make orquesta todo el recorrido. Lee los datos crudos de Google Drive, le pide a Apify el ETL, guarda en Drive un único CSV limpio, le pide a Apify el EDA y carga sus tablas en una planilla de Google, de donde lee el dashboard de Looker Studio.
+
+Probado de punta a punta el 14 de noviembre de 2026: la ejecución de Make terminó en SUCCESS y la planilla quedó con la corrida de las 15:08 UTC.
+
+```mermaid
+flowchart LR
+  D1["Drive · 01_crudo<br/>avisos_venta_crudo.json"] -->|Download a file| A1["Apify · ETL<br/>precio-entorno-analytics"]
+  BA["Buenos Aires Data<br/>delitos_2025.csv"] -->|el Actor lo baja| A1
+  A1 -->|CSV limpio| D2["Drive · 02_limpio<br/>dataset_limpio_AAAA-MM-DD_HHmm.csv"]
+  D2 -->|Download a file| A2["Apify · EDA"]
+  A2 -->|6 tablas| S["Sheets · 03_tablas_dashboard<br/>resumen · barrios · ambientes · fuentes · distribucion · correlaciones"]
+  S --> L["Looker Studio<br/>dashboard"]
+```
+
+## Piezas
+
+| Pieza | Dónde | Qué hace |
+| --- | --- | --- |
+| Carpeta en Drive | [Precio y Entorno CABA - Pipeline Analytics](https://drive.google.com/drive/folders/1pjfJG1SbhkOUAdpCSmbQU_yGT7HSaZad) | `01_crudo`, `02_limpio`, `03_tablas_dashboard` |
+| Datos crudos | `01_crudo/avisos_venta_crudo.json` | 4.007 filas de la captura consolidada del 8/11 (inmobiliarias autorizadas, Clarín y Zonaprop), sin contactos de anunciantes |
+| | `01_crudo/delitos_2025_crudo.csv.gz` | Copia comprimida del Mapa del Delito 2025 (17 MB sin comprimir, SHA-256 `1ed67c33…`) |
+| Actor | Apify, cuenta 2, `peerless_anorthite~precio-entorno-analytics` (privado) | `operacion: etl` y `operacion: eda`. Código: [`actor_analytics.py`](../precio_entorno/actor_analytics.py) y [`pipeline_analytics.py`](../precio_entorno/pipeline_analytics.py) |
+| Escenario | Make, «Precio y Entorno CABA - Pipeline Analytics» (7037544), a pedido | 7 módulos y 7 operaciones por corrida. Se crea con [`make_pipeline.py`](../precio_entorno/make_pipeline.py) |
+| Planilla | [Precio y Entorno CABA - Tablas del dashboard](https://docs.google.com/spreadsheets/d/1_3s-zpZAvhCGF1nu8WlSihdXZiIwQayb6C8Qk6NWLuM/edit) | Una pestaña por tabla. Make la vacía y la vuelve a escribir en cada corrida, así Looker Studio no pierde la conexión |
+| Dashboard | [Looker Studio: Precio y Entorno CABA - Dashboard Analytics](https://lookerstudio.google.com/reporting/5057b183-22bb-4370-8c23-a47387a9d6f1) (privado, credenciales de lector) | Página 1: indicadores, top 10 de barrios por USD/m² y tabla de barrios. Página 2: histograma, USD/m² por ambientes, correlaciones, dispersión de delitos contra USD/m² y nota de fuentes |
+
+**Por qué el Actor baja los delitos.** El CSV oficial pesa 17 MB y Make Free no mueve archivos de más de 5 MB. El Actor lo baja de Buenos Aires Data y verifica su SHA-256 contra el documentado en [datos.md](datos.md). El resultado queda en `delitos_sha256_esperado` del reporte. En Drive queda la copia cruda como referencia.
+
+## Escenario de Make, módulo por módulo
+
+| # | Módulo | Entrada → salida |
+| --- | --- | --- |
+| 1 | Google Drive › Download a file | `avisos_venta_crudo.json` |
+| 2 | HTTP › Make a request (POST `run-sync`) | `{"operacion":"etl","contenidoBase64":…}` → CSV limpio (registro OUTPUT del Actor) |
+| 3 | Google Drive › Upload a file | `02_limpio/dataset_limpio_AAAA-MM-DD_HHmm.csv`. Queda un CSV por corrida, como historial |
+| 4 | Google Drive › Download a file | Ese mismo CSV: el EDA lee lo que quedó en Drive |
+| 5 | HTTP › Make a request (POST `run-sync`) | `{"operacion":"eda",…}` → cuerpo de `values:batchUpdate` |
+| 6 | Google Sheets › Make an API call | `values:batchClear` de las 6 pestañas |
+| 7 | Google Sheets › Make an API call | `values:batchUpdate` con las tablas |
+
+Si el Actor falla, `run-sync` responde con error y Make corta el flujo antes de tocar Drive o la planilla. Make avisa por correo los escenarios con error.
+
+**Correrlo para la demo.** En Make, abrir el escenario y tocar **Run once**. No hace falta activarlo. Tarda 1 a 2 minutos: el ETL lleva unos 70 s porque baja y valida los 17 MB de delitos. Después, en Looker Studio, usar **Actualizar datos**.
+
+**Programarlo.** El plan Free de Make admite 2 escenarios activos, y hoy están activos «Búsquedas» y «Alertas con Apify». Para que el pipeline corra solo (por ejemplo, cada lunes) hay que desactivar otro escenario o pasar a un plan pago. Desde la API, `make_pipeline correr` necesita el escenario activo.
+
+**Costos medidos el 14/11.** ETL: USD 0,003 por corrida. EDA: USD 0,0003. Construir el Actor costó unos USD 0,006. En Make son 7 operaciones por corrida, de las 1.000 mensuales del plan Free.
+
+## Qué hace cada operación
+
+**ETL** ([`pipeline_analytics.etl`](../precio_entorno/pipeline_analytics.py)):
+1. Valida cada aviso con las reglas del importador de la app: barrio de CABA, precio en USD dentro de rango, superficie, ambientes y USD/m² plausibles.
+2. Deja una fila por aviso, la de la captura más reciente.
+3. Marca los posibles duplicados entre fuentes, con la misma regla del modelo: barrio, ambientes, m² y precio redondeados.
+4. Suma el contexto delictivo del barrio: delitos registrados, robos y hurtos y porcentaje con arma, sin siniestros viales, con `periodo_delitos` y `unidad_delitos = barrio`.
+
+Corrida del 14/11: 4.007 filas leídas, 201 descartadas y 3.806 avisos en 48 barrios, con 444 posibles duplicados.
+
+**EDA** ([`pipeline_analytics.eda`](../precio_entorno/pipeline_analytics.py)):
+
+| Pestaña | Una fila por | Para el gráfico |
+| --- | --- | --- |
+| `resumen` | corrida | Indicadores: avisos, barrios, mediana USD/m², descartes, período de delitos |
+| `barrios` | barrio | Barras de USD/m², mapa de burbujas (`ubicacion` = lat,lon), dispersión de delitos contra USD/m² |
+| `ambientes` | 1, 2, 3, 4, 5 o más | Barras de USD/m² y precio por ambientes |
+| `fuentes` | fuente | Composición del catálogo y completitud (pin, expensas, superficie total) |
+| `distribucion` | tramo de 500 USD/m² | Histograma |
+| `correlaciones` | variable | Pearson (lineal) y Spearman (monotónica) contra USD/m², con n |
+
+Cada tabla queda además como CSV en el almacén de la corrida en Apify. La de barrios también queda en el dataset, que se exporta a CSV, Excel o JSON desde Apify Console.
+
+## Dashboard en Looker Studio
+
+Looker Studio es gratis y lee la planilla directamente: cada vez que Make la reescribe, el dashboard muestra los datos nuevos.
+
+El informe ya está armado: [Precio y Entorno CABA - Dashboard Analytics](https://lookerstudio.google.com/reporting/5057b183-22bb-4370-8c23-a47387a9d6f1). Falta sumar el mapa de burbujas y el control de comuna (pasos 2 y 3). Los pasos de abajo sirven para rehacerlo o ampliarlo.
+
+1. **Conectar.** Entrar a [lookerstudio.google.com](https://lookerstudio.google.com) con la misma cuenta de Google. Ir a **Crear › Informe › Hojas de cálculo de Google**, elegir «Precio y Entorno CABA - Tablas del dashboard» y la pestaña `barrios`, con *Usar la primera fila como encabezados* marcado. Después, en **Recurso › Administrar fuentes de datos agregadas**, sumar las otras cinco pestañas de la misma manera.
+2. **Ajustar campos de `barrios`.** En la fuente, cambiar `ubicacion` a **Geográfico › Latitud, longitud** y `comuna` a **Texto**.
+3. **Página «Panorama»:**
+   - **Indicadores** (fuente `resumen`): `avisos`, `barrios`, `mediana_usd_m2`, `filas_descartadas` y `fecha_corrida`.
+   - **Gráfico de barras** (fuente `barrios`): dimensión `barrio`, métrica `mediana_usd_m2`, orden descendente.
+   - **Mapa de burbujas de Google Maps** (fuente `barrios`): ubicación `ubicacion`, tamaño `avisos`, color `mediana_usd_m2`.
+   - **Control desplegable** de `comuna`, para filtrar los gráficos de barrios.
+4. **Página «Oferta»:**
+   - Columnas de `distribucion`: `rango_usd_m2` contra `avisos`, ordenadas por `desde_usd_m2`.
+   - Barras de `ambientes`: `mediana_usd_m2`.
+   - Tabla de `fuentes`.
+5. **Página «Contexto y correlaciones»:**
+   - **Dispersión** (fuente `barrios`): `delitos_registrados` en X, `mediana_usd_m2` en Y y `avisos` como tamaño de burbuja.
+   - **Tabla** de `correlaciones`.
+   - Un cuadro de texto: «Delitos registrados en 2025 por barrio (Mapa del Delito, BA Data). Son contexto: la asociación no implica causalidad y los conteos dependen de la denuncia y la circulación».
+6. **Pie de página de cada hoja:** «Precios de publicación de avisos vigentes autorizados, no tasaciones ni precios de cierre. Fuente: captura del 8/11/2026».
+7. **Frescura.** En cada fuente de datos, ajustar *Frescura de los datos* a 15 minutos. Para la demo, alcanza con **Actualizar datos** después de correr Make. Para la versión estática, **Descargar › PDF**.
+
+## Reproducir sin Make
+
+```powershell
+python -m precio_entorno.pipeline_analytics etl data/raw/venta-consolidada-20261108/avisos.json
+python -m precio_entorno.pipeline_analytics eda data/processed/pipeline/dataset_limpio.csv
+python -m precio_entorno.apify_analytics subir --account 2    # sube y construye el Actor
+python -m precio_entorno.apify_analytics probar --account 2   # ETL y EDA en Apify, como Make
+python -m precio_entorno.make_pipeline crear                  # crea o actualiza el escenario
+```
+
+`apify_analytics` controla antes de cada corrida que la cuenta quede debajo de USD 5. El token de Apify vive en el `.env` y en el encabezado del módulo HTTP dentro de Make, nunca en el repositorio.

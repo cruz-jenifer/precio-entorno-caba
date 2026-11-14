@@ -17,7 +17,8 @@ from fastapi import FastAPI, HTTPException, Query
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from . import concentracion, entorno, make_webhook, radar, ubicacion
+from . import (concentracion, entorno, lugares as lugares_google, make_webhook, parecidos as barrios_parecidos,
+               preferencias, radar, ubicacion)
 from .bases import REAL_BASE, ROOT, demo_base, open_store
 from .importing import BARRIOS, usable_pin
 from .matching import matches
@@ -41,6 +42,11 @@ class SearchIn(BaseModel):
     # Opcional: aviso por correo. El mail se reenvía a Make y no se guarda en la base local.
     email: str | None = Field(default=None, max_length=254)
     consentimiento: bool = False
+    ambientes_o_mas: bool = False
+
+
+class PreferenciasIn(BaseModel):
+    texto: str = Field(min_length=1, max_length=2000)
 
 
 def square(lon, lat, size_m):
@@ -63,13 +69,18 @@ def point_features(items, kind, bbox):
 
 
 def create_app(demo_path=None, real_path=None, entorno_dir=None, raw_dir=None, web_dir=None,
-               subscriptions_url=..., post=None, radar_dir=None):
-    """`subscriptions_url` es el webhook de altas de Make; por defecto se lee MAKE_BUSQUEDAS_WEBHOOK_URL."""
+               subscriptions_url=..., post=None, radar_dir=None, interprete=None, lugares=None):
+    """`subscriptions_url` es el webhook de altas de Make; por defecto se lee MAKE_BUSQUEDAS_WEBHOOK_URL.
+
+    `lugares` consulta Google Places para «Dónde comer»; por defecto se configura con GOOGLE_MAPS_API_KEY.
+    """
     entorno_dir = Path(entorno_dir or ROOT / 'data/processed/entorno')
     raw_dir = Path(raw_dir or ROOT / 'data/raw')
     web_dir = Path(web_dir or ROOT / 'web')
     radar_dir = Path(radar_dir or radar.RADAR_DIR)
     cache = {}
+    interprete = interprete if interprete is not None else preferencias.Interprete.from_env(ROOT / 'data/local')
+    lugares = lugares if lugares is not None else lugares_google.Lugares.from_env(ROOT / 'data/local')
     app = FastAPI(title='Precio y Entorno CABA', docs_url='/api/docs', openapi_url='/api/openapi.json')
 
     def layers():
@@ -106,6 +117,13 @@ def create_app(demo_path=None, real_path=None, entorno_dir=None, raw_dir=None, w
             return None, periods, f"{crime_file['filename']} en data/raw/ no es el mismo archivo que se cargó."
         return path, periods, None
 
+    @app.post('/api/preferencias/interpretar', response_model=preferencias.Propuesta)
+    def interpretar_preferencias(pedido: PreferenciasIn):
+        try:
+            return interprete.interpretar(pedido.texto)
+        except preferencias.ErrorPreferencias as error:
+            raise HTTPException(error.status, str(error)) from None
+
     @app.get('/api/estado')
     def state(modo: Mode = 'demo', operacion: Operation = 'venta'):
         store = store_for(modo, operacion)
@@ -113,6 +131,9 @@ def create_app(demo_path=None, real_path=None, entorno_dir=None, raw_dir=None, w
         crime_file, periods = store.crime_periods()
         return {
             'modo': modo, 'operacion': operacion, 'monedas': CURRENCIES[operacion],
+            'interpretar_preferencias': interprete.enabled,
+            # «Dónde comer» usa datos de Google: solo con datos reales y clave configurada.
+            'lugares': modo == 'real' and lugares.enabled,
             'catalogo': listings[0].get('source') if listings and listings[0].get('source') else None,
             'avisos': len(listings),
             'avisos_por_moneda': {c: sum((i.get('currency') or 'USD') == c for i in listings)
@@ -270,6 +291,39 @@ def create_app(demo_path=None, real_path=None, entorno_dir=None, raw_dir=None, w
             ]) if listing else collection([])
         return result
 
+    @app.get('/api/barrios/{barrio}/parecidos')
+    def similar(barrio: str, modo: Mode = 'demo', operacion: Operation = 'venta',
+                presupuesto: int = Query(110_000, ge=1), superficie: int = Query(40, ge=1),
+                ambientes: int = Query(2, ge=1), moneda: str = 'USD', ambientes_o_mas: bool = False,
+                prefs: list[str] = Query(default=[]), nivel: Literal['inicial', 'primario', 'secundario'] = 'primario'):
+        """Barrios con un entorno parecido, sin puntaje. Los precios se informan aparte, no se comparan."""
+        check_barrio(barrio)
+        rows = neighborhoods(modo, operacion, presupuesto, superficie, ambientes, moneda, ambientes_o_mas)['barrios']
+        return {'barrio': barrio,
+                'parecidos': barrios_parecidos.parecidos(barrio, rows, [p for p in prefs if p in barrios_parecidos.CAPAS],
+                                                         nivel)}
+
+    @app.get('/api/barrios/{barrio}/lugares')
+    def places(barrio: str, tipo: Literal['restaurantes', 'cafes', 'bares'] = 'restaurantes', modo: Mode = 'real'):
+        """Lugares más valorados en Google, consultados en vivo. La respuesta no se guarda ni se cachea."""
+        check_barrio(barrio)
+        if modo == 'demo':
+            return {'disponible': False, 'motivo': 'demo',
+                    'mensaje': 'En la demo no se consultan lugares reales.'}
+        if not lugares.enabled:
+            return {'disponible': False, 'motivo': 'config',
+                    'mensaje': 'La consulta a Google no está configurada.'}
+        data = layers()
+        shape = next((f['geometry'] for f in (data['barrios']['features'] if data else [])
+                      if f['properties'].get('barrio') == barrio), None)
+        if shape is None:
+            return {'disponible': False, 'motivo': 'capas', 'mensaje': 'Las capas no se generaron.'}
+        try:
+            result = lugares.buscar(barrio, shape, entorno.bbox_of(data['barrios'], barrio, margin_m=100), tipo)
+        except lugares_google.ErrorLugares as error:
+            return {'disponible': False, 'motivo': error.motivo, 'mensaje': str(error)}
+        return {'disponible': True, 'tipo': tipo, 'fuente': 'Google Maps', **result}
+
     @app.get('/api/radar')
     def news_radar(periodo: str | None = None):
         """Capa editorial: cobertura de prensa por barrio. No depende del modo ni de la operación."""
@@ -286,7 +340,7 @@ def create_app(demo_path=None, real_path=None, entorno_dir=None, raw_dir=None, w
         return {
             'busquedas': [{'id': s['id'], 'barrio': s['neighborhood'], 'presupuesto': s['budget'],
                            'superficie': s['min_area'], 'ambientes': s['rooms'],
-                           'moneda': s.get('currency') or 'USD'} for s in store.searches()],
+                           'moneda': s.get('currency') or 'USD', 'ambientes_o_mas': bool(s['rooms_or_more'])} for s in store.searches()],
             'alertas': [{'busqueda': a['search_id'], 'id': a['id'], 'barrio': a['neighborhood'],
                          'precio': a['price'], 'moneda': a['currency'], 'superficie': a['covered_area'],
                          'ambientes': a['rooms'], 'expensas': a.get('expenses'),
@@ -315,7 +369,7 @@ def create_app(demo_path=None, real_path=None, entorno_dir=None, raw_dir=None, w
             if not search.consentimiento:
                 raise HTTPException(422, 'Para recibir correos, aceptá el aviso de uso del mail.')
         created = store_for(modo, operacion).save_search(
-            search.barrio, search.presupuesto, search.superficie, search.ambientes, search.moneda)
+            search.barrio, search.presupuesto, search.superficie, search.ambientes, search.moneda, search.ambientes_o_mas)
         result = {'creada': created, 'correo': None}
         if email:
             url = subscriptions_webhook()

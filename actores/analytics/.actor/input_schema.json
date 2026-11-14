@@ -1,0 +1,41 @@
+{
+  "title": "ETL o EDA del flujo Analytics",
+  "type": "object",
+  "schemaVersion": 1,
+  "properties": {
+    "operacion": {
+      "title": "Operación",
+      "type": "string",
+      "description": "etl: avisos crudos → CSV limpio. eda: CSV limpio → tablas del dashboard.",
+      "editor": "select",
+      "enum": ["etl", "eda"],
+      "default": "etl"
+    },
+    "contenidoBase64": {
+      "title": "Archivo en base64",
+      "type": "string",
+      "description": "etl: avisos crudos (JSON o CSV). eda: el CSV limpio. Make lo arma con base64(toString(data)).",
+      "editor": "textarea"
+    },
+    "contenidoUrl": {
+      "title": "URL del archivo",
+      "type": "string",
+      "description": "Alternativa a contenidoBase64 para archivos grandes (por ejemplo, un registro de un almacén de Apify).",
+      "editor": "textfield"
+    },
+    "nombreArchivo": {
+      "title": "Nombre del archivo crudo",
+      "type": "string",
+      "description": "Solo para etl. La extensión (.json o .csv) define cómo se lee.",
+      "editor": "textfield",
+      "default": "avisos.json"
+    },
+    "delitosUrl": {
+      "title": "URL del Mapa del Delito",
+      "type": "string",
+      "description": "Solo para etl. Vacío: delitos_2025.csv de Buenos Aires Data.",
+      "editor": "textfield"
+    }
+  },
+  "required": ["operacion"]
+}

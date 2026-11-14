@@ -47,6 +47,36 @@ Saludos cordiales,
 
 ---
 
+## 1b. Zonaprop: pedido de acceso por API (seguimiento)
+
+Para enviar como respuesta al hilo en que Zonaprop autorizó el uso, así la autorización queda a la vista.
+
+**Para:** [la persona o el área que firmó la autorización]
+**Asunto:** Re: Pedido de autorización para uso académico de avisos de venta en CABA: acceso por API
+
+Hola, [nombre]:
+
+Les agradezco otra vez la autorización para usar avisos de Zonaprop en mi proyecto final de [programa] en [institución]. Gracias a ella pude armar el prototipo. Hoy compara barrios de CABA según el presupuesto y las preferencias de quien busca, muestra el entorno de cada zona y avisa por correo cuando aparece un aviso compatible, con un enlace al aviso original en Zonaprop.
+
+Para la captura usé un servicio de extracción de terceros, a bajo volumen y en pocas pasadas. Les escribo para pedirles **acceso de solo lectura a una API o a un feed oficial** que reemplace esa captura. Sería más prolijo para ustedes, que no tendrían tráfico automatizado sobre el sitio, y para el proyecto, que trabajaría con datos más precisos y bajo sus condiciones.
+
+**Qué necesitaría.**
+- **Avisos vigentes** de departamentos en CABA, en venta y en alquiler.
+- **Campos:** ID y enlace, precio publicado y moneda, superficie cubierta y total, ambientes, antigüedad, cocheras, barrio y coordenadas (con su precisión, si existe), fecha de publicación y, si está disponible, fecha de baja o cambio de precio.
+- **Frecuencia:** una consulta cada dos días como máximo, respetando los límites que indiquen.
+- **Ningún dato del anunciante:** ni nombres, ni teléfonos, ni correos.
+
+**Compromisos.** Mantengo los de la autorización original: uso académico y no comercial, datos guardados localmente y eliminados al terminar el proyecto, publicación solo de resultados agregados y cita a Zonaprop como fuente. Las alertas siempre remiten al aviso en Zonaprop.
+
+Si existe un programa de integración o de socios, me sirve cualquier vía: credenciales de prueba, documentación, una exportación periódica o una reunión breve para ajustar el pedido. Si les interesa, les comparto el informe y una demo del prototipo.
+
+Muchas gracias,
+[Nombre y apellido]
+[Programa · Institución]
+[Correo · Teléfono]
+
+---
+
 ## 2. Inmobiliaria
 
 **Para:** [Nombre del responsable] · [Inmobiliaria]

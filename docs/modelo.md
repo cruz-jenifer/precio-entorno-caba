@@ -2,6 +2,63 @@
 
 Este documento responde la pregunta analítica del capstone: ¿la información sobre delitos registrados mejora la predicción del **precio publicado por m² cubierto**, frente a un modelo que solo usa características inmobiliarias y ubicación?
 
+## Comparación de seis modelos · 14 de noviembre de 2026
+
+La consigna pide comparar dos modelos clásicos, dos ensambles, un MLP y ElasticNet, todos de scikit-learn. `precio_entorno/comparar_modelos.py` los entrena sobre el mismo dataset y la misma partición agrupada que la especificación final (3.806 avisos, prueba del 20 % con semilla 42 y validación cruzada de 5 pliegues). La mediana de comparables queda como referencia.
+
+**Modelos e hiperparámetros.** Son fijos y no hubo búsqueda: se comparan familias de modelos, no ajustes finos.
+
+| Familia | Modelo | Configuración |
+| --- | --- | --- |
+| Clásico | `LinearRegression` | Sin regularización |
+| Clásico | `DecisionTreeRegressor` | `min_samples_leaf=10` |
+| Ensamble | `RandomForestRegressor` | 300 árboles, `min_samples_leaf=3`, `max_features=0.5` |
+| Ensamble | `HistGradientBoostingRegressor` | El mismo del pipeline principal, con pérdida de error absoluto |
+| Red neuronal | `MLPRegressor` | Capas de 64 y 32, `alpha=1e-3`, parada temprana y objetivo escalado |
+| Lineal regularizado | `ElasticNet` | `alpha=0.1`, `l1_ratio=0.5` |
+
+**Preprocesamiento.** Salvo en HistGradientBoosting, que trata los faltantes por su cuenta, los faltantes numéricos se completan con la mediana de entrenamiento y llevan un indicador. Las variables numéricas se escalan, y barrio e inmobiliaria pasan a columnas binarias. Todo se ajusta dentro de cada partición de entrenamiento. Las variables son superficie cubierta y total, ambientes, coordenadas, puntos de interés, barrio e inmobiliaria. Los delitos no entran porque no superan al placebo.
+
+**Resultados en MAE (USD/m²).** Se ordenan por validación cruzada. La brecha es el MAE de prueba menos el de entrenamiento.
+
+| Modelo | Entrenamiento | Prueba | R² prueba | CV (media ± desvío) |
+| --- | --- | --- | --- | --- |
+| **HistGradientBoosting** | 282 | 514 | 0,64 | **469 ± 10** |
+| Random forest | 276 | 518 | 0,66 | 477 ± 10 |
+| MLP | 452 | 573 | 0,61 | 511 ± 11 |
+| Árbol de decisión | 414 | 613 | 0,55 | 577 ± 18 |
+| *Comparables (referencia)* | — | 627 | 0,42 | 584 ± 21 |
+| Regresión lineal | 561 | 629 | 0,49 | 586 ± 8 |
+| ElasticNet | 623 | 685 | 0,36 | 641 ± 19 |
+
+**Con antigüedad y cocheras.** Se suman por ID desde las capturas `zonaprop-venta-20261108-edificio` e `inmobiliarias-20261109-edificio`. La antigüedad está en 2.937 avisos (77 %) y las cocheras en 2.526. En Zonaprop, el 27 % declara 0 años, que puede ser el valor por defecto del portal.
+
+| Modelo | Entrenamiento | Prueba | R² prueba | CV (media ± desvío) |
+| --- | --- | --- | --- | --- |
+| **HistGradientBoosting** | 245 | 442 | 0,70 | **410 ± 19** |
+| Random forest | 245 | 445 | 0,73 | 424 ± 14 |
+| MLP | 330 | 467 | 0,73 | 458 ± 18 |
+| Regresión lineal | 502 | 547 | 0,59 | 524 ± 6 |
+| Árbol de decisión | 383 | 564 | 0,58 | 533 ± 6 |
+| ElasticNet | 548 | 598 | 0,49 | 565 ± 7 |
+| *Comparables (referencia)* | — | 627 | 0,42 | 584 ± 21 |
+
+**Lectura:**
+1. **Los dos ensambles ganan.** HistGradientBoosting queda primero en los dos escenarios y random forest, a menos de 15 USD/m². Con antigüedad, el mejor modelo mejora un 30 % sobre los comparables (410 contra 584).
+2. **Los ensambles sobreajustan más.** Su MAE de entrenamiento es casi la mitad del de prueba. Aun así, generalizan mejor que el resto: la brecha no les impide ser los mejores en prueba y en los 5 pliegues.
+3. **El MLP queda tercero.** Sin antigüedad, aventaja al árbol por 65 USD/m², pero no a los ensambles. Con unas 3.000 filas tabulares, es lo esperable.
+4. **Los modelos lineales no le ganan a la mediana de comparables sin antigüedad.** La relación entre ubicación, superficie y precio no es lineal. ElasticNet, con su regularización, queda último: con estos datos, encoger los coeficientes no compensa.
+5. **La antigüedad mejora a todos los modelos.** El mejor baja de 469 a 410 USD/m², alrededor del 17 % de la mediana de 2.411 USD/m².
+
+**Para reproducirlo:**
+
+```powershell
+python -m precio_entorno.comparar_modelos --control-inmobiliaria --salida data/processed/comparacion-modelos/base
+python -m precio_entorno.comparar_modelos --control-inmobiliaria --edificio data/raw/zonaprop-venta-20261108-edificio/avisos.json data/raw/inmobiliarias-20261109-edificio/avisos.json --salida data/processed/comparacion-modelos/con-edificio
+```
+
+Por defecto usa `data/processed/ampliado/modelo-pines-aproximados-poi-control/dataset_modelo.csv`. Escribe `tabla.csv` y `resultados.json`. La primera corrida reproduce el MAE de 469 del pipeline principal, lo que confirma que la partición es la misma.
+
 ## Resultados con la base ampliada · 8 de noviembre de 2026
 
 **Datos:**

@@ -19,11 +19,14 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from precio_entorno.descripcion import DESCRIPTION_FIELDS
 from precio_entorno.modelo import BASE_FEATURES, OSM_GROUPS, boosting_model, comparables, group_split
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_DATASET = ROOT / 'data/processed/ampliado/modelo-pines-aproximados-poi-control/dataset_modelo.csv'
 BUILDING_FEATURES = ['age_years', 'garages']
+# Rasgos leídos de la descripción (1 lo menciona, 0 no). Solo entran si algún archivo los trae.
+EXTRA_FEATURES = BUILDING_FEATURES + list(DESCRIPTION_FIELDS)
 MODELS = {
     'regresion_lineal': ('clásico', 'LinearRegression'),
     'arbol_de_decision': ('clásico', 'DecisionTreeRegressor'),
@@ -35,7 +38,7 @@ MODELS = {
 
 
 def load_dataset(path, building_paths=()):
-    """Lee el dataset del modelo y, si se indican, suma antigüedad y cocheras por ID."""
+    """Lee el dataset del modelo y, si se indican, suma por ID antigüedad, cocheras y rasgos de la descripción."""
     df = pd.read_csv(path)
     if 'grupo' not in df:
         df['grupo'] = df['id']
@@ -46,11 +49,11 @@ def load_dataset(path, building_paths=()):
         for p in map(Path, building_paths):
             rows += json.loads(p.read_text(encoding='utf-8'))
         extra = pd.DataFrame(rows).rename(columns={'listing_id': 'id'})
-        extra = extra[['id'] + [c for c in BUILDING_FEATURES if c in extra]]
+        extra = extra[['id'] + [c for c in EXTRA_FEATURES if c in extra]]
         # Si un aviso aparece en varias capturas, se queda el último dato informado.
         extra = extra.groupby('id').last()
-        df = df.drop(columns=[c for c in BUILDING_FEATURES if c in df]).join(extra, on='id')
-        for col in BUILDING_FEATURES:
+        df = df.drop(columns=[c for c in EXTRA_FEATURES if c in df]).join(extra, on='id')
+        for col in EXTRA_FEATURES:
             if col in df:
                 df[col] = pd.to_numeric(df[col], errors='coerce')
     return df.reset_index(drop=True)
@@ -59,7 +62,7 @@ def load_dataset(path, building_paths=()):
 def feature_sets(df, control_agency):
     """Variables numéricas y categóricas presentes con al menos un dato."""
     numeric = [f for f in BASE_FEATURES if f != 'barrio_code']
-    numeric += [f for f in list(OSM_GROUPS) + BUILDING_FEATURES if f in df and df[f].notna().any()]
+    numeric += [f for f in list(OSM_GROUPS) + EXTRA_FEATURES if f in df and df[f].notna().any()]
     categorical = ['neighborhood'] + (['agency'] if control_agency else [])
     return numeric, categorical
 
@@ -188,7 +191,7 @@ def main():
     parser.add_argument('--dataset', type=Path, default=DEFAULT_DATASET,
                         help='dataset_modelo.csv generado por precio_entorno.modelo')
     parser.add_argument('--edificio', type=Path, nargs='*', default=[],
-                        help='avisos.json con antigüedad y cocheras para sumar por ID')
+                        help='avisos.json con antigüedad, cocheras o rasgos de la descripción para sumar por ID')
     parser.add_argument('--control-inmobiliaria', action='store_true',
                         help='Incluye la inmobiliaria como variable en todos los modelos')
     parser.add_argument('--semilla', type=int, default=42)

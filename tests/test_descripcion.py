@@ -102,3 +102,31 @@ class StoreTraitsTest(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class ModelTraitsTest(unittest.TestCase):
+    def test_comparacion_y_regresion_usan_los_rasgos(self):
+        import warnings
+        import numpy as np
+        from precio_entorno.comparar_modelos import feature_sets, load_dataset
+        from precio_entorno.efecto_rasgos import effects
+        from tests.test_comparar_modelos import synthetic
+
+        warnings.simplefilter('ignore')
+        df = synthetic(n_per_barrio=80)
+        rng = np.random.default_rng(3)
+        amenities = rng.integers(0, 2, len(df))
+        df['precio_m2'] *= np.where(amenities == 1, 1.2, 1.0)
+        rows = [{'listing_id': i, **{c: 0 for c in DESCRIPTION_FIELDS}, 'amenities': int(a), 'age_years': 10}
+                for i, a in zip(df['id'], amenities)]
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / 'model.csv'
+            df.to_csv(path, index=False)
+            extra = Path(temp) / 'avisos.json'
+            extra.write_text(json.dumps(rows[:200]), encoding='utf-8')
+            joined = load_dataset(path, [extra])
+        self.assertEqual(int(joined['amenities'].notna().sum()), 200)
+        self.assertIn('amenities', feature_sets(joined, False)[0])
+        found = {r['columna']: r for r in effects(joined, with_age=False)['rasgos']}
+        self.assertAlmostEqual(found['amenities']['diferencia_pct'], 20, delta=4)
+        self.assertTrue(found['amenities']['distinto_de_cero'])

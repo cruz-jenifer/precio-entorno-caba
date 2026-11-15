@@ -2,9 +2,10 @@
 
 Zonaprop autorizó por escrito la consulta automatizada. Cada corrida lleva un tope de
 gasto (maxTotalChargeUsd) y se verifica antes la tarifa vigente del actor. El actor
-devuelve datos del anunciante (nombre, correos, teléfonos): nunca se guardan. Solo se
-escriben los campos del contrato de datos, en el mismo catálogo consolidado que las
-inmobiliarias, con el prefijo `zonaprop:`.
+devuelve datos del anunciante (nombre, correos, teléfonos), la descripción y las fotos:
+nunca se guardan. De la descripción solo quedan indicadores (a estrenar, apto crédito,
+balcón...; ver `descripcion.py`). Solo se escriben los campos del contrato de datos, en
+el mismo catálogo consolidado que las inmobiliarias, con el prefijo `zonaprop:`.
 """
 
 import argparse
@@ -14,10 +15,13 @@ from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urlsplit
 
+from precio_entorno.actualizar import BASES
 from precio_entorno.apify_client import ApifyClient
-from precio_entorno.importing import BARRIOS, key
+from precio_entorno.descripcion import DESCRIPTION_FIELDS, traits
+from precio_entorno.importing import BARRIOS, key, parse_listings
 from precio_entorno.inmobiliarias import CATALOGS, coordinate, local_number, mob_barrio, number, record
 from precio_entorno.run_pilot import apify_tokens
+from precio_entorno.store import Store
 
 ACTOR = 'igolaizola/zonaprop-scraper'
 ACTOR_PATH = 'acts/' + ACTOR.replace('/', '~')
@@ -136,6 +140,8 @@ def adapt(item, captured_at, operation):
     covered, total = number(feats.get(SUP_CUBIERTA)), number(feats.get(SUP_TOTAL))
     geo = ((item.get('location') or {}).get('posting_geolocation') or {}).get('geolocation') or {}
     rooms = number(feats.get(AMBIENTES))
+    # La ficha trae la descripción completa; el listado, solo un resumen.
+    text = traits(details.get('title') or item.get('title'), details.get('description') or item.get('description'))
     listing = record(
         'zonaprop', pid, url, captured_at, operation,
         price=number(pricing.get('amount')), currency=pricing.get('currency'),
@@ -143,7 +149,7 @@ def adapt(item, captured_at, operation):
         rooms=int(rooms) if rooms else None, neighborhood=zonaprop_barrio(location),
         latitude=coordinate(geo.get('latitude')), longitude=coordinate(geo.get('longitude')),
         expenses=ars_amount(feats.get(EXPENSAS)),
-        age_years=whole(feats.get(ANTIGUEDAD)), garages=whole(feats.get(COCHERAS)))
+        age_years=whole(feats.get(ANTIGUEDAD)), garages=whole(feats.get(COCHERAS)), **text)
     return listing, None if listing['neighborhood'] else 'barrio_ambiguo'
 
 
@@ -225,10 +231,16 @@ def reread(registros, clients, out):
         source = json.loads(Path(path).read_text(encoding='utf-8'))
         log['releido_de'].append(Path(path).parent.name)
         for entry in source['corridas']:
-            client = clients[entry['cuenta']]
-            run_ = client.request(f"actor-runs/{entry['run_id']}")['data']
-            items = client.request(f"datasets/{run_['defaultDatasetId']}/items",
-                                   params={'format': 'json', 'clean': 'true'})
+            # Una corrida que ya no se puede leer (cuenta sin acceso, resultados vencidos) se anota y se saltea.
+            try:
+                client = clients[entry.get('cuenta') or 1]
+                run_ = client.request(f"actor-runs/{entry['run_id']}")['data']
+                items = client.request(f"datasets/{run_['defaultDatasetId']}/items",
+                                       params={'format': 'json', 'clean': 'true'})
+            except (RuntimeError, KeyError) as error:
+                log['corridas'].append({'barrio': entry['barrio'], 'run_id': entry['run_id'], 'error': str(error)})
+                print(f"{entry['barrio']}: sin leer ({error})", flush=True)
+                continue
             batch, skipped = adapt_all(items, source['captura'], source['operacion'])
             by_id.update((x['listing_id'], x) for x in batch)
             log['corridas'].append({'barrio': entry['barrio'], 'run_id': entry['run_id'], 'avisos': len(batch),
@@ -236,10 +248,23 @@ def reread(registros, clients, out):
             print(f"{entry['barrio']}: {len(batch)} avisos", flush=True)
     listings = list(by_id.values())
     log['avisos'] = len(listings)
+    log['corridas_sin_leer'] = sum('error' in entry for entry in log['corridas'])
     log['con_antiguedad'] = sum(x['age_years'] is not None for x in listings)
+    log['con_descripcion'] = sum(x[DESCRIPTION_FIELDS[0]] is not None for x in listings)
+    log['rasgos'] = {c: sum(x[c] or 0 for x in listings) for c in DESCRIPTION_FIELDS}
     write_json(out / 'avisos.json', listings)
     write_json(out / 'registro.json', log)
     return listings, log
+
+
+def complete_base(avisos, operation, base=None):
+    """Suma a la base los datos opcionales de una relectura, solo donde la base no los tiene.
+
+    Valida el archivo como cualquier importación. Devuelve (avisos válidos, avisos completados).
+    """
+    path = Path(avisos)
+    listings, _ = parse_listings(path.read_bytes(), path.name, CATALOGS[operation], operation)
+    return len(listings), Store(Path(base or BASES[operation])).complete_details(listings)
 
 
 def main():
@@ -258,7 +283,13 @@ def main():
                         help='Confirma que Zonaprop autorizó por escrito la consulta automatizada')
     parser.add_argument('--releer', type=Path, nargs='+', metavar='REGISTRO',
                         help='Vuelve a adaptar corridas ya hechas a partir de sus registro.json, sin costo de actor')
+    parser.add_argument('--completar-base', type=Path, metavar='AVISOS',
+                        help='Completa la base de la operación con un avisos.json releído, sin pisar datos')
     args = parser.parse_args()
+    if args.completar_base:
+        valid, done = complete_base(args.completar_base, args.operacion)
+        print(f'Avisos válidos: {valid} · completados en la base de {args.operacion}: {done}')
+        return
     if args.releer:
         if not args.salida:
             parser.exit(1, 'Error: --releer necesita --salida.\n')
@@ -267,7 +298,8 @@ def main():
             listings, log = reread(args.releer, {n: ApifyClient(t) for n, t in enumerate(tokens, 1)}, args.salida)
         except (ValueError, RuntimeError, OSError, KeyError) as error:
             parser.exit(1, f'Error: {error}\n')
-        print(f"Avisos: {len(listings)} · con antigüedad: {log['con_antiguedad']}")
+        print(f"Avisos: {len(listings)} · con antigüedad: {log['con_antiguedad']}"
+              f" · con descripción: {log['con_descripcion']}")
         return
     if args.barrios == ['todos']:
         args.barrios = [SEARCH_NAMES.get(name, name) for name in CABA_BARRIOS]

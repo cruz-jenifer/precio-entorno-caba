@@ -26,7 +26,25 @@ RE/MAX, Century 21 y Migliorisi autorizaron la lectura de sus sitios y se tratan
 
   - **RE/MAX:** su búsqueda no publica estos campos.
   - **Zonaprop, captura del 8 de noviembre:** la antigüedad y las cocheras se tomaron releyendo los resultados de esas mismas corridas en Apify (`--releer`), sin correr el actor de nuevo. Quedaron en `data/raw/zonaprop-venta-20261108-edificio/`: 2.359 avisos, 2.218 con antigüedad. La relectura generó unos USD 0,04 de uso de plataforma en las cuentas 1 y 4, y ningún evento del actor. Apify conserva esos resultados solo por un tiempo limitado, que depende del plan, así que no siempre se puede repetir con capturas viejas.
-  - **Descripciones:** el estado que aparece solo en el texto del aviso no se lee, porque las descripciones no se guardan.
+  - **Descripciones:** el texto no se guarda. Desde el 15 de noviembre de 2026, en Zonaprop se leen de él los rasgos de la tabla siguiente.
+
+- **Rasgos de la descripción (opcionales, desde el 15 de noviembre de 2026, solo Zonaprop):** `precio_entorno/descripcion.py` lee el título y la descripción completa de la ficha en memoria, los convierte en indicadores y descarta el texto, que suele traer teléfonos o correos del anunciante. Cada indicador vale 1 si el aviso lo menciona y 0 si hay texto pero no lo menciona o lo niega («sin balcón», «no apto crédito», «no tiene balcón»). Sin texto, queda sin dato. **Un 0 no prueba que la unidad no lo tenga:** solo indica que el aviso no lo dice. Son menciones del anunciante, no verificadas.
+
+  | Columna | Alias | Qué cuenta | Venta | Alquiler |
+  | --- | --- | --- | --- | --- |
+  | `new_build` | `a_estrenar` | «a estrenar», «para estrenar», «nunca habitado» | 15 % | 10 % |
+  | `needs_renovation` | `a_reciclar` | «a reciclar», «a refaccionar», «necesita refacciones». «Reciclado» no cuenta. | 2 % | 0 % |
+  | `mortgage_eligible` | `apto_credito` | «apto crédito», «apto crédito hipotecario», «acepta crédito» | 21 % | 0 % |
+  | `balcony` | `balcon` | «balcón» | 68 % | 63 % |
+  | `terrace` | `terraza` | «terraza». Incluye terrazas comunes del edificio. | 25 % | 16 % |
+  | `patio` | `patio` | «patio». «Patio de luz» o «de aire» no cuentan. | 15 % | 9 % |
+  | `amenities` | `amenities` | «amenities», pileta, piscina, gimnasio, solarium, SUM | 32 % | 28 % |
+  | `bright` | `luminoso` | «luminoso», «mucha luz», «excelente luminosidad» | 49 % | 52 % |
+  | `rear_facing` | `contrafrente` | «contrafrente», «c/frente» | 19 % | 19 % |
+
+  - **Relectura del 15 de noviembre:** las corridas del 8 de noviembre se releyeron con `--releer` (sin eventos del actor) en `data/raw/zonaprop-venta-20261108-descripcion/` y `data/raw/zonaprop-alquiler-20261108-descripcion/`, y se sumaron a las bases con `--completar-base`, que solo completa datos vacíos. Entraron 1.528 avisos de venta (de 2.272 de Zonaprop en la base) y 1.729 de alquiler (de 2.042). En la misma pasada, la base de venta sumó la antigüedad y las cocheras de esos avisos, que hasta entonces solo estaban en la carpeta `-edificio`.
+  - **Faltantes:** las corridas de la cuenta 4 de Apify (13 barrios de venta y 3 reintentos; 8 de alquiler y 2 reintentos) no se pudieron leer, porque su token responde HTTP 401 fuera de Make. Esos avisos quedan sin rasgos. Las otras inmobiliarias tampoco los tienen.
+  - **Calibración:** los patrones se revisaron sobre 300 descripciones reales, mirando solo conteos y fragmentos cortos con los números tapados.
 
 #### Zonaprop (con Apify)
 
@@ -37,9 +55,10 @@ Zonaprop autorizó por escrito la consulta automatizada. Sus avisos se obtienen 
   - Ambientes, superficie total, superficie cubierta y expensas salen de las características `CFT1`, `CFT100`, `CFT101` y `CFT6`.
   - Las expensas solo se toman si están en pesos.
   - Antigüedad y cocheras salen de `CFT5` y `CFT7` (ver la tabla de datos del edificio).
+  - Los rasgos (a estrenar, apto crédito, balcón...) salen de `_details.description`, la descripción completa de la ficha. El listado trae solo un resumen de unos 150 caracteres.
 - **Barrio:** se recorre la jerarquía de ubicación de Zonaprop (subbarrio → barrio → ciudad) hasta encontrar un barrio oficial. Caballito Sur y Parque Rivadavia se asignan a Caballito, y Almagro Norte y Almagro Sur a Almagro. Solo se aceptan avisos cuya jerarquía llega a Capital Federal.
 - **Coordenadas:** vienen de la geolocalización de la ficha. Zonaprop la marca con visibilidad «EXACT», pero no informa la precisión en metros.
-- **Fuera del registro:** el actor devuelve el nombre, los correos y los teléfonos del anunciante, además de la descripción y las fotos. Nada de eso se guarda. En el piloto, el crudo quedó en una carpeta temporal fuera del proyecto y se borró después de adaptarlo.
+- **Fuera del registro:** el actor devuelve el nombre, los correos y los teléfonos del anunciante, además de la descripción y las fotos. Nada de eso se guarda. De la descripción solo quedan los rasgos de la tabla anterior. En el piloto, el crudo quedó en una carpeta temporal fuera del proyecto y se borró después de adaptarlo.
 - **Piloto del 8 de noviembre de 2026:**
   - **Captura:** 2 corridas (Caballito y Almagro, 25 departamentos en venta cada una, ordenados por más recientes, con ficha), en la cuenta 1 de Apify con un tope de USD 0,50 por corrida. Se cobraron 102 eventos de USD 0,001, unos USD 0,05.
   - **Validación:** pasaron 49 avisos. Uno se descartó por no tener superficie cubierta.

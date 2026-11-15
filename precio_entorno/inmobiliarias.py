@@ -20,6 +20,7 @@ from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urlsplit
+from precio_entorno.descripcion import DESCRIPTION_FIELDS
 from precio_entorno.importing import BARRIOS, key
 from precio_entorno.robots import Robots, disallow_all
 
@@ -102,8 +103,8 @@ def record(agency, local_id, url, captured_at, operation='venta', **fields):
                 'neighborhood', 'latitude', 'longitude', 'expenses') + OPTIONAL_FIELDS}}
 
 
-# Campos opcionales del edificio y la unidad. Solo los traen algunas fuentes.
-OPTIONAL_FIELDS = ('age_years', 'condition', 'garages', 'floor')
+# Campos opcionales del edificio y la unidad, y rasgos leídos de la descripción. Solo los traen algunas fuentes.
+OPTIONAL_FIELDS = ('age_years', 'condition', 'garages', 'floor') + DESCRIPTION_FIELDS
 
 
 def age_from_year(year, captured_at):

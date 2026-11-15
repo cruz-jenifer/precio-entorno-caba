@@ -9,6 +9,8 @@ from datetime import date, datetime
 from hashlib import sha256
 from urllib.parse import urlsplit
 
+from precio_entorno.descripcion import TRAITS
+
 
 def key(value):
     plain = unicodedata.normalize('NFKD', str(value))
@@ -57,6 +59,16 @@ CONDITIONS = {
     'excelente': 'excelente', 'muy_bueno': 'muy bueno', 'bueno': 'bueno', 'regular': 'regular',
     'reciclado': 'reciclado', 'a_reciclar': 'a reciclar', 'a_refaccionar': 'a reciclar',
 }
+# Rasgos leídos de la descripción: 1 lo menciona, 0 no lo menciona.
+FLAGS = {'1': 1, '0': 0, 'true': 1, 'false': 0, 'si': 1, 'no': 0}
+
+
+def flag(raw):
+    if isinstance(raw, (bool, int, float)) and raw in (0, 1):
+        return int(raw)
+    return FLAGS[key(str(raw))]
+
+
 PRICE_PER_M2_RANGES = {('venta', 'USD'): PRICE_PER_M2_USD, ('alquiler', 'ARS'): (1_000, 2_000_000),
                        ('alquiler', 'USD'): (1, 1_000)}
 
@@ -218,6 +230,8 @@ def parse_listings(content, filename, source, operation='venta'):
         listing['garages'] = get('garages', lambda x: number(
             x, minimum=GARAGES[0], maximum=GARAGES[1], whole=True), 'cocheras')
         listing['floor'] = get('floor', lambda x: number(x, minimum=FLOOR[0], maximum=FLOOR[1], whole=True), 'piso')
+        for column, (spanish, _) in TRAITS.items():
+            listing[column] = get(column, flag, spanish)
         if listing['total_area_m2'] is not None and listing['covered_area'] is not None:
             if listing['total_area_m2'] < listing['covered_area']:
                 report.invalid['total_area_m2'] += 1

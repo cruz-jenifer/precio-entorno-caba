@@ -2,9 +2,13 @@ import sqlite3
 from contextlib import closing
 from pathlib import Path
 
+from precio_entorno.descripcion import DESCRIPTION_FIELDS
+
 
 # Columnas opcionales de listing_details: un aviso que no las trae se guarda sin dato.
-OPTIONAL_DETAILS = ('expenses', 'age_years', 'condition', 'garages', 'floor')
+# Los rasgos de la descripción valen 1 (lo menciona) o 0 (no lo menciona); sin texto quedan sin dato.
+OPTIONAL_DETAILS = ('expenses', 'age_years', 'condition', 'garages', 'floor') + DESCRIPTION_FIELDS
+TRAIT_COLUMNS = ', '.join(f'{column} INTEGER' for column in DESCRIPTION_FIELDS)
 
 # Vigencia de un aviso. `no_visto`: faltó en un barrido completo de su fuente, pero sigue contando
 # (puede ser un error pasajero del sitio). `baja`: faltó en dos barridos completos seguidos.
@@ -45,7 +49,8 @@ class Store:
                     listing_id TEXT PRIMARY KEY REFERENCES listings(id), source TEXT NOT NULL,
                     url TEXT NOT NULL, captured_at TEXT NOT NULL, currency TEXT NOT NULL,
                     total_area_m2 REAL, latitude REAL, longitude REAL, location_accuracy_m REAL,
-                    expenses REAL, age_years INTEGER, condition TEXT, garages INTEGER, floor INTEGER
+                    expenses REAL, age_years INTEGER, condition TEXT, garages INTEGER, floor INTEGER,
+                    {TRAIT_COLUMNS}
                 );
                 CREATE TABLE IF NOT EXISTS crime_file (
                     id INTEGER PRIMARY KEY CHECK (id = 1), filename TEXT NOT NULL, digest TEXT NOT NULL
@@ -83,7 +88,8 @@ class Store:
                                         ('listing_details', 'floor', 'INTEGER'),
                                         ('listings', 'status', "TEXT NOT NULL DEFAULT 'activo'"),
                                         ('listings', 'status_at', 'TEXT'),
-                                        ('listings', 'last_seen', 'TEXT')):
+                                        ('listings', 'last_seen', 'TEXT'),
+                                        *(('listing_details', c, 'INTEGER') for c in DESCRIPTION_FIELDS)):
                 if column not in {row['name'] for row in db.execute(f'PRAGMA table_info({table})')}:
                     db.execute(f'ALTER TABLE {table} ADD COLUMN {column} {kind}')
             # Bases anteriores a la vigencia: el aviso se vio por última vez en su captura y su primer
@@ -143,19 +149,29 @@ class Store:
                 db.execute("INSERT INTO listing_prices VALUES (?, ?, ?, ?)",
                            (item['id'], item['price'], currency, seen_at))
                 if source is not None:
-                    db.execute("""
-                        INSERT INTO listing_details (listing_id, source, url, captured_at, currency,
-                            total_area_m2, latitude, longitude, location_accuracy_m, expenses,
-                            age_years, condition, garages, floor)
-                        VALUES (:id, :source, :url, :captured_at, :currency, :total_area_m2,
-                            :latitude, :longitude, :location_accuracy_m, :expenses,
-                            :age_years, :condition, :garages, :floor)
+                    columns = ('url', 'captured_at', 'currency', 'total_area_m2', 'latitude', 'longitude',
+                               'location_accuracy_m') + OPTIONAL_DETAILS
+                    db.execute(f"""
+                        INSERT INTO listing_details (listing_id, source, {', '.join(columns)})
+                        VALUES (:id, :source, {', '.join(':' + c for c in columns)})
                     """, {**{k: None for k in OPTIONAL_DETAILS}, **item, 'source': source})
                 new_listings += 1
                 new_alerts += self._match(db, item, currency)
         if stats is not None:
             stats.update(cambios_de_precio=price_changes, reactivados=reactivated)
         return new_listings, new_alerts
+
+    def complete_details(self, listings, fields=OPTIONAL_DETAILS):
+        """Completa datos opcionales de avisos que ya están en la base, sin pisar lo que ya tienen.
+
+        Sirve para sumar datos de una relectura (rasgos de la descripción, antigüedad) sin volver a
+        importar. Los avisos que no están en la base se ignoran. Devuelve cuántos avisos cambiaron.
+        """
+        sets = ', '.join(f'{c} = COALESCE({c}, :{c})' for c in fields)
+        missing = ' OR '.join(f'({c} IS NULL AND :{c} IS NOT NULL)' for c in fields)
+        with closing(self.connect()) as db, db:
+            return sum(db.execute(f"UPDATE listing_details SET {sets} WHERE listing_id = :id AND ({missing})",
+                                  {**{c: None for c in fields}, **item}).rowcount for item in listings)
 
     @staticmethod
     def _match(db, item, currency):

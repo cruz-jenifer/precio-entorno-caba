@@ -157,6 +157,12 @@ def criteria_json(m):
             + ',"ambientesOMas":' + col(m, 'ambientesOMas') + '}')
 
 
+# Al menos una búsqueda con id: sin búsquedas activas, el agregador arma un objeto con celdas vacías
+# ({"id":"","presupuesto":,...}), que no es JSON válido.
+HAS_SEARCHES = {'name': 'Hay búsquedas activas',
+                'conditions': [[{'a': '{{2.text}}', 'b': '"id":"[^"]+"', 'o': 'text:pattern'}]]}
+
+
 def alerts_blueprint(unsubscribe_url, team_email, max_listings=100):
     actor_input = ('{"busquedas":[{{2.text}}],"autorizacionConfirmada":true,'
                    f'"maxAvisosPorSitio":{max_listings},"alertarPrimeraCorrida":false}}')
@@ -190,9 +196,10 @@ def alerts_blueprint(unsubscribe_url, team_email, max_listings=100):
         find_rows(1, [('activa', 'si')], 0),
         module(2, 'util:TextAggregator', 1, {'value': criteria_json(1)}, 300,
                parameters={'feeder': 1, 'rowSeparator': 'other', 'otherRowSeparator': ','}),
+        # Sin búsquedas activas el agregador sale vacío y el input no es JSON válido: no se corre nada.
         module(3, 'apify:runActorNew', 1, {'actorId': ACTOR, 'runSync': True, 'actor_search_type': 'user',
                                            f'inputBody{ACTOR}': actor_input},
-               600, parameters={'__IMTCONN__': CONN['apify']}),
+               600, parameters={'__IMTCONN__': CONN['apify']}, filter_=HAS_SEARCHES),
         {'id': 11, 'module': 'builtin:BasicRouter', 'version': 1, 'mapper': None,
          'metadata': {'designer': {'x': 900, 'y': 0}}, 'routes': [{'flow': run_log}, {'flow': emails}]},
     ]

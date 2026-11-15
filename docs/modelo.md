@@ -50,11 +50,46 @@ La consigna pide comparar dos modelos clásicos, dos ensambles, un MLP y Elastic
 4. **Los modelos lineales no le ganan a la mediana de comparables sin antigüedad.** La relación entre ubicación, superficie y precio no es lineal. ElasticNet, con su regularización, queda último: con estos datos, encoger los coeficientes no compensa.
 5. **La antigüedad mejora a todos los modelos.** El mejor baja de 469 a 410 USD/m², alrededor del 17 % de la mediana de 2.411 USD/m².
 
+**Con los rasgos de la descripción (15 de noviembre).** A lo anterior se suman los nueve rasgos que se leen de la descripción del aviso (a estrenar, a reciclar, apto crédito, balcón, terraza, patio, amenities, luminoso y contrafrente; ver [datos.md](datos.md)). Los tienen 3.214 de los 3.806 avisos del modelo (84 %): los 2.272 de Zonaprop, 559 de RE/MAX y 383 de Migliorisi. Les faltan a Century 21 y a Clarín, cuyas fichas no se pudieron leer.
+
+| Modelo | Entrenamiento | Prueba | R² prueba | CV (media ± desvío) |
+| --- | --- | --- | --- | --- |
+| **HistGradientBoosting** | 237 | 443 | 0,69 | **400 ± 14** |
+| Random forest | 235 | 437 | 0,74 | 416 ± 14 |
+| MLP | 347 | 494 | 0,68 | 480 ± 19 |
+| Regresión lineal | 487 | 533 | 0,61 | 512 ± 6 |
+| Árbol de decisión | 374 | 562 | 0,60 | 517 ± 1 |
+| ElasticNet | 533 | 585 | 0,52 | 552 ± 8 |
+| *Comparables (referencia)* | — | 627 | 0,42 | 584 ± 21 |
+
+En el modelo, la mejora es chica pero ahora consistente: HistGradientBoosting baja a 400 USD/m² (410 sin rasgos y 408 cuando solo los tenía Zonaprop), random forest de 424 a 416 y la regresión lineal de 524 a 512. El MLP sigue peor que sin rasgos (480 contra 458), probablemente por las 18 columnas nuevas (nueve rasgos y sus indicadores de faltante).
+
+**Cuánto se asocian con el precio, dentro del barrio.** `precio_entorno/efecto_rasgos.py` estima una regresión de log(USD/m²) sobre los nueve rasgos, la superficie, los ambientes, el barrio y la inmobiliaria, con errores robustos, solo en los avisos con descripción. Es una asociación sobre precios publicados, no un efecto causal. Se marca con * si el intervalo del 95 % no incluye 0. RE/MAX no informa la antigüedad, así que la columna con antigüedad usa solo Zonaprop y Migliorisi.
+
+| Rasgo | Avisos | Sin antigüedad (n = 3.214) | Con antigüedad (n = 2.517) |
+| --- | --- | --- | --- |
+| Amenities | 988 | +19,8 % * | +10,1 % * |
+| A reciclar | 59 | −25,0 % * | −18,9 % * |
+| Balcón | 2.127 | +5,7 % * | +3,6 % * |
+| Terraza | 755 | +6,9 % * | +3,5 % * |
+| Apto crédito | 646 | −5,9 % * | −2,8 % * |
+| A estrenar | 451 | +11,4 % * | −1,2 % |
+| Luminoso | 1.561 | −3,0 % * | −1,2 % |
+| Patio | 425 | −2,9 % | +0,4 % |
+| Contrafrente | 598 | −0,5 % | +0,2 % |
+
+1. **Amenities, a reciclar, balcón y terraza** siguen marcando diferencia aun con la antigüedad: un aviso con amenities publica un 10 % más por m² que uno parecido del mismo barrio, edad e inmobiliaria; uno a reciclar, un 19 % menos. Con más avisos, la terraza (+3,5 %) pasó a ser distinta de cero.
+2. **«A estrenar» no agrega nada a la antigüedad:** su +11 % desaparece al controlar por edad, porque dice lo mismo que `age_years = 0`.
+3. **«Apto crédito» se asocia con precios algo menores** (−3 % con antigüedad). Puede reflejar que lo destacan más los avisos de unidades más accesibles.
+4. **Luminoso, patio y contrafrente no muestran diferencias** una vez que se considera la antigüedad. «Luminoso» aparece en la mitad de los avisos y funciona más como adjetivo de venta que como dato.
+
 **Para reproducirlo:**
 
 ```powershell
 python -m precio_entorno.comparar_modelos --control-inmobiliaria --salida data/processed/comparacion-modelos/base
 python -m precio_entorno.comparar_modelos --control-inmobiliaria --edificio data/raw/zonaprop-venta-20261108-edificio/avisos.json data/raw/inmobiliarias-20261109-edificio/avisos.json --salida data/processed/comparacion-modelos/con-edificio
+python -m precio_entorno.comparar_modelos --control-inmobiliaria --edificio data/raw/zonaprop-venta-20261108-edificio/avisos.json data/raw/inmobiliarias-20261109-edificio/avisos.json data/raw/zonaprop-venta-20261108-descripcion-completa/avisos.json data/raw/rasgos-inmobiliarias-20261115/avisos.json --salida data/processed/comparacion-modelos/con-descripcion
+python -m precio_entorno.efecto_rasgos
 ```
 
 Por defecto usa `data/processed/ampliado/modelo-pines-aproximados-poi-control/dataset_modelo.csv`. Escribe `tabla.csv` y `resultados.json`. La primera corrida reproduce el MAE de 469 del pipeline principal, lo que confirma que la partición es la misma.

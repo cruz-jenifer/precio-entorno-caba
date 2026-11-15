@@ -20,6 +20,7 @@ from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urlsplit
+from precio_entorno.descripcion import DESCRIPTION_FIELDS, traits
 from precio_entorno.importing import BARRIOS, key
 from precio_entorno.robots import Robots, disallow_all
 
@@ -102,8 +103,8 @@ def record(agency, local_id, url, captured_at, operation='venta', **fields):
                 'neighborhood', 'latitude', 'longitude', 'expenses') + OPTIONAL_FIELDS}}
 
 
-# Campos opcionales del edificio y la unidad. Solo los traen algunas fuentes.
-OPTIONAL_FIELDS = ('age_years', 'condition', 'garages', 'floor')
+# Campos opcionales del edificio y la unidad, y rasgos leídos de la descripción. Solo los traen algunas fuentes.
+OPTIONAL_FIELDS = ('age_years', 'condition', 'garages', 'floor') + DESCRIPTION_FIELDS
 
 
 def age_from_year(year, captured_at):
@@ -194,7 +195,16 @@ class PoliteClient:
 # ---------------------------------------------------------------- RE/MAX
 
 REMAX_API = 'https://api-ar.redremax.com/remaxweb-ar/api/listings/findAllWithEntrepreneurships'
+REMAX_DETAIL = 'https://api-ar.redremax.com/remaxweb-ar/api/listings/findBySlug/'
 REMAX_LANDING = OPERATION_SETTINGS['venta']['remax_landing']
+
+
+def remax_traits(client, url):
+    """Rasgos de la descripción de un aviso de RE/MAX. El listado no la trae: se pide la ficha."""
+    data = json.loads(client.get(REMAX_DETAIL + url.rstrip('/').rsplit('/', 1)[-1]))['data']
+    if not isinstance(data, dict):
+        raise KeyError('aviso sin ficha')  # Un aviso dado de baja devuelve `data: null`.
+    return traits(data.get('title'), data.get('description'))
 
 
 def parse_remax(payload, captured_at, operation='venta'):
@@ -245,7 +255,18 @@ def scrape_remax(client, captured_at, max_listings, page_size=100, known=frozens
         # Completo si se leyeron todas las páginas sin cortar por el tope. Los avisos que Remax marca como no
         # activos se omiten, así que cuentan como no vistos.
         sweep['completo'] = bool(pages) and page >= pages and len(listings) <= max_listings
-    return listings[:max_listings], skipped
+    listings = listings[:max_listings]
+    for listing in listings:
+        # Solo los avisos nuevos: pedir la ficha de todos sumaría un pedido por aviso en cada corrida.
+        if listing['listing_id'] in known:
+            continue
+        try:
+            listing.update(remax_traits(client, listing['url']))
+        except Blocked:
+            raise
+        except (RuntimeError, ValueError, KeyError):
+            skipped['sin_descripcion'] += 1
+    return listings, skipped
 
 
 # ---------------------------------------------------------------- Century 21
@@ -321,6 +342,7 @@ def scrape_century21(client, captured_at, max_listings, known=frozenset(), opera
 
 MIG_BASE = 'https://www.migliorisi.com.ar'
 # Segmentos de operación y moneda: 1/2 = venta en dólares, 2/0 = alquiler en cualquier moneda.
+MIG_DESCRIPTION = re.compile(r'<div id="div-descripcion">(.*?)</div>', re.S)
 MIG_SEARCH = MIG_BASE + '/busqueda-propiedades/a/0/0/0/0/0/{op}/99999999/0/0/0/0/0/{page}'
 
 
@@ -336,6 +358,12 @@ def parse_migliorisi_list(page):
     titles = dict(re.findall(r'href="/propiedad/ver/([a-z]\d+)/[^"]+">\s*<div[^>]*>\s*<img[^>]*title="([^"]+)"', page))
     pages = [int(p) for p in re.findall(r'busqueda-propiedades/[^"]*/(\d+)"', page)]
     return [(path, code, html_lib.unescape(titles.get(code, ''))) for code, path in cards.items()], max(pages or [1])
+
+
+def migliorisi_traits(page, title=''):
+    """Rasgos del bloque de descripción de la ficha. Sin ese bloque quedan sin dato."""
+    description = MIG_DESCRIPTION.search(page)
+    return traits(title, description.group(1)) if description else {}
 
 
 def parse_migliorisi_detail(page, path, code, title, captured_at, operation='venta'):
@@ -366,7 +394,8 @@ def parse_migliorisi_detail(page, path, code, title, captured_at, operation='ven
         covered_area_m2=covered, total_area_m2=covered + sum(extra) if covered and extra else covered,
         rooms=int(rooms.group(1)) if rooms else None, neighborhood=name,
         expenses=local_number(expenses.group(1)) if expenses and operation == 'alquiler' else None,
-        age_years=(0 if age.group(2) else int(age.group(1))) if age else None)
+        age_years=(0 if age.group(2) else int(age.group(1))) if age else None,
+        **migliorisi_traits(page, title))
     return listing, is_operation, title.upper().startswith('DEPARTAMENTO')
 
 

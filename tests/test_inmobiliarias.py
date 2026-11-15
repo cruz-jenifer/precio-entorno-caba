@@ -163,6 +163,57 @@ class PoliteClientTests(unittest.TestCase):
         page = {'data': {'totalPages': 5, 'data': [remax_item(i) for i in range(3)]}}
         client, calls, _ = self.client({})
         client._fetch = lambda url, params=None: (200, json.dumps(page))
-        listings, _ = scrape_remax(client, CAPTURED, max_listings=4, page_size=3)
+        known = {'remax:X-0', 'remax:X-1'}
+        listings, _ = scrape_remax(client, CAPTURED, max_listings=4, page_size=3, known=known)
         self.assertEqual(len(listings), 4)
-        self.assertEqual(client.log['pedidos'], 3)  # robots.txt y dos páginas.
+        # robots.txt, dos páginas y la ficha del único aviso que no estaba en `known`.
+        self.assertEqual(client.log['pedidos'], 4)
+
+
+class DescriptionTraitsTests(unittest.TestCase):
+    def test_remax_reads_traits_from_the_detail_of_new_listings_only(self):
+        page = {'data': {'totalPages': 1, 'data': [remax_item(1), remax_item(2)]}}
+        detail = {'data': {'title': 'Depto con balcón', 'description': '<p>Apto crédito. Llamar a Agente Ficticio.</p>'}}
+        calls = []
+
+        def fetch(url, params=None):
+            calls.append(url)
+            return 200, json.dumps(detail if 'findBySlug' in url else page)
+        client = PoliteClient(fetch=fetch, pause_s=0, sleep=lambda s: None)
+        listings, _ = scrape_remax(client, CAPTURED, max_listings=10, known={'remax:X-2'})
+        by_id = {l['listing_id']: l for l in listings}
+        self.assertEqual((by_id['remax:X-1']['balcony'], by_id['remax:X-1']['mortgage_eligible'],
+                          by_id['remax:X-1']['terrace']), (1, 1, 0))
+        self.assertIsNone(by_id['remax:X-2']['balcony'])
+        self.assertEqual([c for c in calls if 'findBySlug' in c], [
+            'https://api-ar.redremax.com/remaxweb-ar/api/listings/findBySlug/aviso-ficticio-1'])
+        self.assertNotIn('Ficticio', json.dumps(listings))
+
+    def test_remax_detail_error_leaves_traits_empty_but_block_stops(self):
+        page = {'data': {'totalPages': 1, 'data': [remax_item(1)]}}
+        for status, expected in [(500, None), (403, Blocked)]:
+            def fetch(url, params=None, status=status):
+                return (status, '') if 'findBySlug' in url else (200, json.dumps(page))
+            client = PoliteClient(fetch=fetch, pause_s=0, sleep=lambda s: None)
+            if expected:
+                with self.assertRaises(Blocked):
+                    scrape_remax(client, CAPTURED, max_listings=10)
+            else:
+                listings, skipped = scrape_remax(client, CAPTURED, max_listings=10)
+                self.assertIsNone(listings[0]['balcony'])
+                self.assertEqual(skipped['sin_descripcion'], 1)
+
+    def test_migliorisi_traits_from_description_block(self):
+        detail = ('<title>Inmobiliaria Migliorisi | DEPARTAMENTO. 2 ambientes. VENTA. Almagro. CALLE al 100</title>'
+                  '<p>Precio U$S 100.000</p><td>Superficie Cubierta</td><td>40 m2</td>'
+                  '<div id="div-descripcion"><p>Luminoso, con terraza. No apto cr&#233;dito.</p></div>'
+                  '<footer>Amenities del barrio</footer>')
+        listing, _, _ = parse_migliorisi_detail(detail, '/propiedad/ver/a1/depto', 'a1', '', CAPTURED)
+        self.assertEqual((listing['bright'], listing['terrace'], listing['mortgage_eligible'], listing['amenities']),
+                         (1, 1, 0, 0))
+        plain = detail.replace('div-descripcion', 'otro')
+        self.assertIsNone(parse_migliorisi_detail(plain, '/propiedad/ver/a1/depto', 'a1', '', CAPTURED)[0]['bright'])
+
+
+if __name__ == '__main__':
+    unittest.main()

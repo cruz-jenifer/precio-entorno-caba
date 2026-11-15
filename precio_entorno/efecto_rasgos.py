@@ -1,7 +1,7 @@
 """Cuánto se asocia cada rasgo de la descripción con el USD/m² publicado, dentro del barrio.
 
 Regresión lineal de log(USD/m²) sobre los nueve rasgos, la superficie cubierta (en log),
-los ambientes y el barrio, con errores robustos (HC1). Se estima con y sin antigüedad,
+los ambientes, el barrio y la inmobiliaria, con errores robustos (HC1). Se estima con y sin antigüedad,
 porque «a estrenar» y «amenities» se superponen con los edificios nuevos. Es una
 asociación sobre precios de publicación, no un efecto causal ni una tasación, y solo
 usa los avisos que tienen descripción leída.
@@ -19,7 +19,8 @@ from precio_entorno.descripcion import DESCRIPTION_FIELDS, TRAITS
 
 ROOT = Path(__file__).resolve().parents[1]
 EXTRA = ['data/raw/zonaprop-venta-20261108-edificio/avisos.json', 'data/raw/inmobiliarias-20261109-edificio/avisos.json',
-         'data/raw/zonaprop-venta-20261108-descripcion-completa/avisos.json']
+         'data/raw/zonaprop-venta-20261108-descripcion-completa/avisos.json',
+         'data/raw/rasgos-inmobiliarias-20261115/avisos.json']
 
 
 def ols_hc1(X, y):
@@ -38,7 +39,9 @@ def effects(df, with_age):
         data = data.dropna(subset=['age_years'])
     parts = [data[list(DESCRIPTION_FIELDS)], np.log(data['covered_area']).rename('log_m2'),
              pd.get_dummies(data['rooms'].astype(int), prefix='amb', drop_first=True),
-             pd.get_dummies(data['neighborhood'], drop_first=True)]
+             pd.get_dummies(data['neighborhood'], drop_first=True),
+             # Cada inmobiliaria redacta y publica distinto: se compara dentro de la misma fuente.
+             pd.get_dummies(data['agency'], prefix='inm', drop_first=True)]
     if with_age:
         parts.append(pd.DataFrame({'edad': data['age_years'], 'edad2': data['age_years'] ** 2}))
     X = pd.concat(parts, axis=1).astype(float)
@@ -52,7 +55,7 @@ def effects(df, with_age):
                      'diferencia_pct': round(float(np.expm1(coef[column]) * 100), 1),
                      'ic95_pct': [round(float(np.expm1(low) * 100), 1), round(float(np.expm1(high) * 100), 1)],
                      'distinto_de_cero': bool(low > 0 or high < 0)})
-    return {'avisos': len(data), 'r2': round(float(r2), 3), 'rasgos': rows}
+    return {'avisos': len(data), 'por_inmobiliaria': data['agency'].value_counts().to_dict(), 'r2': round(float(r2), 3), 'rasgos': rows}
 
 
 def main():

@@ -28,23 +28,25 @@ RE/MAX, Century 21 y Migliorisi autorizaron la lectura de sus sitios y se tratan
   - **Zonaprop, captura del 8 de noviembre:** la antigüedad y las cocheras se tomaron releyendo los resultados de esas mismas corridas en Apify (`--releer`), sin correr el actor de nuevo. Quedaron en `data/raw/zonaprop-venta-20261108-edificio/`: 2.359 avisos, 2.218 con antigüedad. La relectura generó unos USD 0,04 de uso de plataforma en las cuentas 1 y 4, y ningún evento del actor. Apify conserva esos resultados solo por un tiempo limitado, que depende del plan, así que no siempre se puede repetir con capturas viejas.
   - **Descripciones:** el texto no se guarda. Desde el 15 de noviembre de 2026, en Zonaprop se leen de él los rasgos de la tabla siguiente.
 
-- **Rasgos de la descripción (opcionales, desde el 15 de noviembre de 2026, solo Zonaprop):** `precio_entorno/descripcion.py` lee el título y la descripción completa de la ficha en memoria, los convierte en indicadores y descarta el texto, que suele traer teléfonos o correos del anunciante. Cada indicador vale 1 si el aviso lo menciona y 0 si hay texto pero no lo menciona o lo niega («sin balcón», «no apto crédito», «no tiene balcón»). Sin texto, queda sin dato. **Un 0 no prueba que la unidad no lo tenga:** solo indica que el aviso no lo dice. Son menciones del anunciante, no verificadas.
+- **Rasgos de la descripción (opcionales, desde el 15 de noviembre de 2026; Zonaprop, RE/MAX y Migliorisi):** `precio_entorno/descripcion.py` lee el título y la descripción completa de la ficha en memoria, los convierte en indicadores y descarta el texto, que suele traer teléfonos o correos del anunciante. Cada indicador vale 1 si el aviso lo menciona y 0 si hay texto pero no lo menciona o lo niega («sin balcón», «no apto crédito», «no tiene balcón»). Sin texto, queda sin dato. **Un 0 no prueba que la unidad no lo tenga:** solo indica que el aviso no lo dice. Son menciones del anunciante, no verificadas.
 
   | Columna | Alias | Qué cuenta | Venta | Alquiler |
   | --- | --- | --- | --- | --- |
-  | `new_build` | `a_estrenar` | «a estrenar», «para estrenar», «nunca habitado» | 16 % | 10 % |
+  | `new_build` | `a_estrenar` | «a estrenar», «para estrenar», «nunca habitado» | 15 % | 10 % |
   | `needs_renovation` | `a_reciclar` | «a reciclar», «a refaccionar», «necesita refacciones». «Reciclado» no cuenta. | 2 % | 0 % |
-  | `mortgage_eligible` | `apto_credito` | «apto crédito», «apto crédito hipotecario», «acepta crédito» | 22 % | 0 % |
-  | `balcony` | `balcon` | «balcón» | 69 % | 64 % |
-  | `terrace` | `terraza` | «terraza». Incluye terrazas comunes del edificio. | 25 % | 16 % |
-  | `patio` | `patio` | «patio». «Patio de luz» o «de aire» no cuentan. | 14 % | 9 % |
-  | `amenities` | `amenities` | «amenities», pileta, piscina, gimnasio, solarium, SUM | 31 % | 28 % |
-  | `bright` | `luminoso` | «luminoso», «mucha luz», «excelente luminosidad» | 51 % | 52 % |
-  | `rear_facing` | `contrafrente` | «contrafrente», «c/frente» | 19 % | 20 % |
+  | `mortgage_eligible` | `apto_credito` | «apto crédito», «apto crédito hipotecario», «acepta crédito» | 20 % | 0 % |
+  | `balcony` | `balcon` | «balcón» | 67 % | 63 % |
+  | `terrace` | `terraza` | «terraza». Incluye terrazas comunes del edificio. | 24 % | 16 % |
+  | `patio` | `patio` | «patio». «Patio de luz» o «de aire» no cuentan. | 13 % | 9 % |
+  | `amenities` | `amenities` | «amenities», pileta, piscina, gimnasio, solarium, SUM | 32 % | 28 % |
+  | `bright` | `luminoso` | «luminoso», «mucha luz», «excelente luminosidad» | 48 % | 52 % |
+  | `rear_facing` | `contrafrente` | «contrafrente», «c/frente» | 19 % | 19 % |
 
   - **Relectura del 15 de noviembre:** las corridas del 8 de noviembre se releyeron con `--releer` (sin eventos del actor) en `data/raw/zonaprop-venta-20261108-descripcion-completa/` y `data/raw/zonaprop-alquiler-20261108-descripcion-completa/`, y se sumaron a las bases con `--completar-base`, que solo completa datos vacíos. Quedaron con rasgos los 2.272 avisos de Zonaprop de la base de venta y los 2.042 de la de alquiler. En la misma pasada, la base de venta sumó la antigüedad y las cocheras de Zonaprop (2.197 avisos con antigüedad), que hasta entonces solo estaban en la carpeta `-edificio`.
   - **Cuenta 4 de Apify:** su token se había invalidado, también en la conexión de Make. Con un token nuevo de esa cuenta, guardado como cuarta línea `APIFY_TOKEN` del `.env`, se leyeron sus 26 corridas (1.057 avisos). La quinta línea es otra cuenta, sin corridas.
-  - **Otras inmobiliarias:** RE/MAX, Century 21 y Migliorisi no tienen rasgos, porque sus lectores no toman la descripción.
+  - **RE/MAX y Migliorisi (15 de noviembre):** las capturas leen la descripción de la ficha. En RE/MAX, el listado no la trae, así que se pide la ficha (`findBySlug`) solo de los avisos nuevos. En Migliorisi sale del bloque `div-descripcion` de la ficha, que la captura ya baja. Los avisos que ya estaban en las bases se completaron con `python -m precio_entorno.rasgos_inmobiliarias --autorizacion-confirmada --operacion venta` (y `alquiler`), que usa el mismo cliente educado, guarda solo los rasgos en `data/raw/rasgos-inmobiliarias[-alquiler]-20261115/` y no pisa datos. Quedaron con rasgos 888 de 917 avisos de RE/MAX y 389 de 394 de Migliorisi en venta, y 24 de 25 y 49 de 49 en alquiler. Los que faltan estaban dados de baja o no tenían descripción.
+  - **Century 21, Clarín y Mob:** todavía sin rasgos. El 15 de noviembre la búsqueda de Century 21 respondía HTTP 504 y sus fichas venían sin la descripción en el HTML.
+  - Los porcentajes de la tabla son sobre todos los avisos con descripción de cada base (3.549 en venta y 2.115 en alquiler).
   - **Calibración:** los patrones se revisaron sobre 300 descripciones reales, mirando solo conteos y fragmentos cortos con los números tapados.
 
 #### Zonaprop (con Apify)

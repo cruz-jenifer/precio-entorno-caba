@@ -130,3 +130,46 @@ class ModelTraitsTest(unittest.TestCase):
         found = {r['columna']: r for r in effects(joined, with_age=False)['rasgos']}
         self.assertAlmostEqual(found['amenities']['diferencia_pct'], 20, delta=4)
         self.assertTrue(found['amenities']['distinto_de_cero'])
+
+
+class AgencyBackfillTest(unittest.TestCase):
+    def test_completa_solo_los_avisos_sin_rasgos_y_no_guarda_texto(self):
+        from precio_entorno.inmobiliarias import PoliteClient, record
+        from precio_entorno.rasgos_inmobiliarias import complete
+
+        def aviso(agency, code, url):
+            return record(agency, code, url, '2026-11-09T12:00:00+00:00', price=100000, currency='USD',
+                          covered_area_m2=50, total_area_m2=50, rooms=2, neighborhood='Almagro')
+        avisos = [aviso('remax', 'R1', 'https://www.remax.com.ar/listings/depto-ficticio'),
+                  aviso('migliorisi', 'a1', 'https://www.migliorisi.com.ar/propiedad/ver/a1/depto'),
+                  aviso('remax', 'R0', 'https://www.remax.com.ar/listings/dado-de-baja'),
+                  dict(aviso('remax', 'R2', 'https://www.remax.com.ar/listings/ya-tiene'), balcony=1, bright=0,
+                       **{c: 0 for c in DESCRIPTION_FIELDS if c not in ('balcony', 'bright')})]
+        pages = {'findBySlug/dado-de-baja': json.dumps({'data': None}),
+                 'findBySlug/depto-ficticio': json.dumps({'data': {'title': 'Depto', 'description': 'Con amenities. Agente Ficticio'}}),
+                 '/propiedad/ver/a1': '<div id="div-descripcion"><p>A reciclar, con patio.</p></div>'}
+
+        def fetch(url, params=None):
+            for part, body in pages.items():
+                if part in url:
+                    return 200, body
+            return (404, '') if 'robots' in url else (500, '')
+        with tempfile.TemporaryDirectory() as temp:
+            raw = Path(temp) / 'raw' / 'inmobiliarias-20261109'
+            raw.mkdir(parents=True)
+            (raw / 'avisos.json').write_text(json.dumps(avisos), encoding='utf-8')
+            parsed, _ = parse_listings(json.dumps(avisos).encode(), 'a.json', avisos[0]['source'])
+            store = Store(Path(temp) / 'base.sqlite3')
+            store.ingest(parsed, source=avisos[0]['source'])
+            client = PoliteClient(fetch=fetch, pause_s=0, sleep=lambda s: None)
+            log = complete('venta', Path(temp) / 'salida', client, base=Path(temp) / 'base.sqlite3',
+                           raw=Path(temp) / 'raw', echo=lambda line: None)
+            self.assertEqual((log['pendientes'], log['con_rasgos'], log['errores'], log['completados_en_base']),
+                             (3, 2, 1, 2))
+            rows = {r['id']: r for r in store.listings()}
+            self.assertEqual(rows['remax:R1']['amenities'], 1)
+            self.assertEqual((rows['migliorisi:a1']['needs_renovation'], rows['migliorisi:a1']['patio']), (1, 1))
+            self.assertNotIn('Ficticio', (Path(temp) / 'salida' / 'avisos.json').read_text(encoding='utf-8'))
+            # Solo queda pendiente el aviso dado de baja.
+            self.assertEqual(complete('venta', Path(temp) / 'otra', client, base=Path(temp) / 'base.sqlite3',
+                                      raw=Path(temp) / 'raw', echo=lambda line: None)['pendientes'], 1)

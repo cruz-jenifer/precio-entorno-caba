@@ -19,7 +19,7 @@ from precio_entorno.descripcion import DESCRIPTION_FIELDS, TRAITS
 
 ROOT = Path(__file__).resolve().parents[1]
 EXTRA = ['data/raw/zonaprop-venta-20261108-edificio/avisos.json', 'data/raw/inmobiliarias-20261109-edificio/avisos.json',
-         'data/raw/zonaprop-venta-20261108-descripcion/avisos.json']
+         'data/raw/zonaprop-venta-20261108-descripcion-completa/avisos.json']
 
 
 def ols_hc1(X, y):

@@ -50,45 +50,45 @@ La consigna pide comparar dos modelos clásicos, dos ensambles, un MLP y Elastic
 4. **Los modelos lineales no le ganan a la mediana de comparables sin antigüedad.** La relación entre ubicación, superficie y precio no es lineal. ElasticNet, con su regularización, queda último: con estos datos, encoger los coeficientes no compensa.
 5. **La antigüedad mejora a todos los modelos.** El mejor baja de 469 a 410 USD/m², alrededor del 17 % de la mediana de 2.411 USD/m².
 
-**Con los rasgos de la descripción (15 de noviembre).** A lo anterior se suman los nueve rasgos que se leen de la descripción de Zonaprop (a estrenar, a reciclar, apto crédito, balcón, terraza, patio, amenities, luminoso y contrafrente; ver [datos.md](datos.md)). Los tienen 1.528 avisos (40 %). Al resto le faltan: las otras inmobiliarias no publican la descripción y las corridas de la cuenta 4 de Apify no se pudieron releer.
+**Con los rasgos de la descripción (15 de noviembre).** A lo anterior se suman los nueve rasgos que se leen de la descripción de Zonaprop (a estrenar, a reciclar, apto crédito, balcón, terraza, patio, amenities, luminoso y contrafrente; ver [datos.md](datos.md)). Los tienen los 2.272 avisos de Zonaprop (60 %). A los 1.534 de las otras inmobiliarias les faltan, porque sus lectores no toman la descripción.
 
 | Modelo | Entrenamiento | Prueba | R² prueba | CV (media ± desvío) |
 | --- | --- | --- | --- | --- |
-| **HistGradientBoosting** | 250 | 448 | 0,69 | **407 ± 19** |
-| Random forest | 242 | 442 | 0,74 | 423 ± 14 |
-| MLP | 325 | 510 | 0,69 | 486 ± 22 |
-| Regresión lineal | 500 | 546 | 0,59 | 524 ± 8 |
-| Árbol de decisión | 380 | 577 | 0,56 | 533 ± 7 |
-| ElasticNet | 546 | 599 | 0,50 | 565 ± 6 |
+| **HistGradientBoosting** | 245 | 444 | 0,70 | **408 ± 19** |
+| Random forest | 242 | 439 | 0,74 | 420 ± 13 |
+| MLP | 317 | 501 | 0,70 | 497 ± 15 |
+| Regresión lineal | 500 | 543 | 0,59 | 522 ± 6 |
+| Árbol de decisión | 378 | 570 | 0,58 | 528 ± 5 |
+| ElasticNet | 547 | 597 | 0,50 | 565 ± 8 |
 | *Comparables (referencia)* | — | 627 | 0,42 | 584 ± 21 |
 
-En el modelo, la mejora es chica: HistGradientBoosting baja de 410 a 407 USD/m² y random forest, de 424 a 423, ambas dentro del desvío entre pliegues. El MLP empeora (de 458 a 486), probablemente porque suma 18 columnas casi vacías (nueve rasgos y sus indicadores de faltante). Con el 60 % de faltantes, los modelos no pueden aprovechar los rasgos; hace falta leer la descripción de más avisos.
+En el modelo, la mejora es chica: HistGradientBoosting queda en 408 USD/m² (410 sin rasgos) y random forest baja de 424 a 420, dentro del desvío entre pliegues. El MLP empeora (de 458 a 497), probablemente por las 18 columnas nuevas (nueve rasgos y sus indicadores de faltante). Los rasgos solo están en una inmobiliaria, y la inmobiliaria ya es una variable del modelo, así que lo que aportan queda en buena parte cubierto. Para que pesen, harían falta en todas las fuentes.
 
 **Cuánto se asocian con el precio, dentro del barrio.** `precio_entorno/efecto_rasgos.py` estima una regresión de log(USD/m²) sobre los nueve rasgos, la superficie, los ambientes y el barrio, con errores robustos, solo en los avisos con descripción. Es una asociación sobre precios publicados, no un efecto causal. Se marca con * si el intervalo del 95 % no incluye 0.
 
-| Rasgo | Avisos | Sin antigüedad (n = 1.528) | Con antigüedad (n = 1.441) |
+| Rasgo | Avisos | Sin antigüedad (n = 2.272) | Con antigüedad (n = 2.134) |
 | --- | --- | --- | --- |
-| Amenities | 493 | +22,3 % * | +12,1 % * |
-| A reciclar | 27 | −23,7 % * | −16,9 % * |
-| Balcón | 1.040 | +5,1 % * | +4,1 % * |
-| Terraza | 387 | +5,5 % * | +3,3 % |
-| A estrenar | 229 | +11,5 % * | −0,7 % |
-| Apto crédito | 317 | −6,0 % * | −2,5 % |
-| Patio | 224 | −3,6 % | −1,8 % |
-| Luminoso | 756 | −1,2 % | +1,2 % |
-| Contrafrente | 295 | +0,8 % | −0,6 % |
+| Amenities | 699 | +20,0 % * | +11,3 % * |
+| A reciclar | 42 | −25,7 % * | −18,9 % * |
+| Balcón | 1.567 | +5,6 % * | +4,1 % * |
+| Apto crédito | 501 | −6,0 % * | −2,8 % * |
+| Terraza | 568 | +5,0 % * | +2,7 % |
+| A estrenar | 354 | +11,9 % * | +0,2 % |
+| Luminoso | 1.156 | −2,4 % * | −0,4 % |
+| Patio | 325 | −1,2 % | +0,5 % |
+| Contrafrente | 434 | +0,4 % | −0,6 % |
 
-1. **Amenities, a reciclar y balcón** siguen marcando diferencia aun con la antigüedad: un aviso con amenities publica un 12 % más por m² que uno parecido del mismo barrio y edad; uno a reciclar, un 17 % menos.
-2. **«A estrenar» no agrega nada a la antigüedad:** su +11,5 % desaparece al controlar por edad, porque dice lo mismo que `age_years = 0`.
-3. **«Apto crédito» se asocia con precios algo menores**, pero la diferencia se diluye con la antigüedad. Puede reflejar que lo destacan más los avisos de unidades más chicas o más viejas.
-4. **Luminoso y contrafrente no muestran diferencias.** «Luminoso» aparece en la mitad de los avisos y funciona más como adjetivo de venta que como dato.
+1. **Amenities, a reciclar y balcón** siguen marcando diferencia aun con la antigüedad: un aviso con amenities publica un 11 % más por m² que uno parecido del mismo barrio y edad; uno a reciclar, un 19 % menos.
+2. **«A estrenar» no agrega nada a la antigüedad:** su +12 % desaparece al controlar por edad, porque dice lo mismo que `age_years = 0`.
+3. **«Apto crédito» se asocia con precios algo menores** (−3 % con antigüedad). Puede reflejar que lo destacan más los avisos de unidades más accesibles.
+4. **Luminoso, patio y contrafrente no muestran diferencias** una vez que se considera la antigüedad. «Luminoso» aparece en la mitad de los avisos y funciona más como adjetivo de venta que como dato.
 
 **Para reproducirlo:**
 
 ```powershell
 python -m precio_entorno.comparar_modelos --control-inmobiliaria --salida data/processed/comparacion-modelos/base
 python -m precio_entorno.comparar_modelos --control-inmobiliaria --edificio data/raw/zonaprop-venta-20261108-edificio/avisos.json data/raw/inmobiliarias-20261109-edificio/avisos.json --salida data/processed/comparacion-modelos/con-edificio
-python -m precio_entorno.comparar_modelos --control-inmobiliaria --edificio data/raw/zonaprop-venta-20261108-edificio/avisos.json data/raw/inmobiliarias-20261109-edificio/avisos.json data/raw/zonaprop-venta-20261108-descripcion/avisos.json --salida data/processed/comparacion-modelos/con-descripcion
+python -m precio_entorno.comparar_modelos --control-inmobiliaria --edificio data/raw/zonaprop-venta-20261108-edificio/avisos.json data/raw/inmobiliarias-20261109-edificio/avisos.json data/raw/zonaprop-venta-20261108-descripcion-completa/avisos.json --salida data/processed/comparacion-modelos/con-descripcion
 python -m precio_entorno.efecto_rasgos
 ```
 

@@ -32,18 +32,19 @@ RE/MAX, Century 21 y Migliorisi autorizaron la lectura de sus sitios y se tratan
 
   | Columna | Alias | Qué cuenta | Venta | Alquiler |
   | --- | --- | --- | --- | --- |
-  | `new_build` | `a_estrenar` | «a estrenar», «para estrenar», «nunca habitado» | 15 % | 10 % |
+  | `new_build` | `a_estrenar` | «a estrenar», «para estrenar», «nunca habitado» | 16 % | 10 % |
   | `needs_renovation` | `a_reciclar` | «a reciclar», «a refaccionar», «necesita refacciones». «Reciclado» no cuenta. | 2 % | 0 % |
-  | `mortgage_eligible` | `apto_credito` | «apto crédito», «apto crédito hipotecario», «acepta crédito» | 21 % | 0 % |
-  | `balcony` | `balcon` | «balcón» | 68 % | 63 % |
+  | `mortgage_eligible` | `apto_credito` | «apto crédito», «apto crédito hipotecario», «acepta crédito» | 22 % | 0 % |
+  | `balcony` | `balcon` | «balcón» | 69 % | 64 % |
   | `terrace` | `terraza` | «terraza». Incluye terrazas comunes del edificio. | 25 % | 16 % |
-  | `patio` | `patio` | «patio». «Patio de luz» o «de aire» no cuentan. | 15 % | 9 % |
-  | `amenities` | `amenities` | «amenities», pileta, piscina, gimnasio, solarium, SUM | 32 % | 28 % |
-  | `bright` | `luminoso` | «luminoso», «mucha luz», «excelente luminosidad» | 49 % | 52 % |
-  | `rear_facing` | `contrafrente` | «contrafrente», «c/frente» | 19 % | 19 % |
+  | `patio` | `patio` | «patio». «Patio de luz» o «de aire» no cuentan. | 14 % | 9 % |
+  | `amenities` | `amenities` | «amenities», pileta, piscina, gimnasio, solarium, SUM | 31 % | 28 % |
+  | `bright` | `luminoso` | «luminoso», «mucha luz», «excelente luminosidad» | 51 % | 52 % |
+  | `rear_facing` | `contrafrente` | «contrafrente», «c/frente» | 19 % | 20 % |
 
-  - **Relectura del 15 de noviembre:** las corridas del 8 de noviembre se releyeron con `--releer` (sin eventos del actor) en `data/raw/zonaprop-venta-20261108-descripcion/` y `data/raw/zonaprop-alquiler-20261108-descripcion/`, y se sumaron a las bases con `--completar-base`, que solo completa datos vacíos. Entraron 1.528 avisos de venta (de 2.272 de Zonaprop en la base) y 1.729 de alquiler (de 2.042). En la misma pasada, la base de venta sumó la antigüedad y las cocheras de esos avisos, que hasta entonces solo estaban en la carpeta `-edificio`.
-  - **Faltantes:** las corridas de la cuenta 4 de Apify (13 barrios de venta y 3 reintentos; 8 de alquiler y 2 reintentos) no se pudieron leer, porque su token responde HTTP 401 fuera de Make. Esos avisos quedan sin rasgos. Las otras inmobiliarias tampoco los tienen.
+  - **Relectura del 15 de noviembre:** las corridas del 8 de noviembre se releyeron con `--releer` (sin eventos del actor) en `data/raw/zonaprop-venta-20261108-descripcion-completa/` y `data/raw/zonaprop-alquiler-20261108-descripcion-completa/`, y se sumaron a las bases con `--completar-base`, que solo completa datos vacíos. Quedaron con rasgos los 2.272 avisos de Zonaprop de la base de venta y los 2.042 de la de alquiler. En la misma pasada, la base de venta sumó la antigüedad y las cocheras de Zonaprop (2.197 avisos con antigüedad), que hasta entonces solo estaban en la carpeta `-edificio`.
+  - **Cuenta 4 de Apify:** su token se había invalidado, también en la conexión de Make. Con un token nuevo de esa cuenta, guardado como cuarta línea `APIFY_TOKEN` del `.env`, se leyeron sus 26 corridas (1.057 avisos). La quinta línea es otra cuenta, sin corridas.
+  - **Otras inmobiliarias:** RE/MAX, Century 21 y Migliorisi no tienen rasgos, porque sus lectores no toman la descripción.
   - **Calibración:** los patrones se revisaron sobre 300 descripciones reales, mirando solo conteos y fragmentos cortos con los números tapados.
 
 #### Zonaprop (con Apify)

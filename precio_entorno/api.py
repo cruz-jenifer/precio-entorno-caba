@@ -25,7 +25,8 @@ from .matching import matches
 
 Mode = Literal['demo', 'real']
 Operation = Literal['venta', 'alquiler']
-LAYER_KEYS = ('subte', 'verdes', 'escuelas', 'salud', 'ruido', 'riesgo', 'estacionamiento', 'clubes', 'gimnasios')
+LAYER_KEYS = ('subte', 'verdes', 'escuelas', 'salud', 'ruido', 'riesgo', 'estacionamiento', 'clubes', 'gimnasios',
+              'colectivos')
 # Capas de puntos que cubren toda la ciudad, no solo el recuadro del barrio elegido.
 CITYWIDE = {'estacionamiento': 'garaje', 'clubes': 'club', 'gimnasios': 'gimnasio'}
 CURRENCIES = {'venta': ('USD',), 'alquiler': ('ARS', 'USD')}
@@ -288,6 +289,10 @@ def create_app(demo_path=None, real_path=None, entorno_dir=None, raw_dir=None, w
                 # Toda la ciudad: el mapa los muestra fuera del barrio al desplazarse.
                 features = point_features(points.get(layer, []), kind, None)
                 out[layer] = {**collection(features), 'disponible': layer in points}
+        if 'colectivos' in capas:
+            lines = data.get('colectivos')
+            out['colectivos'] = {**collection(colectivos.barrio_features(lines or {}, barrio, bbox)),
+                                 'disponible': lines is not None}
         if 'verdes' in capas:
             out['verdes'] = entorno.features_in(data['verdes'], bbox)
         if 'riesgo' in capas:

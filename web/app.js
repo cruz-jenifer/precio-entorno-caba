@@ -11,7 +11,8 @@ const PREFERENCIAS = [
   { clave: 'riesgo', nombre: 'Riesgo hídrico' },
 ];
 const CAPAS_MAPA = [...PREFERENCIAS, { clave: 'estacionamiento', nombre: 'Estacionamiento' },
-  { clave: 'clubes', nombre: 'Clubes' }, { clave: 'gimnasios', nombre: 'Gimnasios' }];
+  { clave: 'clubes', nombre: 'Clubes' }, { clave: 'gimnasios', nombre: 'Gimnasios' },
+  { clave: 'colectivos', nombre: 'Colectivos' }];
 // Capas de puntos de toda la ciudad: se piden una vez, sin importar el barrio.
 const CAPAS_CIUDAD = new Set(['estacionamiento', 'clubes', 'gimnasios']);
 const CAPAS = [...CAPAS_MAPA, { clave: 'delitos', nombre: 'Delitos registrados' }];
@@ -33,6 +34,7 @@ const NOTAS = {
   estacionamiento: 'Inventario oficial publicado en 2021, sin fecha de relevamiento informada. Confirmá que el garaje siga funcionando y consultá cupos y abonos mensuales.',
   clubes: 'Clubes de barrio y polideportivos del listado de la Ciudad. Consultá actividades, cuotas y horarios con cada club.',
   gimnasios: 'Gimnasios cargados en OpenStreetMap. La cobertura depende de quién mapea cada zona y puede haber cierres o aperturas recientes.',
+  colectivos: 'Líneas que pasan por el barrio, según el GTFS oficial con calendario de 2019. Los recorridos pueden haber cambiado: confirmalos en la app oficial.',
   delitos: 'Hechos registrados por celda de 200 m. Más circulación puede concentrar más eventos y existe subregistro. No equivalen a la probabilidad individual de victimización.',
 };
 const PRESUPUESTO = { 'venta-USD': 110000, 'alquiler-ARS': 800000, 'alquiler-USD': 900 };
@@ -806,7 +808,12 @@ async function prepararMapa() {
       'line-width': ['case', sel, 3.2, hover, 2.2, 0.7],
       'line-opacity': ['case', sel, 1, hover, 0.9, 0.45],
     } });
-  // Recorrido de la línea de colectivo elegida, debajo de los puntos.
+  // Todas las líneas del barrio, recortadas a su zona; cada color es una línea.
+  mapa.addLayer({ id: 'colectivos', type: 'line', source: 'colectivos',
+    layout: { 'line-cap': 'round', 'line-join': 'round' },
+    paint: { 'line-color': ['get', 'color'], 'line-width': ['interpolate', ['linear'], ['zoom'], 12, 1.5, 15, 3.5],
+      'line-opacity': 0.7 } });
+  // Recorrido completo de la línea elegida, por encima de las demás y debajo de los puntos.
   mapa.addLayer({ id: 'colectivo', type: 'line', source: 'colectivo',
     layout: { 'line-cap': 'round', 'line-join': 'round' },
     paint: { 'line-color': COLOR.colectivo, 'line-width': ['interpolate', ['linear'], ['zoom'], 11, 2.5, 15, 5], 'line-opacity': 0.85 } });
@@ -844,7 +851,7 @@ async function prepararMapa() {
     paint: { 'circle-radius': 7, 'circle-color': '#6A4FB3', 'circle-stroke-color': '#FFFFFF', 'circle-stroke-width': 2 } });
 
   const puntos = ['subte', 'salud', 'escuelas', 'estacionamiento', 'clubes', 'gimnasios'];
-  const conTexto = [...puntos, 'colectivo', 'verdes', 'riesgo', 'ruido', 'delitos'];
+  const conTexto = [...puntos, 'colectivo', 'colectivos', 'verdes', 'riesgo', 'ruido', 'delitos'];
 
   mapa.on('mousemove', (evento) => {
     const barrio = mapa.queryRenderedFeatures(evento.point, { layers: ['barrios-relleno'] })[0];
@@ -870,6 +877,11 @@ async function prepararMapa() {
       return;
     }
     popupAviso.remove();
+    const linea = mapa.queryRenderedFeatures(evento.point, { layers: ['colectivos'] })[0];
+    if (linea) {
+      elegirColectivo(String(linea.properties.linea));
+      return;
+    }
     const elemento = mapa.queryRenderedFeatures(evento.point, { layers: conTexto })[0];
     if (elemento) {
       popup.setLngLat(evento.lngLat).setHTML(esc(textoElemento(elemento))).addTo(mapa);
@@ -1165,6 +1177,11 @@ function renderLeyenda() {
       const nombre = c.clave === 'clubes' ? 'Club o polideportivo' : 'Gimnasio';
       if (capa?.features.length) items = [muestra(COLOR[c.clave], `${nombre} · ${numero.format(capa.features.length)} en toda la ciudad`)];
       else if (capa) items = [esc(capa.disponible ? 'Sin lugares registrados.' : 'Capa sin cargar.')];
+    }
+    else if (c.clave === 'colectivos') {
+      const capa = estado.capasDatos[claveCapa(c.clave)];
+      if (capa?.features.length) items = [muestra(COLOR.colectivo, `${capa.features.length} ${plural(capa.features.length, 'línea', 'líneas')} · cada color es una línea; tocá una para ver su recorrido completo`)];
+      else if (capa) items = [esc(capa.disponible ? 'Ninguna línea en el recorrido cargado.' : 'Recorridos sin cargar.')];
     }
     else if (c.clave === 'riesgo') items = [muestra(COLOR.riesgo, 'Área de prevención')];
     else if (c.clave === 'ruido') {

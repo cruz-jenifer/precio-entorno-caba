@@ -149,6 +149,54 @@ def build(zip_path, barrios):
     return result
 
 
+# Paleta para distinguir líneas en el mapa; el color de cada línea es estable entre barrios.
+COLORS = ('#D81B60', '#1E88E5', '#F4511E', '#3949AB', '#00897B', '#8E24AA', '#C0CA33', '#6D4C41',
+          '#00ACC1', '#E53935', '#5E35B1', '#43A047')
+
+
+def color(name):
+    return COLORS[sum(map(ord, name)) % len(COLORS)]
+
+
+def clip(paths, bbox):
+    """Tramos de cada trazado que tocan el rectángulo.
+
+    Se conservan los segmentos cuyo rectángulo se superpone con el del barrio, así que una avenida
+    recta que lo cruza sin vértices adentro también aparece. Los segmentos contiguos forman un tramo.
+    """
+    west, south, east, north = bbox
+    out = []
+    for path in paths:
+        piece = []
+        for (x0, y0), (x1, y1) in zip(path, path[1:]):
+            touches = (min(x0, x1) <= east and max(x0, x1) >= west
+                       and min(y0, y1) <= north and max(y0, y1) >= south)
+            if touches:
+                if not piece:
+                    piece = [[x0, y0]]
+                piece.append([x1, y1])
+            elif piece:
+                out.append(piece)
+                piece = []
+        if piece:
+            out.append(piece)
+    return out
+
+
+def barrio_features(lines, barrio, bbox):
+    """Una entidad por línea que pasa por el barrio, recortada al rectángulo del barrio."""
+    features = []
+    for name, line in lines.items():
+        if barrio not in line['barrios']:
+            continue
+        pieces = clip(line['recorrido'], bbox)
+        if pieces:
+            features.append({'type': 'Feature', 'geometry': {'type': 'MultiLineString', 'coordinates': pieces},
+                             'properties': {'linea': name, 'color': color(name),
+                                            'tooltip': f'Línea {name} · Tocá para ver el recorrido completo'}})
+    return features
+
+
 def by_barrio(lines):
     """{barrio: [líneas ordenadas]} a partir del resultado de `build`."""
     out = defaultdict(list)

@@ -67,6 +67,21 @@ class ColectivosTests(unittest.TestCase):
         self.assertEqual(colectivos.by_barrio(lines), {'Almagro': ['60'], 'Caballito': ['7', '60']})
 
 
+    def test_clip_keeps_segments_touching_bbox(self):
+        path = [[0, 0], [1, 0], [2, 0], [3, 0], [4, 0], [5, 0], [6, 0]]
+        bbox = (0.5, -1, 2.5, 1)
+        self.assertEqual(colectivos.clip([path], bbox), [[[0, 0], [1, 0], [2, 0], [3, 0]]])
+        # Sale y vuelve a entrar: dos tramos.
+        self.assertEqual(len(colectivos.clip([path + [[2, 0]]], bbox)), 2)
+        # Un segmento recto que cruza el rectángulo sin vértices adentro también cuenta.
+        self.assertEqual(colectivos.clip([[[-5, 0], [5, 0]]], bbox), [[[-5, 0], [5, 0]]])
+        self.assertEqual(colectivos.clip([path], (10, 10, 11, 11)), [])
+
+    def test_line_color_is_stable(self):
+        self.assertEqual(colectivos.color('60'), colectivos.color('60'))
+        self.assertIn(colectivos.color('152'), colectivos.COLORS)
+
+
 class ClubesGimnasiosTests(unittest.TestCase):
     def test_clubs_skip_admin_sites_and_contacts(self):
         rows = [{'nombre': 'Club Uno', 'tipo': 'Club de Barrio', 'tipo_sede': 'Sede', 'direccion': 'Calle 1',
@@ -113,6 +128,9 @@ class ApiTests(unittest.TestCase):
                 lines = client.get('/api/colectivos', params={'barrio': 'Almagro'}).json()
                 self.assertTrue(lines['disponible'])
                 self.assertEqual(lines['lineas'], [{'linea': '60', 'ramales': 1}])
+                layer = client.get('/api/mapa/capas', params={'barrio': 'Caballito', 'capas': 'colectivos'}).json()
+                feature, = layer['colectivos']['features']
+                self.assertEqual(feature['properties']['linea'], '60')
                 route = client.get('/api/colectivos/60').json()
                 self.assertEqual(route['geometry']['type'], 'MultiLineString')
                 self.assertEqual(client.get('/api/colectivos/7').status_code, 404)

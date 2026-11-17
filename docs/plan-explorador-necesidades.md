@@ -57,10 +57,10 @@ Lo que la propuesta tenía bien y se mantiene: sin puntajes ni rankings, filtros
 | Ruido diurno y nocturno | BA Data · APRA | **En la app** | Celda de 100 m | Edición 2025 | Aprobada (nota existente: no describe el interior) |
 | Riesgo hídrico | BA Data | **En la app** | Polígono | Dic. 2020 | Aprobada |
 | Clubes, polideportivos y gimnasios | BA Data y OSM | **En `resumen.json`**, sin capa en la UI | Punto | Trimestral / captura 2026-11-17 | Aprobada como conteo por barrio |
-| Ciclovías | BA Data · `dataset/ciclovias` | Página responde; **recurso, fecha y licencia por verificar** | Línea | ? | Pendiente (etapa B) |
-| Ecobici | BA Data · `dataset/estaciones-bicicletas-publicas` | Página responde; recurso por verificar | Punto | ? | Pendiente (etapa B). Solo el listado estático. La API en tiempo real pide credenciales y queda fuera |
-| Bibliotecas | BA Data · `dataset/bibliotecas` | Página responde; recurso por verificar | Punto | ? | Pendiente (etapa B) |
-| Rampas | BA Data · `dataset/rampas-accesibilidad` | Página responde; **fecha de relevamiento y tamaño por verificar** | Punto | ? | Pendiente (etapa C): por volumen, solo conteo por barrio o puntos filtrados por bbox |
+| Ciclovías | BA Data · `ciclovias.geojson` | **Verificado** (ver la factibilidad): 2.764 tramos, CC-BY-2.5-AR | Línea | 2025-03-17 | Aprobada con advertencia (etapa B) |
+| Ecobici | BA Data · CSV del nuevo sistema | **Verificado**: 411 estaciones, sin campo de barrio | Punto | 2025-04-04 | Aprobada con advertencia (etapa B). La API en tiempo real está suspendida |
+| Bibliotecas | BA Data · `bibliotecas.geojson` | **Verificado**: 58 puntos | Punto | 2025-03-20 | Aprobada (etapa B) |
+| Rampas | BA Data · relevamientos 2011–2016 | **Verificado**: es un registro de obras de un período, no un inventario | Punto | 2016 | **Descartada** |
 
 Para cada fuente nueva, anotar la URL del archivo (no la del portal), la fecha de relevamiento (distinta de la de publicación), la licencia, la cantidad de elementos y el peso en MB. El paquete de Vercel pesa hoy unos 61 MB (`.vercel-build`) y todo lo que entra en `data/processed/entorno` se suma.
 
@@ -125,9 +125,9 @@ Se mantiene la de la propuesta (legalidad, calidad de geodatos, rendimiento, cos
 
 ### Etapa C: después de validar
 
-`accesibilidad` (rampas relevadas + subte accesible, con su fecha de relevamiento y la advertencia «no certifica recorridos ni edificios») y las condiciones `no_soportadas` del intérprete de texto mapeadas a necesidades.
+Las condiciones `no_soportadas` del intérprete de texto, mapeadas a necesidades.
 
-**Descartado:** «Con mascota» (decisión del usuario), «conectividad» para Estudio (no hay fuente abierta por dirección), piso y estado del inmueble (1 a 2 % de cobertura), isócronas y ruteo.
+**Descartado:** accesibilidad por rampas (los datos de BA Data son un registro de obras de 2011–2016, no un inventario; queda solo el subte accesible), «Con mascota» (decisión del usuario), «conectividad» para Estudio (no hay fuente abierta por dirección), piso y estado del inmueble (1 a 2 % de cobertura), isócronas y ruteo.
 
 ---
 

@@ -8,8 +8,8 @@ La interfaz web también corre en Vercel, en `https://precio-entorno-caba.vercel
 - **Disco de solo lectura:** en Vercel solo `/tmp` admite escritura. Al arrancar, cada instancia copia las bases reales a `/tmp/precio-entorno/` y crea ahí la demo. **Una búsqueda guardada en Vercel dura lo que dura la instancia.** La base que cuenta sigue siendo la local, que actualiza `actualizar.py`. El alta con mail se manda a Make como en local, así que el aviso por correo no depende de esa copia.
 - **Carpeta desplegada:** la arma `scripts/preparar_vercel.py` en `.vercel-build/` (ignorada por Git):
   - código de `HEAD` (`git archive`), no del árbol de trabajo, para no publicar cambios sin confirmar;
-  - bases reales, capas del mapa, CSV anuales del Mapa del Delito y radar (unos 60 MB);
-  - `pyproject.toml` con solo FastAPI, NumPy y Matplotlib, `.python-version` y `vercel.json`.
+  - bases reales, capas del mapa (incluidos los garajes comerciales), catálogo de cocheras, CSV anuales del Mapa del Delito y radar (unos 60 MB);
+  - `pyproject.toml` con solo FastAPI, NumPy, Matplotlib y httpx (lo usan «Dónde comer» y la interpretación de preferencias), `.python-version` y `vercel.json`.
   No se copian `.env`, crudos de captura ni la app de Streamlit.
 
 ## Desplegar o actualizar los datos

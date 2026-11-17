@@ -27,7 +27,7 @@ const NOTAS = {
   salud: 'Estar cerca no asegura turnos.',
   ruido: 'Nivel exterior típico por celda de 100 m, medido sobre todo en calles. No describe el interior de un departamento.',
   riesgo: 'Áreas de prevención publicadas en 2020. Si una dirección cae dentro, conviene preguntarlo en la visita.',
-  estacionamiento: 'Inventario histórico oficial, archivo publicado en 2019. Confirmá que el garaje siga funcionando y consultá cupos y abonos mensuales.',
+  estacionamiento: 'Inventario oficial publicado en 2021, sin fecha de relevamiento informada. Confirmá que el garaje siga funcionando y consultá cupos y abonos mensuales.',
   delitos: 'Hechos registrados por celda de 200 m. Más circulación puede concentrar más eventos y existe subregistro. No equivalen a la probabilidad individual de victimización.',
 };
 const PRESUPUESTO = { 'venta-USD': 110000, 'alquiler-ARS': 800000, 'alquiler-USD': 900 };
@@ -261,25 +261,19 @@ function renderFicha() {
       ${renderParecidos(b.barrio)}
       ${renderLugares(b.barrio)}
       ${estado.modo === 'real' ? `<h2>Localizar estacionamientos</h2>
-        <p class="fuente">Inventario oficial de 2019. Confirmá funcionamiento, horarios, cupos y tarifas con el lugar.</p>
+        <p class="fuente">Inventario oficial publicado en 2021, sin fecha de relevamiento informada. Confirmá funcionamiento, horarios, cupos y tarifas con el lugar.</p>
         <form id="buscar-estacionamientos">
-          <label>Buscar desde <select name="origen"><option value="barrio">Todo el barrio</option>
-            <option value="mapa">El centro del mapa</option>
-            <option value="actual">Mi ubicación actual</option>
-            ${estado.avisos.filter((a) => a.ubicacion).map((a) => `<option value="${esc(a.id)}">Aviso ${esc(a.id)}</option>`).join('')}
-          </select></label>
-          <label>Radio para búsqueda cercana <select name="radio"><option value="300">300 m</option><option value="500" selected>500 m</option><option value="1000">1 km</option></select></label>
+          ${camposOrigen()}
           <button type="submit" class="boton-texto">Localizar estacionamientos</button>
-        </form><p class="fuente">Si elegís tu ubicación actual, el navegador solicitará acceso al buscar.</p><div id="resultado-estacionamientos" role="status"></div>
+        </form><div id="resultado-estacionamientos" role="status"></div>
         <h2>Cocheras en alquiler mensual</h2>
         <form id="buscar-cocheras">
           <label>Moneda <select name="moneda"><option>ARS</option><option>USD</option></select></label>
           <label>Hasta <input name="presupuesto" type="number" min="1" value="250000" required></label>
-          <label>Ubicación <select name="inmueble"><option value="">Todo el barrio</option>
-            ${estado.avisos.filter((a) => a.ubicacion).map((a) => `<option value="${esc(a.id)}">A 500 m del aviso ${esc(a.id)}</option>`).join('')}
-          </select></label>
+          ${camposOrigen()}
           <button type="submit" class="boton-texto">Buscar cocheras</button>
-        </form><div id="resultado-cocheras" role="status"></div>` : ''}
+        </form><div id="resultado-cocheras" role="status"></div>
+        <p class="fuente">Con «Mi ubicación actual», el navegador pide permiso al buscar. La ubicación se usa solo para esa consulta y no se guarda.</p>` : ''}
       ${b.coincidencias ? `<h2>Avisos que encajan</h2>
         <table class="avisos">
           <thead><tr><th>Precio publicado</th><th>Cubierta</th><th>Amb.</th><th>Cocheras</th>${alquiler ? '<th>Expensas</th>' : ''}<th><span hidden>Enlace</span></th><th>Mapa</th></tr></thead>
@@ -291,6 +285,63 @@ function renderFicha() {
       ${renderAnalisisDelitos()}
       ${renderRadarFicha(b.barrio)}
     </article>`;
+}
+
+// Origen compartido por las búsquedas de estacionamientos y cocheras.
+function camposOrigen() {
+  return `<label>Buscar desde <select name="origen"><option value="barrio">Todo el barrio</option>
+      <option value="actual">Mi ubicación actual</option>
+      <option value="mapa">El centro del mapa</option>
+      ${estado.avisos.filter((a) => a.ubicacion).map((a) => `<option value="${esc(a.id)}">Aviso ${esc(a.id)}</option>`).join('')}
+    </select></label>
+    <label>Radio para búsqueda cercana <select name="radio"><option value="300">300 m</option><option value="500" selected>500 m</option><option value="1000">1 km</option></select></label>`;
+}
+
+function enCaba(lat, lon) {
+  return lat >= -34.73 && lat <= -34.52 && lon >= -58.54 && lon <= -58.32;
+}
+
+function ubicacionActual() {
+  if (!navigator.geolocation || !window.isSecureContext) {
+    return Promise.reject(new Error('Este navegador no permite consultar la ubicación en esta página. Elegí el centro del mapa.'));
+  }
+  return new Promise((resolve, reject) => navigator.geolocation.getCurrentPosition(
+    (p) => resolve({ lat: p.coords.latitude, lon: p.coords.longitude, precision: Math.round(p.coords.accuracy) }),
+    (error) => reject(new Error(error.code === 1 ? 'No se autorizó el acceso a la ubicación. Podés usar el centro del mapa.'
+      : error.code === 3 ? 'La consulta de ubicación tardó demasiado. Intentá otra vez o usá el mapa.'
+        : 'No se pudo obtener tu ubicación. Podés usar el centro del mapa.')),
+    { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }));
+}
+
+// Devuelve null para todo el barrio, o el punto de partida de una búsqueda cercana.
+async function puntoDeBusqueda(origen, output) {
+  if (origen === 'barrio') return null;
+  let punto;
+  if (origen === 'actual') {
+    output.textContent = 'Esperando tu ubicación…';
+    punto = await ubicacionActual();
+    if (!enCaba(punto.lat, punto.lon)) {
+      throw new Error('Tu ubicación está fuera del área de consulta de CABA. Mové el mapa hasta la zona que querés explorar y elegí el centro del mapa.');
+    }
+    marcarMiUbicacion(punto);
+  } else if (origen === 'mapa') {
+    const centro = mapa.getCenter();
+    punto = { lat: centro.lat, lon: centro.lng };
+  } else {
+    const aviso = estado.avisos.find((a) => a.id === origen);
+    punto = aviso && { lat: aviso.lat, lon: aviso.lon, aviso };
+  }
+  if (!punto) throw new Error('Elegí una ubicación disponible.');
+  if (!enCaba(punto.lat, punto.lon)) {
+    throw new Error('La ubicación está fuera del área de consulta de CABA. Mové el mapa hasta la zona que querés explorar.');
+  }
+  return punto;
+}
+
+function notaPrecision(punto, radio) {
+  if (punto?.precision == null) return '';
+  return `<p class="fuente">Precisión informada por el dispositivo: aproximadamente ${punto.precision} m.${
+    punto.precision > radio ? ' Supera el radio elegido; usá el centro del mapa para precisar la búsqueda.' : ''}</p>`;
 }
 
 function costoMensual(vivienda, cochera) {
@@ -632,6 +683,25 @@ const mapa = new maplibregl.Map({
 });
 mapa.touchZoomRotate.disableRotation();
 mapa.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right');
+// Centra el mapa en la ubicación del navegador; después se puede buscar desde «El centro del mapa».
+// La posición queda en el navegador y no se envía al servidor hasta que se pide una búsqueda.
+if (window.isSecureContext && navigator.geolocation) {
+  mapa.addControl(new maplibregl.GeolocateControl({
+    positionOptions: { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 },
+    fitBoundsOptions: { maxZoom: 16 }, showAccuracyCircle: true, trackUserLocation: false,
+  }), 'top-right');
+}
+let marcadorUbicacion = null;
+function marcarMiUbicacion({ lat, lon, precision }) {
+  if (!marcadorUbicacion) {
+    const punto = document.createElement('div');
+    punto.className = 'mi-ubicacion';
+    marcadorUbicacion = new maplibregl.Marker({ element: punto });
+  }
+  marcadorUbicacion.setLngLat([lon, lat]).addTo(mapa);
+  marcadorUbicacion.getElement().title = `Tu ubicación (precisión aproximada ${precision} m)`;
+  mapa.flyTo({ center: [lon, lat], zoom: Math.max(mapa.getZoom(), 15) });
+}
 const mapaListo = new Promise((resolver) => mapa.on('load', resolver));
 new ResizeObserver(() => mapa.resize()).observe(document.querySelector('.mapa'));
 const popup = new maplibregl.Popup({ closeButton: false, closeOnClick: false, offset: 10, maxWidth: '18rem' });
@@ -1385,38 +1455,19 @@ function conectarEventos() {
     e.preventDefault();
     const output = $('#resultado-estacionamientos');
     const fields = new FormData(e.target);
-    const origin = fields.get('origen');
     const params = new URLSearchParams({ barrio: estado.seleccionado, radio: fields.get('radio') });
     const request = ++consultaEstacionamientos;
-    let accuracy = null;
     output.textContent = 'Buscando estacionamientos…';
     try {
-      if (origin !== 'barrio') {
-        let point;
-        if (origin === 'actual') {
-          if (!navigator.geolocation) throw new Error('Este navegador no permite consultar la ubicación. Elegí el centro del mapa.');
-          output.textContent = 'Esperando tu ubicación…';
-          const position = await new Promise((resolve, reject) => navigator.geolocation.getCurrentPosition(resolve,
-            (error) => reject(new Error(error.code === 1 ? 'No se autorizó el acceso a la ubicación. Podés usar el centro del mapa.'
-              : error.code === 3 ? 'La consulta de ubicación tardó demasiado. Intentá otra vez o usá el mapa.'
-                : 'No se pudo obtener tu ubicación. Podés usar el centro del mapa.')),
-            { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }));
-          if (!output.isConnected || request !== consultaEstacionamientos) return;
-          point = { lat: position.coords.latitude, lon: position.coords.longitude };
-          accuracy = Math.round(position.coords.accuracy);
-        } else point = origin === 'mapa' ? mapa.getCenter() : estado.avisos.find((a) => a.id === origin);
-        if (!point) throw new Error('Elegí una ubicación disponible.');
-        const lon = point.lng ?? point.lon;
-        if (point.lat < -34.73 || point.lat > -34.52 || lon < -58.54 || lon > -58.32)
-          throw new Error('La ubicación está fuera del área de consulta de CABA. Mové el mapa hasta la zona que querés explorar.');
-        params.set('lat', point.lat); params.set('lon', lon);
-      }
+      const point = await puntoDeBusqueda(fields.get('origen'), output);
+      if (!output.isConnected || request !== consultaEstacionamientos) return;
+      if (point) { params.set('lat', point.lat); params.set('lon', point.lon); }
       output.textContent = 'Buscando estacionamientos…';
       const data = await api('/api/estacionamientos?' + params);
       if (!output.isConnected || request !== consultaEstacionamientos) return;
       if (!data.disponible) { output.textContent = 'El inventario de estacionamientos todavía no está cargado.'; return; }
       output.innerHTML = `<p>${data.estacionamientos.length} estacionamientos en el inventario para esta búsqueda.</p>`
-        + (accuracy == null ? '' : `<p class="fuente">Precisión informada por el dispositivo: aproximadamente ${accuracy} m.${accuracy > Number(fields.get('radio')) ? ' Supera el radio elegido; usá el centro del mapa para precisar la búsqueda.' : ''}</p>`)
+        + notaPrecision(point, Number(fields.get('radio')))
         + (data.estacionamientos.length ? '<ul>' + data.estacionamientos.map((r) => `<li>
           <strong>${esc(r.detalle)}</strong> · ${esc(r.barrio)}
           ${r.distancia_m == null ? '' : `· ${r.distancia_m} m en línea recta`}
@@ -1434,14 +1485,17 @@ function conectarEventos() {
     e.preventDefault();
     const output = $('#resultado-cocheras');
     const fields = new FormData(e.target);
-    const params = new URLSearchParams({ barrio: estado.seleccionado,
+    const params = new URLSearchParams({ barrio: estado.seleccionado, radio: fields.get('radio'),
       moneda: fields.get('moneda'), presupuesto: fields.get('presupuesto') });
-    const aviso = estado.avisos.find((a) => a.id === fields.get('inmueble'));
     const operacion = estado.operacion;
     const consulta = ++consultaCocheras;
-    if (aviso) { params.set('lat', aviso.lat); params.set('lon', aviso.lon); }
     output.textContent = 'Buscando cocheras…';
     try {
+      const punto = await puntoDeBusqueda(fields.get('origen'), output);
+      if (!output.isConnected || consulta !== consultaCocheras) return;
+      const aviso = punto?.aviso;
+      if (punto) { params.set('lat', punto.lat); params.set('lon', punto.lon); }
+      output.textContent = 'Buscando cocheras…';
       const data = await api('/api/cocheras?' + params);
       if (!output.isConnected || consulta !== consultaCocheras) return;
       if (!data.disponible) { output.textContent = 'El catálogo de cocheras está pendiente de incorporación.'; return; }
@@ -1453,7 +1507,8 @@ function conectarEventos() {
         · Captura ${esc(fechaCorta(r.capturado))}
         ${aviso && operacion === 'alquiler' ? costoMensual(aviso, r) : ''}</li>`).join('') + '</ul>'
         : 'Sin coincidencias en el catálogo para estos filtros.';
-      if (aviso) output.innerHTML += '<p class="fuente">Distancias estimadas desde las ubicaciones publicadas.</p>';
+      output.innerHTML += notaPrecision(punto, Number(fields.get('radio')));
+      if (punto) output.innerHTML += '<p class="fuente">Distancias aproximadas en línea recta desde el punto elegido hasta las ubicaciones publicadas.</p>';
     } catch (error) {
       if (output.isConnected && consulta === consultaCocheras) output.textContent = 'No se pudo consultar el catálogo. ' + error.message;
     }
@@ -1464,7 +1519,7 @@ function conectarEventos() {
     if (estacionamiento) {
       const coords = [Number(estacionamiento.dataset.estacionamientoLon), Number(estacionamiento.dataset.estacionamientoLat)];
       mapa.flyTo({ center: coords, zoom: 17 });
-      popupAviso.setLngLat(coords).setHTML(esc(estacionamiento.dataset.estacionamientoTexto) + '<p>Inventario de 2019. Confirmá funcionamiento y cupos.</p>').addTo(mapa);
+      popupAviso.setLngLat(coords).setHTML(esc(estacionamiento.dataset.estacionamientoTexto) + '<p>Inventario sin fecha de relevamiento informada. Confirmá funcionamiento y cupos.</p>').addTo(mapa);
       if (celular()) plegarPanel(false);
       return;
     }

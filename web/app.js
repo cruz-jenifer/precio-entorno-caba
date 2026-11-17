@@ -18,14 +18,16 @@ const CAPAS_CIUDAD = new Set(['estacionamiento', 'clubes', 'gimnasios']);
 const CAPAS = [...CAPAS_MAPA, { clave: 'delitos', nombre: 'Delitos registrados' }];
 const SUBTE = { A: '#18CCCC', B: '#EB0909', C: '#233AA8', D: '#02A17A', E: '#AE3D97', H: '#FFD600' };
 const COLOR = { verdes: '#5E7D4F', riesgo: '#1E88E5', escuela: '#1E2A32', cesac: '#00897B', hospital: '#795548',
-  aviso: '#6A4FB3', estacionamiento: '#1671A3', clubes: '#C2410C', gimnasios: '#0F766E', colectivo: '#D81B60' };
+  aviso: '#6A4FB3', estacionamiento: '#1671A3', clubes: '#C2410C', gimnasios: '#0F766E', colectivo: '#D81B60',
+  ascensor: '#1E2A32' };
 const RUIDO = [[50, '#FFFFCC'], [55, '#FFEDA0'], [60, '#FED976'], [65, '#FEB24C'], [70, '#FD8D3C'], [75, '#F03B20'], [80, '#BD0026']];
 const DELITOS = ['#D3DBE3', '#A9B8C8', '#7E93AB', '#55708E', '#2E4560'];
 const ESTILO = 'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json';
 const NOTA_AVISOS = 'Punto que publica la fuente, sin precisión declarada: puede marcar el edificio o una referencia cercana. '
   + 'Hueco si cae a entre 150 y 500 m del barrio del aviso. Más lejos, no se dibuja. Un punto más grande reúne varios avisos.';
 const NOTAS = {
-  subte: 'Indican conectividad, no tiempos de viaje.',
+  subte: 'Indican conectividad, no tiempos de viaje. Borde oscuro: estación con ascensores informados por SBASE; '
+    + 'no indica si funcionan, y hay estaciones sin dato.',
   verdes: 'Plazas, parques, jardines y paseos. No incluye canteros ni plazoletas.',
   escuelas: 'Estar cerca no asegura una vacante. Consultá cada escuela.',
   salud: 'Estar cerca no asegura turnos.',
@@ -37,6 +39,122 @@ const NOTAS = {
   colectivos: 'Líneas que pasan por el barrio, según el GTFS oficial con calendario de 2019. Los recorridos pueden haber cambiado: confirmalos en la app oficial.',
   delitos: 'Hechos registrados por celda de 200 m. Más circulación puede concentrar más eventos y existe subregistro. No equivalen a la probabilidad individual de victimización.',
 };
+/* Explorador de necesidades (docs/plan-explorador-necesidades.md). Apagado por defecto: se prueba con
+   ?explorador=1. Cada necesidad sugiere capas y columnas; no filtra avisos ni arma puntajes. */
+const EXPLORADOR = (() => {
+  try { return new URLSearchParams(window.location?.search || '').get('explorador') === '1'; } catch { return false; }
+})();
+const NECESIDADES = [
+  { clave: 'sin_auto', nombre: 'Me muevo sin auto', descripcion: 'Subte cercano y líneas de colectivo del barrio.',
+    capas: ['subte', 'colectivos'], columnas: ['subte', 'subte_ascensor'], advertencias: [] },
+  { clave: 'familia', nombre: 'Escuelas y salud cerca', descripcion: 'Escuelas del nivel elegido, centros de salud y plazas.',
+    capas: ['escuelas', 'salud', 'verdes'],
+    columnas: ['escuela', 'cesac', 'hospital', 'plaza', 'ambientes', 'superficie', 'patio', 'balcon'], advertencias: [] },
+  { clave: 'teletrabajo', nombre: 'Trabajo desde casa', descripcion: 'Ruido exterior de día, ambientes, luz y contrafrente.',
+    capas: ['ruido'], columnas: ['ruido_diurno', 'ambientes', 'superficie', 'luminoso', 'contrafrente'], advertencias: [] },
+  { clave: 'costo_mensual', nombre: 'Quiero ver el costo mensual', descripcion: 'Precio publicado, expensas y cocheras.',
+    capas: [], columnas: ['precio', 'expensas', 'cocheras'],
+    advertencias: ['Los importes se suman por moneda, sin convertir. Si el aviso no informa las expensas, se indica.'] },
+];
+// Capas con distancia por aviso en /api/barrios/{barrio}/avisos (precio_entorno/cercania.py).
+const CAPAS_CERCANIA = ['subte', 'escuelas', 'salud', 'verdes', 'ruido'];
+
+/* Combina las necesidades elegidas con las decisiones manuales. La elección manual gana: una capa apagada a mano
+   no vuelve aunque una necesidad la sugiera. Devuelve capas en el orden del mapa, sin duplicados. */
+function resolverNecesidades(seleccion, manual = { encendidas: new Set(), apagadas: new Set() }) {
+  const elegidas = NECESIDADES.filter((n) => seleccion.has(n.clave));
+  const origen = {};
+  for (const n of elegidas) for (const c of n.capas) (origen[c] ||= []).push(n.clave);
+  for (const c of manual.encendidas) (origen[c] ||= []).push('manual');
+  const capas = CAPAS.map((c) => c.clave).filter((c) => origen[c] && !manual.apagadas.has(c));
+  return {
+    capas,
+    columnas: [...new Set(elegidas.flatMap((n) => n.columnas))],
+    cercania: capas.filter((c) => CAPAS_CERCANIA.includes(c)),
+    advertencias: [...new Set([...capas.map((c) => NOTAS[c]), ...elegidas.flatMap((n) => n.advertencias)].filter(Boolean))],
+    origen: Object.fromEntries(capas.map((c) => [c, origen[c]])),
+  };
+}
+
+function explorador() {
+  return resolverNecesidades(estado.necesidades, { encendidas: estado.prefs, apagadas: estado.apagadas });
+}
+
+const metrosTexto = (m) => (m < 1000 ? `${numero.format(m)} m` : `${decimal.format(m / 1000)} km`);
+// Columnas de distancia de la tabla de avisos: la capa tiene que estar prendida para que la API la calcule.
+const COLUMNAS_DISTANCIA = {
+  subte: { capa: 'subte', titulo: () => 'Subte', valor: (c) => c.subte,
+    texto: (v) => `<span title="Estación ${esc(v.estacion)}">${metrosTexto(v.m)} · ${esc(v.linea)}</span>` },
+  subte_ascensor: { capa: 'subte', titulo: () => 'Subte con ascensor', valor: (c) => c.subte_ascensor,
+    texto: (v) => `<span title="Estación ${esc(v.estacion)}">${metrosTexto(v.m)} · ${esc(v.linea)}</span>` },
+  escuela: { capa: 'escuelas', titulo: () => `Escuela (${estado.nivel})`, valor: (c) => c.escuela },
+  cesac: { capa: 'salud', titulo: () => 'CeSAC', valor: (c) => c.cesac },
+  hospital: { capa: 'salud', titulo: () => 'Hospital', valor: (c) => c.hospital },
+  plaza: { capa: 'verdes', titulo: () => 'Plaza', valor: (c) => c.plaza },
+  ruido_diurno: { capa: 'ruido', titulo: () => 'Ruido de día', valor: (c) => c.ruido_diurno,
+    texto: (v) => (v.dba == null ? 'Sin celda relevada' : `${v.dba} dBA`) },
+};
+const RASGOS_TEXTO = { patio: 'patio', balcon: 'balcón', luminoso: 'luminoso', contrafrente: 'contrafrente' };
+
+function celdaDistancia(def, aviso) {
+  const v = aviso.cercania && def.valor(aviso.cercania);
+  if (!v || (!('dba' in v) && v.m == null)) return '—';
+  const texto = def.texto ? def.texto(v) : metrosTexto(v.m);
+  return aviso.ubicacion === 'aproximada' ? `${texto} <span class="fuente">aprox.</span>` : texto;
+}
+
+function celdaRasgos(claves, aviso) {
+  if (claves.every((k) => aviso.rasgos?.[k] == null)) return '<span class="fuente">Sin texto</span>';
+  const menciona = claves.filter((k) => aviso.rasgos[k] === 1).map((k) => RASGOS_TEXTO[k]);
+  return menciona.length ? esc(enumerar(menciona)) : '<span class="fuente">No los menciona</span>';
+}
+
+function porMes(aviso) {
+  if (aviso.expensas == null) return `${dinero(aviso.precio, aviso.moneda)} <span class="fuente">+ expensas sin informar</span>`;
+  if (aviso.moneda === 'ARS') return dinero(aviso.precio + aviso.expensas, 'ARS');
+  return `${dinero(aviso.precio, aviso.moneda)} + ${dinero(aviso.expensas, 'ARS')}`;
+}
+
+// Columnas extra de la tabla según las necesidades: [{ titulo, celda(aviso) }].
+function columnasExplorador() {
+  if (!EXPLORADOR || !estado.necesidades.size) return [];
+  const { columnas, capas } = explorador();
+  const extra = Object.entries(COLUMNAS_DISTANCIA)
+    .filter(([clave, def]) => columnas.includes(clave) && capas.includes(def.capa))
+    .map(([, def]) => ({ titulo: def.titulo(), celda: (a) => celdaDistancia(def, a) }));
+  const rasgos = Object.keys(RASGOS_TEXTO).filter((k) => columnas.includes(k));
+  if (rasgos.length) extra.push({ titulo: 'El texto menciona', celda: (a) => celdaRasgos(rasgos, a) });
+  if (columnas.includes('expensas')) {
+    extra.push(estado.operacion === 'alquiler'
+      ? { titulo: 'Por mes', celda: porMes }
+      : { titulo: 'Expensas', celda: (a) => (a.expensas == null ? '<span class="fuente">No informadas</span>' : dinero(a.expensas, 'ARS')) });
+  }
+  return extra;
+}
+
+function renderSegunNecesidades() {
+  if (!EXPLORADOR || !estado.necesidades.size) return '';
+  const r = explorador();
+  const nombres = NECESIDADES.filter((n) => estado.necesidades.has(n.clave)).map((n) => n.nombre);
+  const nombreCapa = (c) => CAPAS.find((x) => x.clave === c)?.nombre || c;
+  const origen = (c) => (r.origen[c].includes('manual') ? 'Elegida por vos'
+    : `Sugerida por «${r.origen[c].map((k) => NECESIDADES.find((n) => n.clave === k).nombre).join('» y «')}»`);
+  const filas = r.capas.filter((c) => c !== 'delitos').map((c) => `<dt>${esc(nombreCapa(c))}</dt><dd>${esc(origen(c))}</dd>`);
+  const conCercania = estado.avisos.filter((a) => a.cercania).length;
+  const sinUbicacion = estado.avisos.filter((a) => !a.ubicacion).length;
+  const distancias = r.cercania.length && estado.avisos.length && estado.cercaniaInfo
+    ? `<p class="fuente">${conCercania} de ${estado.avisos.length} ${plural(estado.avisos.length, 'aviso tiene', 'avisos tienen')} distancias en la tabla.
+        ${sinUbicacion ? `${sinUbicacion} sin ubicación publicada ${plural(sinUbicacion, 'queda', 'quedan')} sin distancia.` : ''}
+        ${esc(estado.cercaniaInfo.metodo || '')}</p>` : '';
+  return `<section class="segun" aria-labelledby="titulo-segun">
+      <h2 id="titulo-segun">Según lo que elegiste</h2>
+      <p class="fuente">${esc(enumerar(nombres))}. <button class="boton-texto" type="button" data-abrir-importa>Cambiar</button></p>
+      ${filas.length ? `<dl class="hechos">${filas.join('')}</dl>` : ''}
+      ${distancias}
+      ${r.advertencias.length ? `<ul class="segun-avisos">${r.advertencias.map((a) => `<li>${esc(a)}</li>`).join('')}</ul>` : ''}
+    </section>`;
+}
+
 const PRESUPUESTO = { 'venta-USD': 110000, 'alquiler-ARS': 800000, 'alquiler-USD': 900 };
 const VACIO = { type: 'FeatureCollection', features: [] };
 const reducido = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -81,6 +199,8 @@ const estado = {
   ambientesOMas: Boolean(guardado.ambientesOMas),
   verTodos: false,
   prefs: new Set(guardado.prefs || ['subte', 'verdes']),
+  necesidades: new Set(EXPLORADOR ? guardado.necesidades || [] : []),
+  apagadas: new Set(EXPLORADOR ? guardado.apagadas || [] : []),
   nivel: guardado.nivel || 'primario',
   ruido: 'diurno',
   delitos: { anio: '', tipo: 'todos', franja: 'todas', radio: '500', inmueble: '' },
@@ -91,6 +211,7 @@ const estado = {
   seleccionado: null,
   colectivo: null, // { linea, datos } de la línea de colectivo dibujada en el mapa
   avisos: [],
+  cercaniaInfo: null,
   capas: new Set(),
   capasDatos: {},
   delitosDatos: null,
@@ -105,7 +226,8 @@ function guardar() {
   const { modo, operacion, moneda, presupuesto, superficie, ambientes, nivel } = estado;
   try {
     localStorage.setItem('precio-entorno-filtros', JSON.stringify(
-      { modo, operacion, moneda, presupuesto, superficie, ambientes, ambientesOMas: estado.ambientesOMas, nivel, prefs: [...estado.prefs] }));
+      { modo, operacion, moneda, presupuesto, superficie, ambientes, ambientesOMas: estado.ambientesOMas, nivel, prefs: [...estado.prefs],
+        ...(EXPLORADOR ? { necesidades: [...estado.necesidades], apagadas: [...estado.apagadas] } : {}) }));
   } catch { /* Sin almacenamiento local: los filtros vuelven a los valores iniciales. */ }
 }
 
@@ -147,7 +269,8 @@ function datosEntorno(e) {
 
 function lineaEntorno(e) {
   const datos = datosEntorno(e);
-  const partes = PREFERENCIAS.filter((p) => estado.prefs.has(p.clave)).map((p) => datos[p.clave]);
+  const elegidas = EXPLORADOR ? new Set(explorador().capas) : estado.prefs;
+  const partes = PREFERENCIAS.filter((p) => elegidas.has(p.clave)).map((p) => datos[p.clave]);
   return partes.length ? `${partes.join('. ')}.` : '';
 }
 
@@ -234,12 +357,14 @@ function renderFicha() {
   }
   const alquiler = estado.operacion === 'alquiler';
   const visibles = estado.verTodos ? estado.avisos : estado.avisos.slice(0, 25);
+  const extra = columnasExplorador();
   const filas = visibles.map((a) => `<tr>
       <td>${dinero(a.precio, a.moneda)}</td>
       <td>${a.superficie} m²</td>
       <td>${a.ambientes}</td>
       <td>${a.cocheras == null ? 'No informada' : a.cocheras === 0 ? 'Sin cochera' : a.cocheras}</td>
       ${alquiler ? `<td>${a.expensas == null ? '—' : dinero(a.expensas, 'ARS')}</td>` : ''}
+      ${extra.map((c) => `<td>${c.celda(a)}</td>`).join('')}
       <td>${a.enlace ? `<a href="${esc(a.enlace)}" target="_blank" rel="noopener">Ver aviso</a>` : 'Ejemplo'}</td>
       <td>${a.pin_utilizable ? `<button class="boton-texto" type="button" data-inmueble="${esc(a.id)}">${estado.delitos.inmueble === a.id ? 'Entorno elegido' : 'Ver registros cerca'}</button>`
         : a.ubicacion ? `<button class="boton-texto" type="button" data-ubicar="${esc(a.id)}" title="Ver en el mapa">Ubicar</button>`
@@ -272,6 +397,7 @@ function renderFicha() {
           ${e?.gastronomia ? `Cafés, bares y restaurantes: © colaboradores de OpenStreetMap${e.gastronomia.captura ? `, captura del ${fechaCorta(e.gastronomia.captura)}` : ''}. La cobertura depende de quién mapea cada zona.` : ''}
           <button class="boton-texto" type="button" data-fuentes>Ver fuentes</button></p>` : ''}
       ${renderColectivos(e)}
+      ${renderSegunNecesidades()}
       ${renderParecidos(b.barrio)}
       ${renderLugares(b.barrio)}
       ${estado.modo === 'real' ? `<h2>Localizar estacionamientos</h2>
@@ -289,8 +415,9 @@ function renderFicha() {
         </form><div id="resultado-cocheras" role="status"></div>
         <p class="fuente">Con «Mi ubicación actual», el navegador pide permiso al buscar. La ubicación se usa solo para esa consulta y no se guarda.</p>` : ''}
       ${b.coincidencias ? `<h2>Avisos que encajan</h2>
+        ${extra.length ? `<p class="fuente">Deslizá la tabla hacia la derecha para ver ${enumerar(extra.map((c) => `«${c.titulo}»`))}.</p>` : ''}
         <table class="avisos">
-          <thead><tr><th>Precio publicado</th><th>Cubierta</th><th>Amb.</th><th>Cocheras</th>${alquiler ? '<th>Expensas</th>' : ''}<th><span hidden>Enlace</span></th><th>Mapa</th></tr></thead>
+          <thead><tr><th>Precio publicado</th><th>Cubierta</th><th>Amb.</th><th>Cocheras</th>${alquiler ? '<th>Expensas</th>' : ''}${extra.map((c) => `<th>${esc(c.titulo)}</th>`).join('')}<th><span hidden>Enlace</span></th><th>Mapa</th></tr></thead>
           <tbody>${filas}</tbody>
         </table>
         ${estado.avisos.length > visibles.length ? `<p class="fuente">Se muestran los ${visibles.length} más baratos de ${estado.avisos.length}. <button class="boton-texto" type="button" id="ver-todos">Ver todos</button></p>` : ''}
@@ -831,7 +958,9 @@ async function prepararMapa() {
       'circle-stroke-color': '#FFFFFF', 'circle-stroke-width': 1.5 } });
   mapa.addLayer({ id: 'subte', type: 'circle', source: 'subte',
     paint: { 'circle-radius': 6.5, 'circle-color': ['match', ['get', 'line'], ...Object.entries(SUBTE).flat(), '#55626B'],
-      'circle-stroke-color': '#FFFFFF', 'circle-stroke-width': 2 } });
+      // Borde oscuro y más grueso: estación con ascensores informados.
+      'circle-stroke-color': ['case', ['>', ['coalesce', ['get', 'elevators'], 0], 0], COLOR.ascensor, '#FFFFFF'],
+      'circle-stroke-width': ['case', ['>', ['coalesce', ['get', 'elevators'], 0], 0], 2.5, 2] } });
   mapa.addLayer({ id: 'estacionamiento', type: 'circle', source: 'estacionamiento',
     // Toda la ciudad: puntos chicos con el mapa alejado para que se lean los 2.700 garajes.
     paint: { 'circle-radius': ['interpolate', ['linear'], ['zoom'], 11, 2.5, 14, 4.5, 16, 6],
@@ -1103,6 +1232,29 @@ function mostrarAvisoMapa(texto) {
   $('#mapa-pista').textContent = texto;
 }
 
+// Capas al elegir un barrio. Sin el explorador, las de «Lo que me importa», como siempre.
+function capasIniciales() {
+  return new Set(EXPLORADOR ? explorador().capas : estado.prefs);
+}
+
+/* Prende o apaga una capa desde los chips del mapa. Con el explorador, la decisión se recuerda: prender la suma a
+   «Lo que me importa» y apagar una capa sugerida por una necesidad la deja apagada al cambiar de barrio. Delitos
+   nunca se recuerda. */
+function alternarCapa(clave) {
+  const prender = !estado.capas.has(clave);
+  if (prender) estado.capas.add(clave); else estado.capas.delete(clave);
+  if (!EXPLORADOR || !CAPAS_MAPA.some((c) => c.clave === clave)) return;
+  if (prender) {
+    estado.prefs.add(clave);
+    estado.apagadas.delete(clave);
+  } else {
+    estado.prefs.delete(clave);
+    if (NECESIDADES.some((n) => estado.necesidades.has(n.clave) && n.capas.includes(clave))) estado.apagadas.add(clave);
+  }
+  guardar();
+  sincronizarControles();
+}
+
 function renderChips() {
   const contenedor = $('#capas');
   contenedor.hidden = !estado.seleccionado;
@@ -1178,6 +1330,7 @@ function renderLeyenda() {
     if (c.clave === 'subte') {
       const lineas = [...new Set((estado.capasDatos[claveCapa('subte')]?.features || []).map((f) => f.properties.line))].sort();
       items = lineas.map((l) => muestra(SUBTE[l] || '#55626B', `Línea ${l}`));
+      items.push(`<li><span class="chip-muestra chip-ascensor"></span>Con ascensor informado</li>`);
     } else if (c.clave === 'verdes') items = [muestra(COLOR.verdes, 'Plaza o parque')];
     else if (c.clave === 'escuelas') items = [muestra(COLOR.escuela, `Escuela de nivel ${estado.nivel}`)];
     else if (c.clave === 'salud') items = [muestra(COLOR.cesac, 'CeSAC'), muestra(COLOR.hospital, 'Hospital')];
@@ -1240,8 +1393,17 @@ async function cargarBarrios() {
 async function cargarAvisos() {
   if (!estado.seleccionado) return;
   const barrio = estado.seleccionado;
-  const datos = await api(`/api/barrios/${encodeURIComponent(barrio)}/avisos?${consulta()}`);
-  if (barrio === estado.seleccionado) estado.avisos = datos.avisos;
+  const pedido = consulta();
+  if (EXPLORADOR && estado.necesidades.size) {
+    const { cercania } = explorador();
+    cercania.forEach((c) => pedido.append('capas', c));
+    if (cercania.includes('escuelas')) pedido.set('nivel', estado.nivel);
+  }
+  const datos = await api(`/api/barrios/${encodeURIComponent(barrio)}/avisos?${pedido}`);
+  if (barrio === estado.seleccionado) {
+    estado.avisos = datos.avisos;
+    estado.cercaniaInfo = datos.cercania || null;
+  }
 }
 
 async function seleccionar(nombre) {
@@ -1258,7 +1420,7 @@ async function seleccionar(nombre) {
   popup.remove();
   popupAviso.remove();
   if (nombre && mapa.getSource('barrios')) mapa.setFeatureState({ source: 'barrios', id: nombre }, { sel: true });
-  estado.capas = new Set(nombre ? estado.prefs : []);
+  estado.capas = nombre ? capasIniciales() : new Set();
   pintarCoropletas();
   encuadrar(nombre);
   renderChips();
@@ -1316,12 +1478,52 @@ function sincronizarControles() {
   ambientes.value = valor;
   $('#nivel').value = estado.nivel;
   $('#franja-demo').hidden = estado.modo !== 'demo';
-  $('#preferencias').innerHTML = `<legend hidden>Lo que me importa</legend>${PREFERENCIAS.map((p) => `
-    <label><input type="checkbox" value="${p.clave}"${estado.prefs.has(p.clave) ? ' checked' : ''}>${esc(p.nombre)}</label>`).join('')}`;
+  // Capas que alguna necesidad elegida sugiere, aunque estén apagadas a mano.
+  const sugeridas = new Set(EXPLORADOR ? NECESIDADES.filter((n) => estado.necesidades.has(n.clave)).flatMap((n) => n.capas) : []);
+  $('#preferencias').innerHTML = `<legend ${EXPLORADOR ? 'class="importa-titulo"' : 'hidden'}>${EXPLORADOR ? 'Capas del mapa' : 'Lo que me importa'}</legend>${PREFERENCIAS.map((p) => `
+    <label><input type="checkbox" value="${p.clave}"${estado.prefs.has(p.clave) ? ' checked' : ''}>${esc(p.nombre)}${
+      sugeridas.has(p.clave) && !estado.prefs.has(p.clave) ? `<small class="sugerida">${estado.apagadas.has(p.clave) ? 'sugerida, apagada' : 'sugerida'}</small>` : ''}</label>`).join('')}`;
   $('#nivel-campo').hidden = !estado.prefs.has('escuelas');
-  const elegidas = estado.prefs.size;
+  renderResumenNecesidades();
+  const elegidas = estado.prefs.size + estado.necesidades.size;
   $('#abrir-importa').textContent = elegidas ? `Lo que me importa: ${elegidas}` : 'Lo que me importa';
   $('#abrir-importa').classList.toggle('con-eleccion', elegidas > 0);
+}
+
+// Casillas de necesidades. Se dibujan al iniciar y al restablecer, no en cada cambio, para no perder el foco.
+function renderNecesidades() {
+  // Sin el interruptor no se toca nada; con una página vieja en caché tampoco hay casillas que dibujar.
+  const contenedor = $('#necesidades');
+  if (!EXPLORADOR || !contenedor) return;
+  contenedor.hidden = false;
+  $('#necesidades-pie').hidden = false;
+  contenedor.innerHTML = `<legend class="importa-titulo">Lo que necesitás</legend>${NECESIDADES.map((n) => `
+    <label class="necesidad"><input type="checkbox" value="${n.clave}"${estado.necesidades.has(n.clave) ? ' checked' : ''}>
+      <span>${esc(n.nombre)}<small>${esc(n.descripcion)}</small></span></label>`).join('')}`;
+}
+
+function renderResumenNecesidades() {
+  if (!EXPLORADOR || !$('#necesidades-resumen')) return;
+  const r = explorador();
+  const nombres = r.capas.map((c) => CAPAS.find((x) => x.clave === c)?.nombre || c);
+  const columnas = columnasExplorador().map((c) => c.titulo);
+  $('#necesidades-resumen').textContent = estado.necesidades.size
+    ? `En el mapa: ${nombres.length ? enumerar(nombres) : 'ninguna capa'}.`
+      + (columnas.length ? ` En la tabla de avisos: ${enumerar(columnas)}.` : '') + ' No se oculta ningún aviso.'
+    : 'Elegí una o más para ver capas y datos relacionados. No filtran avisos ni arman puntajes.';
+}
+
+async function aplicarNecesidades() {
+  guardar();
+  sincronizarControles();
+  if (!estado.seleccionado) { renderPanel(); return; }
+  const delitos = estado.capas.has('delitos');
+  estado.capas = capasIniciales();
+  if (delitos) estado.capas.add('delitos');
+  renderChips();
+  actualizarCapas();
+  try { await cargarAvisos(); } catch { /* La ficha sigue con los avisos anteriores. */ }
+  renderPanel();
 }
 
 function enteroDe(texto) {
@@ -1547,6 +1749,10 @@ function conectarEventos() {
   $('#preferencias').addEventListener('change', (e) => {
     const clave = e.target.value;
     if (e.target.checked) estado.prefs.add(clave); else estado.prefs.delete(clave);
+    if (e.target.checked) estado.apagadas.delete(clave);
+    else if (EXPLORADOR && NECESIDADES.some((n) => estado.necesidades.has(n.clave) && n.capas.includes(clave))) {
+      estado.apagadas.add(clave);
+    }
     if (estado.seleccionado) {
       if (e.target.checked) estado.capas.add(clave); else estado.capas.delete(clave);
       renderChips();
@@ -1558,6 +1764,25 @@ function conectarEventos() {
     cargarParecidos();
   });
   $('#nivel').addEventListener('change', (e) => { cambiarNivel(e.target.value); });
+  $('#necesidades')?.addEventListener('change', (e) => {
+    const clave = e.target.value;
+    if (e.target.checked) estado.necesidades.add(clave); else estado.necesidades.delete(clave);
+    aplicarNecesidades();
+  });
+  $('#restablecer-necesidades')?.addEventListener('click', () => {
+    estado.necesidades.clear();
+    estado.apagadas.clear();
+    estado.prefs = new Set(['subte', 'verdes']);
+    renderNecesidades();
+    aplicarNecesidades();
+  });
+  $('#contenido').addEventListener('click', (e) => {
+    if (!e.target.closest('[data-abrir-importa]')) return;
+    e.stopPropagation();
+    $('#importa').hidden = false;
+    $('#abrir-importa').setAttribute('aria-expanded', 'true');
+    $('#necesidades input')?.focus();
+  });
 
   let consultaEstacionamientos = 0;
   $('#contenido').addEventListener('submit', async (e) => {
@@ -1692,7 +1917,7 @@ function conectarEventos() {
     const chip = e.target.closest('[data-capa]');
     if (!chip) return;
     const clave = chip.dataset.capa;
-    if (estado.capas.has(clave)) estado.capas.delete(clave); else estado.capas.add(clave);
+    alternarCapa(clave);
     chip.setAttribute('aria-pressed', estado.capas.has(clave));
     renderPanel();
     actualizarCapas();
@@ -1722,6 +1947,9 @@ function cambiarNivel(nivel) {
   renderPanel();
   actualizarCapas();
   if (estado.prefs.has('escuelas')) cargarParecidos();
+  if (EXPLORADOR && estado.seleccionado && explorador().cercania.includes('escuelas')) {
+    cargarAvisos().then(renderPanel).catch(() => {});
+  }
 }
 
 async function crearAlerta(boton) {
@@ -1811,6 +2039,7 @@ async function abrirFuentes() {
 }
 
 async function iniciar() {
+  renderNecesidades();
   sincronizarControles();
   conectarEventos();
   renderChips();

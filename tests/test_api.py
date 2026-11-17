@@ -132,6 +132,8 @@ class ApiTests(unittest.TestCase):
                                                              ('capas', 'ruido'), ('capas', 'salud')]).json()
         self.assertEqual(set(layers), {'subte', 'ruido', 'salud'})
         self.assertIn('Primera Junta', [f['properties']['name'] for f in layers['subte']['features']])
+        elevators = {f['properties']['name']: f['properties']['elevators'] for f in layers['subte']['features']}
+        self.assertEqual(elevators['Primera Junta'], 2)
         cell = layers['ruido']['features'][0]
         self.assertEqual(cell['geometry']['type'], 'Polygon')
         self.assertEqual(cell['properties']['tipico'], 70)
@@ -209,6 +211,49 @@ class ApiTests(unittest.TestCase):
             self.assertEqual(response.status_code, 422)
         self.assertEqual(self.client.get('/api/delitos/concentracion', params={
             'barrio': 'Caballito', 'inmueble': 'inexistente'}).status_code, 404)
+
+    def test_listings_carry_traits_age_and_optional_proximity(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            store = Store(root / 'real.sqlite3')
+            base = {'neighborhood': 'Caballito', 'price': 100_000, 'covered_area': 45, 'rooms': 2,
+                    'url': 'https://example.invalid/x', 'captured_at': '2026-11-17', 'currency': 'USD',
+                    'total_area_m2': None, 'latitude': None, 'longitude': None, 'location_accuracy_m': None}
+            store.ingest([
+                # Sobre Primera Junta (-58.445, -34.615), con texto que menciona balcón y no patio.
+                dict(base, id='con-pin', latitude=-34.615, longitude=-58.445, age_years=12, balcony=1, patio=0),
+                dict(base, id='sin-pin', price=101_000),
+            ], source='prueba')
+            client = TestClient(create_app(real_path=store.path, demo_path=root / 'demo.sqlite3',
+                                           entorno_dir=Path(self.temp.name) / 'entorno'))
+            path = '/api/barrios/Caballito/avisos'
+            plain = client.get(path, params={'modo': 'real'}).json()
+            self.assertNotIn('cercania', plain)
+            con, sin = plain['avisos']
+            self.assertEqual((con['antiguedad'], con['rasgos']['balcon'], con['rasgos']['patio']), (12, 1, 0))
+            self.assertIsNone(sin['rasgos']['balcon'])   # sin texto: sin dato, no «no tiene»
+            self.assertNotIn('cercania', con)
+
+            params = [('modo', 'real'), ('capas', 'subte'), ('capas', 'escuelas'), ('capas', 'ruido'),
+                      ('nivel', 'primario')]
+            result = client.get(path, params=params).json()
+            self.assertTrue(result['cercania']['disponible'])
+            self.assertIn('Línea recta', result['cercania']['metodo'])
+            con, sin = result['avisos']
+            self.assertEqual(con['cercania']['subte'], {'m': 0, 'estacion': 'Primera Junta', 'linea': 'A'})
+            self.assertEqual(con['cercania']['subte_ascensor'], {'m': 0, 'estacion': 'Primera Junta', 'linea': 'A'})
+            self.assertEqual(con['cercania']['escuela']['nivel'], 'primario')
+            self.assertGreater(con['cercania']['escuela']['m'], 0)
+            self.assertEqual(con['cercania']['ruido_diurno'], {'dba': 70})
+            self.assertIsNone(sin['cercania'])            # sin ubicación: sin distancia
+
+            bad = client.get(path, params=[('modo', 'real'), ('capas', 'riesgo')])
+            self.assertEqual(bad.status_code, 422)
+            self.assertEqual(client.get(path, params=[('capas', 'subte'), ('nivel', 'terciario')]).status_code, 422)
+
+    def test_demo_listings_never_invent_traits(self):
+        result = self.get('/api/barrios/Almagro/avisos')
+        self.assertTrue(all(set(a['rasgos'].values()) == {None} for a in result['avisos']))
 
     def test_concentration_uses_annual_sources_precise_listing_and_refreshes_cache(self):
         with tempfile.TemporaryDirectory() as temp:

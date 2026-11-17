@@ -75,7 +75,28 @@ Cada tabla queda además como CSV en el almacén de la corrida en Apify. La de b
 
 Looker Studio es gratis y lee la planilla directamente: cada vez que Make la reescribe, el dashboard muestra los datos nuevos.
 
-El informe ya está armado: [Precio y Entorno CABA - Dashboard Analytics](https://lookerstudio.google.com/reporting/5057b183-22bb-4370-8c23-a47387a9d6f1). Falta sumar el mapa de burbujas y el control de comuna (pasos 2 y 3). Los pasos de abajo sirven para rehacerlo o ampliarlo.
+El informe ya está armado: [Precio y Entorno CABA - Dashboard Analytics](https://lookerstudio.google.com/reporting/5057b183-22bb-4370-8c23-a47387a9d6f1). Se completó el 17/11/2026 siguiendo el método de la skill `looker-studio-bigquery` (`.claude/skills/`): una página por pregunta, indicadores antes que el detalle, y la frescura y las aclaraciones visibles.
+
+### Ficha de entrega
+
+| | |
+| --- | --- |
+| **Audiencia** | Docentes del capstone e inmobiliaria que gestiona búsquedas de compradores |
+| **Pregunta que responde** | Dónde está la oferta de departamentos en venta en CABA, cuánto se pide por m² y qué contexto delictivo tiene cada barrio |
+| **Fuente** | Planilla «Precio y Entorno CABA - Tablas del dashboard», 6 pestañas que escribe el EDA del Actor. Una fila por barrio, por ambientes, por fuente, por tramo de USD/m² o por variable |
+| **Frescura** | A pedido: cada **Run once** del escenario de Make reescribe la planilla. Frescura de los datos en Looker: 15 minutos |
+| **Responsable** | Equipo del capstone. Make avisa por correo si una corrida falla |
+| **Aclaraciones** | Precios de publicación, no tasaciones ni precios de cierre. Delitos registrados en 2025 por barrio como contexto, no como causa |
+
+| Página | Pregunta | Gráficos |
+| --- | --- | --- |
+| **Panorama de precios** | ¿Cuánto se pide y dónde es más caro? | Indicadores: avisos, mediana USD/m², barrios y mediana de precio. Tabla de los 48 barrios ordenada por mediana USD/m², barras con los barrios más caros y pie con aclaraciones |
+| **Mapa de barrios** | ¿Dónde se concentra la oferta? | Mapa de burbujas: color según mediana USD/m², tamaño según avisos y nombre del barrio al pasar el cursor. Control desplegable de comuna |
+| **Oferta y contexto** | ¿Cómo se reparten los precios y qué los acompaña? | Histograma de USD/m², USD/m² por ambientes, tabla de correlaciones (Pearson y Spearman), dispersión de delitos contra USD/m² y nota de fuentes |
+
+En la fuente `barrios`, `ubicacion` es de tipo **Latitud, longitud** y `comuna` es **Texto**. El mapa no tiene una vista fija: se ajusta solo a los 48 barrios en el tamaño real del informe. Para la versión estática, usar **Descargar › PDF**.
+
+Los pasos de abajo sirven para rehacerlo o ampliarlo.
 
 1. **Conectar.** Entrar a [lookerstudio.google.com](https://lookerstudio.google.com) con la misma cuenta de Google. Ir a **Crear › Informe › Hojas de cálculo de Google**, elegir «Precio y Entorno CABA - Tablas del dashboard» y la pestaña `barrios`, con *Usar la primera fila como encabezados* marcado. Después, en **Recurso › Administrar fuentes de datos agregadas**, sumar las otras cinco pestañas de la misma manera.
 2. **Ajustar campos de `barrios`.** En la fuente, cambiar `ubicacion` a **Geográfico › Latitud, longitud** y `comuna` a **Texto**.

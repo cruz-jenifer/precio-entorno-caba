@@ -19,6 +19,10 @@ que caen dentro del barrio.
 Gastronomía (opcional): restaurantes, cafés y bares de OpenStreetMap (licencia ODbL, «© colaboradores
 de OpenStreetMap»), de la captura más reciente en `data/raw/osm-AAAAMMDD/`. Solo se cuentan por barrio.
 Si alguna categoría llegó al tope de puntos de su corrida, la captura está incompleta y no se usa.
+
+Movilidad en bici y bibliotecas (opcionales, CC-BY 2.5 AR, en `data/raw/badata-entorno/`): tramos de ciclovía,
+estaciones de Ecobici (listado del nuevo sistema; no informa si cada una está operativa) y bibliotecas de la Red de
+la Ciudad. Se cuentan por barrio y se dibujan en el mapa. De las bibliotecas no se guardan teléfonos ni correos.
 """
 
 import argparse
@@ -92,6 +96,17 @@ POLIDEPORTIVOS_FUENTE = 'https://data.buenosaires.gob.ar/dataset/polideportivos'
 # Sedes sin actividad deportiva: no se muestran en la capa de clubes.
 SEDES_ADMINISTRATIVAS = {'sede administrativa', 'anexo administrativo'}
 GARAJES_PERIODO = 'Publicado en 2021 · fecha de relevamiento no informada'
+# Capas opcionales del explorador de necesidades (etapa B): archivo, ruta en el CDN, título y período.
+MOVILIDAD = {
+    'ciclovias': ('ciclovias.geojson', 'transporte-y-obras-publicas/ciclovias/ciclovias.geojson',
+                  'Ciclovías', 'Recurso del 17/03/2025 · actualización semestral declarada'),
+    'ecobici': ('badata_ecobici_estaciones_bicicletas_nuevo_sistema.csv',
+                'transporte-y-obras-publicas/estaciones-bicicletas-publicas/'
+                'badata_ecobici_estaciones_bicicletas_nuevo_sistema.csv',
+                'Estaciones de Ecobici', 'Listado del 04/04/2025 · no informa si cada estación está operativa'),
+    'bibliotecas': ('bibliotecas.geojson', 'ministerio-de-cultura/bibliotecas/bibliotecas.geojson',
+                    'Bibliotecas de la Ciudad', 'Listado del 20/03/2025'),
+}
 
 
 def polygons(geometry):
@@ -319,6 +334,70 @@ def commercial_garages(collection):
     return list(garages.values())
 
 
+def line(coordinates):
+    out = []
+    for x, y, *_ in coordinates:
+        point = [round(x, DECIMALS), round(y, DECIMALS)]
+        if not out or point != out[-1]:
+            out.append(point)
+    return out
+
+
+def bike_lanes(collection):
+    """Tramos de ciclovía. «Mano única» es lo único que informa la fuente: no dice si el tramo es protegido."""
+    out = []
+    for feature in collection.get('features', []):
+        geometry = feature.get('geometry') or {}
+        parts = ([geometry.get('coordinates')] if geometry.get('type') == 'LineString'
+                 else geometry.get('coordinates') if geometry.get('type') == 'MultiLineString' else [])
+        props = feature.get('properties') or {}
+        name = ' '.join(str(props.get('nombre') or '').split()) or 'Ciclovía'
+        kind = 'Mano única' if 'nica' in str(props.get('tipo') or '').lower() else 'Doble mano'
+        for part in parts:
+            coords = line(part or [])
+            if len(coords) < 2:
+                continue
+            length = sum(math.hypot((b[0] - a[0]) * 111_320 * math.cos(math.radians(a[1])), (b[1] - a[1]) * 111_320)
+                         for a, b in zip(coords, coords[1:]))
+            out.append({'type': 'Feature', 'geometry': {'type': 'LineString', 'coordinates': coords},
+                        'properties': {'name': name, 'kind': kind, 'length_m': round(length),
+                                       'tooltip': f'Ciclovía · {name} · {kind}'}})
+    return out
+
+
+def ecobici_stations(rows):
+    """Estaciones de Ecobici del nuevo sistema. El listado no dice si cada una está operativa."""
+    out = {}
+    for row in rows:
+        row = {key(k): v for k, v in row.items()}
+        try:
+            lon, lat = float(row.get('longitud')), float(row.get('latitud'))
+        except (TypeError, ValueError):
+            continue
+        name = ' '.join((row.get('nombre') or 'Estación').split()).title()
+        address = ' '.join((row.get('direccion') or '').split())
+        lon, lat = round(lon, DECIMALS), round(lat, DECIMALS)
+        out[lon, lat] = {'name': name, 'lon': lon, 'lat': lat,
+                         'tooltip': ' · '.join(p for p in (f'Ecobici {name}', address) if p)}
+    return list(out.values())
+
+
+def libraries(collection):
+    """Bibliotecas de la Red de la Ciudad. Se descartan teléfonos, correos y redes."""
+    out = []
+    for feature in collection.get('features', []):
+        geometry = feature.get('geometry') or {}
+        if geometry.get('type') != 'Point':
+            continue
+        props = feature.get('properties') or {}
+        name = ' '.join(str(props.get('nombre') or 'Biblioteca').split())
+        kind = ' '.join(str(props.get('tipo') or '').split())
+        address = ' '.join(str(props.get('dirreccion') or props.get('direccion') or '').split())
+        lon, lat = (round(v, DECIMALS) for v in geometry['coordinates'][:2])
+        out.append({'name': name, 'lon': lon, 'lat': lat, 'tooltip': ' · '.join(p for p in (name, kind, address) if p)})
+    return out
+
+
 def wkt_point(text):
     """`POINT (lon lat)` → (lon, lat), o None."""
     match = re.fullmatch(r'\s*POINT\s*\(\s*(-?[\d.]+)\s+(-?[\d.]+)\s*\)\s*', text or '', re.I)
@@ -497,6 +576,19 @@ def convert(poi_dir, entorno_dir, target, downloaded=None, osm_dir=None, gyms_pa
     gyms_path = Path(gyms_path) if gyms_path else None
     if gyms_path and gyms_path.is_file():
         points['gimnasios'] = gyms(read(gyms_path))
+    mobility = {name: entorno_dir / file for name, (file, *_) in MOVILIDAD.items()}
+    mobility = {name: path_ for name, path_ in mobility.items() if path_.is_file()}
+    if 'ecobici' in mobility:
+        with mobility['ecobici'].open(encoding='utf-8-sig', newline='') as handle:
+            points['ecobici'] = ecobici_stations(csv.DictReader(handle))
+    if 'bibliotecas' in mobility:
+        points['bibliotecas'] = libraries(read(mobility['bibliotecas']))
+    lanes = bike_lanes(read(mobility['ciclovias'])) if 'ciclovias' in mobility else None
+    if lanes is not None:
+        middles = [f['geometry']['coordinates'][len(f['geometry']['coordinates']) // 2] for f in lanes]
+        for feature, name in zip(lanes, barrios.of(middles)):
+            feature['properties']['barrio'] = name
+        lanes = [f for f in lanes if f['properties']['barrio']]
     for items in points.values():
         for item, name in zip(items, barrios.of([(i['lon'], i['lat']) for i in items])):
             item['barrio'] = name
@@ -565,9 +657,12 @@ def convert(poi_dir, entorno_dir, target, downloaded=None, osm_dir=None, gyms_pa
             'ruido': noise_summary,
             'riesgo_hidrico': share(risk, within),
         }
-        for layer in ('clubes', 'gimnasios'):
+        for layer in ('clubes', 'gimnasios', 'ecobici', 'bibliotecas'):
             if layer in points:
                 summary[name][layer] = len(mine[layer])
+        if lanes is not None:
+            summary[name]['ciclovias_km'] = round(
+                sum(f['properties']['length_m'] for f in lanes if f['properties']['barrio'] == name) / 1000, 1)
         if lines is not None:
             summary[name]['colectivos'] = lines_of.get(name, [])
         if food is not None:
@@ -607,6 +702,10 @@ def convert(poi_dir, entorno_dir, target, downloaded=None, osm_dir=None, gyms_pa
         sources.append({'capa': 'colectivos', 'titulo': 'Recorridos de colectivos (GTFS)', 'archivo': gtfs_zip.name,
                         'periodo': colectivos_gtfs.PERIODO, 'url': colectivos_gtfs.FUENTE,
                         'sha256': digest(gtfs_zip), 'licencia': 'CC-BY 2.5 AR · Buenos Aires Data'})
+    for layer, path_ in mobility.items():
+        file, url, title, period = MOVILIDAD[layer]
+        sources.append({'capa': layer, 'titulo': title, 'archivo': file, 'periodo': period, 'url': CDN + url,
+                        'sha256': digest(path_), 'licencia': 'CC-BY 2.5 AR · Buenos Aires Data'})
     if food is not None:
         combined = sha256(b''.join((osm_dir / f'{n}.json').read_bytes() for n in GASTRONOMIA)).hexdigest()
         sources.append({'capa': 'gastronomia', 'titulo': 'Restaurantes, cafés y bares',
@@ -621,6 +720,10 @@ def convert(poi_dir, entorno_dir, target, downloaded=None, osm_dir=None, gyms_pa
     write('puntos.json', points)
     write('ruido.json', {'celda_m': CELL_M, 'umbral_dba': LOUD_DBA, 'colores': noise_colors, **noise})
     write('resumen.json', summary)
+    if lanes is not None:
+        write('ciclovias.geojson', {'type': 'FeatureCollection', 'features': lanes})
+    elif (target / 'ciclovias.geojson').exists():
+        (target / 'ciclovias.geojson').unlink()
     if lines is not None:
         write('colectivos.json', lines)
     elif (target / 'colectivos.json').exists():
@@ -639,6 +742,8 @@ def load(folder):
     data = {name.split('.')[0]: read(folder / name) for name in files}
     if (folder / 'colectivos.json').exists():
         data['colectivos'] = read(folder / 'colectivos.json')
+    if (folder / 'ciclovias.geojson').exists():
+        data['ciclovias'] = read(folder / 'ciclovias.geojson')
     return data
 
 
@@ -690,9 +795,12 @@ def in_bbox(lon, lat, bbox):
 
 
 def features_in(collection, bbox):
+    """Polígonos (por su anillo exterior) o líneas con algún vértice dentro del rectángulo."""
     def touches(feature):
-        return any(in_bbox(x, y, bbox) for polygon in feature['geometry']['coordinates']
-                   for x, y in polygon[0])
+        geometry = feature['geometry']
+        vertices = (geometry['coordinates'] if geometry['type'] == 'LineString'
+                    else (v for polygon in geometry['coordinates'] for v in polygon[0]))
+        return any(in_bbox(x, y, bbox) for x, y, *_ in vertices)
     return {'type': 'FeatureCollection', 'features': [f for f in collection['features'] if touches(f)]}
 
 

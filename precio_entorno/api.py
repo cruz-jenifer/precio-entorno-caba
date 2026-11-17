@@ -26,7 +26,7 @@ from .matching import matches
 Mode = Literal['demo', 'real']
 Operation = Literal['venta', 'alquiler']
 LAYER_KEYS = ('subte', 'verdes', 'escuelas', 'salud', 'ruido', 'riesgo', 'estacionamiento', 'clubes', 'gimnasios',
-              'colectivos')
+              'colectivos', 'ciclovias', 'ecobici', 'bibliotecas')
 # Capas de puntos que cubren toda la ciudad, no solo el recuadro del barrio elegido.
 CITYWIDE = {'estacionamiento': 'garaje', 'clubes': 'club', 'gimnasios': 'gimnasio'}
 CURRENCIES = {'venta': ('USD',), 'alquiler': ('ARS', 'USD')}
@@ -321,6 +321,13 @@ def create_app(demo_path=None, real_path=None, entorno_dir=None, raw_dir=None, w
                                  'disponible': lines is not None}
         if 'verdes' in capas:
             out['verdes'] = entorno.features_in(data['verdes'], bbox)
+        for name, kind in (('ecobici', 'ecobici'), ('bibliotecas', 'biblioteca')):
+            if name in capas:
+                out[name] = {**collection(point_features(points.get(name, []), kind, bbox)), 'disponible': name in points}
+        if 'ciclovias' in capas:
+            lanes = data.get('ciclovias')
+            out['ciclovias'] = {**(entorno.features_in(lanes, bbox) if lanes else collection([])),
+                                'disponible': lanes is not None}
         if 'riesgo' in capas:
             out['riesgo'] = entorno.features_in(data['riesgo_hidrico'], bbox)
         if 'ruido' in capas:

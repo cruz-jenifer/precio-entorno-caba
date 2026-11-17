@@ -62,7 +62,7 @@ test('una necesidad suma sus capas, columnas y advertencias, sin filtros', () =>
 test('varias necesidades se unen sin duplicados y guardan de dónde viene cada capa', () => {
   const run = runtime();
   const r = resolver(run, ['familia', 'teletrabajo', 'sin_auto'], ['subte']);
-  assert.deepEqual(r.capas, ['subte', 'verdes', 'escuelas', 'salud', 'ruido', 'colectivos']);
+  assert.deepEqual(r.capas, ['subte', 'verdes', 'escuelas', 'salud', 'ruido', 'colectivos', 'bibliotecas']);
   assert.deepEqual(r.origen.subte, ['sin_auto', 'manual']);
   assert.equal(new Set(r.columnas).size, r.columnas.length);
   assert.equal(new Set(r.advertencias).size, r.advertencias.length);
@@ -142,4 +142,15 @@ test('«Me muevo sin auto» suma el subte con ascensor informado', () => {
   const run = runtime('?explorador=1', { prefs: [], necesidades: ['sin_auto'] });
   assert.deepEqual(run('columnasExplorador().map((c) => c.titulo)'), ['Subte', 'Subte con ascensor']);
   assert.match(run("NOTAS.subte"), /no indica si funcionan/);
+});
+
+test('«Me muevo en bici» prende ciclovías y Ecobici; «Trabajo desde casa» suma bibliotecas', () => {
+  const run = runtime('?explorador=1', { prefs: [], necesidades: ['bicicleta', 'teletrabajo'] });
+  const r = run('explorador()');
+  assert.deepEqual(r.capas, ['ruido', 'ciclovias', 'ecobici', 'bibliotecas']);
+  assert.deepEqual(r.cercania, ['ruido', 'ciclovias', 'ecobici', 'bibliotecas']);
+  assert.deepEqual(run('columnasExplorador().map((c) => c.titulo)'),
+    ['Ciclovía', 'Ecobici', 'Biblioteca', 'Ruido de día', 'El texto menciona']);
+  assert.ok(r.advertencias.some((a) => a.includes('no garantiza un recorrido continuo')));
+  assert.ok(r.advertencias.some((a) => a.includes('operativa')));
 });

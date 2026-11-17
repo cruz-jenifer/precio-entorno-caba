@@ -137,3 +137,9 @@ test('el costo por mes no suma monedas distintas ni inventa expensas', () => {
   assert.equal(run("porMes({ precio: 900, moneda: 'USD', expensas: 95000 })"), 'USD 900 + ARS 95.000');
   assert.match(run("porMes({ precio: 800000, moneda: 'ARS', expensas: null })"), /expensas sin informar/);
 });
+
+test('«Me muevo sin auto» suma el subte con ascensor informado', () => {
+  const run = runtime('?explorador=1', { prefs: [], necesidades: ['sin_auto'] });
+  assert.deepEqual(run('columnasExplorador().map((c) => c.titulo)'), ['Subte', 'Subte con ascensor']);
+  assert.match(run("NOTAS.subte"), /no indica si funcionan/);
+});

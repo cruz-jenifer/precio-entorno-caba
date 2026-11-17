@@ -14,14 +14,15 @@ const CAPAS_MAPA = [...PREFERENCIAS, { clave: 'estacionamiento', nombre: 'Estaci
 const CAPAS = [...CAPAS_MAPA, { clave: 'delitos', nombre: 'Delitos registrados' }];
 const SUBTE = { A: '#18CCCC', B: '#EB0909', C: '#233AA8', D: '#02A17A', E: '#AE3D97', H: '#FFD600' };
 const COLOR = { verdes: '#5E7D4F', riesgo: '#1E88E5', escuela: '#1E2A32', cesac: '#00897B', hospital: '#795548',
-  aviso: '#6A4FB3', estacionamiento: '#1671A3' };
+  aviso: '#6A4FB3', estacionamiento: '#1671A3', ascensor: '#1E2A32' };
 const RUIDO = [[50, '#FFFFCC'], [55, '#FFEDA0'], [60, '#FED976'], [65, '#FEB24C'], [70, '#FD8D3C'], [75, '#F03B20'], [80, '#BD0026']];
 const DELITOS = ['#D3DBE3', '#A9B8C8', '#7E93AB', '#55708E', '#2E4560'];
 const ESTILO = 'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json';
 const NOTA_AVISOS = 'Punto que publica la fuente, sin precisión declarada: puede marcar el edificio o una referencia cercana. '
   + 'Hueco si cae a entre 150 y 500 m del barrio del aviso. Más lejos, no se dibuja. Un punto más grande reúne varios avisos.';
 const NOTAS = {
-  subte: 'Indican conectividad, no tiempos de viaje.',
+  subte: 'Indican conectividad, no tiempos de viaje. Borde oscuro: estación con ascensores informados por SBASE; '
+    + 'no indica si funcionan, y hay estaciones sin dato.',
   verdes: 'Plazas, parques, jardines y paseos. No incluye canteros ni plazoletas.',
   escuelas: 'Estar cerca no asegura una vacante. Consultá cada escuela.',
   salud: 'Estar cerca no asegura turnos.',
@@ -37,7 +38,7 @@ const EXPLORADOR = (() => {
 })();
 const NECESIDADES = [
   { clave: 'sin_auto', nombre: 'Me muevo sin auto', descripcion: 'Subte cercano y líneas de colectivo del barrio.',
-    capas: ['subte'], columnas: ['subte'],
+    capas: ['subte'], columnas: ['subte', 'subte_ascensor'],
     advertencias: ['Las líneas de colectivo salen de recorridos publicados en 2019: confirmá el recorrido vigente.'] },
   { clave: 'familia', nombre: 'Escuelas y salud cerca', descripcion: 'Escuelas del nivel elegido, centros de salud y plazas.',
     capas: ['escuelas', 'salud', 'verdes'],
@@ -76,6 +77,8 @@ const metrosTexto = (m) => (m < 1000 ? `${numero.format(m)} m` : `${decimal.form
 // Columnas de distancia de la tabla de avisos: la capa tiene que estar prendida para que la API la calcule.
 const COLUMNAS_DISTANCIA = {
   subte: { capa: 'subte', titulo: () => 'Subte', valor: (c) => c.subte,
+    texto: (v) => `<span title="Estación ${esc(v.estacion)}">${metrosTexto(v.m)} · ${esc(v.linea)}</span>` },
+  subte_ascensor: { capa: 'subte', titulo: () => 'Subte con ascensor', valor: (c) => c.subte_ascensor,
     texto: (v) => `<span title="Estación ${esc(v.estacion)}">${metrosTexto(v.m)} · ${esc(v.linea)}</span>` },
   escuela: { capa: 'escuelas', titulo: () => `Escuela (${estado.nivel})`, valor: (c) => c.escuela },
   cesac: { capa: 'salud', titulo: () => 'CeSAC', valor: (c) => c.cesac },
@@ -884,7 +887,9 @@ async function prepararMapa() {
       'circle-stroke-color': '#FFFFFF', 'circle-stroke-width': 1.5 } });
   mapa.addLayer({ id: 'subte', type: 'circle', source: 'subte',
     paint: { 'circle-radius': 6.5, 'circle-color': ['match', ['get', 'line'], ...Object.entries(SUBTE).flat(), '#55626B'],
-      'circle-stroke-color': '#FFFFFF', 'circle-stroke-width': 2 } });
+      // Borde oscuro y más grueso: estación con ascensores informados.
+      'circle-stroke-color': ['case', ['>', ['coalesce', ['get', 'elevators'], 0], 0], COLOR.ascensor, '#FFFFFF'],
+      'circle-stroke-width': ['case', ['>', ['coalesce', ['get', 'elevators'], 0], 0], 2.5, 2] } });
   mapa.addLayer({ id: 'estacionamiento', type: 'circle', source: 'estacionamiento',
     // Toda la ciudad: puntos chicos con el mapa alejado para que se lean los 2.700 garajes.
     paint: { 'circle-radius': ['interpolate', ['linear'], ['zoom'], 11, 2.5, 14, 4.5, 16, 6],
@@ -1235,6 +1240,7 @@ function renderLeyenda() {
     if (c.clave === 'subte') {
       const lineas = [...new Set((estado.capasDatos[claveCapa('subte')]?.features || []).map((f) => f.properties.line))].sort();
       items = lineas.map((l) => muestra(SUBTE[l] || '#55626B', `Línea ${l}`));
+      items.push(`<li><span class="chip-muestra chip-ascensor"></span>Con ascensor informado</li>`);
     } else if (c.clave === 'verdes') items = [muestra(COLOR.verdes, 'Plaza o parque')];
     else if (c.clave === 'escuelas') items = [muestra(COLOR.escuela, `Escuela de nivel ${estado.nivel}`)];
     else if (c.clave === 'salud') items = [muestra(COLOR.cesac, 'CeSAC'), muestra(COLOR.hospital, 'Hospital')];

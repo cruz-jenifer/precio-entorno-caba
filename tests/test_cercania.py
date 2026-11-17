@@ -18,8 +18,9 @@ NORTE_123 = ORIGEN[1] + 123 / cercania.M_LAT   # 123 m al norte del origen
 
 CAPAS = {
     'puntos': {
-        'subte': [{'name': 'Lejana', 'line': 'B', 'lon': ORIGEN[0] + 0.05, 'lat': ORIGEN[1]},
-                  {'name': 'Cercana', 'line': 'A', 'lon': ESTE_500, 'lat': ORIGEN[1]}],
+        'subte': [{'name': 'Lejana', 'line': 'B', 'lon': ORIGEN[0] + 0.05, 'lat': ORIGEN[1], 'elevators': 2},
+                  {'name': 'Cercana', 'line': 'A', 'lon': ESTE_500, 'lat': ORIGEN[1], 'elevators': 0},
+                  {'name': 'Sin dato', 'line': 'C', 'lon': ESTE_500, 'lat': NORTE_123, 'elevators': None}],
         'escuelas': [{'name': 'Inicial', 'levels': ['inicial'], 'lon': ORIGEN[0], 'lat': NORTE_123},
                      {'name': 'Primaria', 'levels': ['primario'], 'lon': ESTE_500, 'lat': ORIGEN[1]}],
         'cesac': [],
@@ -44,6 +45,11 @@ class CercaniaTests(unittest.TestCase):
     def test_nearest_subway_station_with_its_line(self):
         self.assertEqual(self.calcular(['subte'])[0]['subte'], {'m': 500, 'estacion': 'Cercana', 'linea': 'A'})
 
+    def test_nearest_station_with_a_reported_elevator(self):
+        # «Cercana» tiene 0 ascensores y «Sin dato» no tiene información: ninguna cuenta.
+        lejos = round(0.05 * cercania.KX / 10) * 10
+        self.assertEqual(self.calcular(['subte'])[0]['subte_ascensor'], {'m': lejos, 'estacion': 'Lejana', 'linea': 'B'})
+
     def test_school_respects_the_chosen_level(self):
         self.assertEqual(self.calcular(['escuelas'], 'inicial')[0]['escuela'], {'m': 120, 'nivel': 'inicial'})
         self.assertEqual(self.calcular(['escuelas'], 'primario')[0]['escuela'], {'m': 500, 'nivel': 'primario'})
@@ -64,7 +70,7 @@ class CercaniaTests(unittest.TestCase):
         self.assertEqual(valores, [70, 70, None])
 
     def test_only_requested_layers_are_returned_and_rounding_is_to_tens(self):
-        self.assertEqual(set(self.calcular(['subte', 'verdes'])[0]), {'subte', 'plaza'})
+        self.assertEqual(set(self.calcular(['subte', 'verdes'])[0]), {'subte', 'subte_ascensor', 'plaza'})
         self.assertEqual(self.calcular([]), [{}])
         self.assertEqual(cercania.redondear(124.9), 120)
         self.assertEqual(cercania.redondear(125.1), 130)

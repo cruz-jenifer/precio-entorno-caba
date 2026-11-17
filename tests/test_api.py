@@ -132,6 +132,8 @@ class ApiTests(unittest.TestCase):
                                                              ('capas', 'ruido'), ('capas', 'salud')]).json()
         self.assertEqual(set(layers), {'subte', 'ruido', 'salud'})
         self.assertIn('Primera Junta', [f['properties']['name'] for f in layers['subte']['features']])
+        elevators = {f['properties']['name']: f['properties']['elevators'] for f in layers['subte']['features']}
+        self.assertEqual(elevators['Primera Junta'], 2)
         cell = layers['ruido']['features'][0]
         self.assertEqual(cell['geometry']['type'], 'Polygon')
         self.assertEqual(cell['properties']['tipico'], 70)
@@ -239,6 +241,7 @@ class ApiTests(unittest.TestCase):
             self.assertIn('Línea recta', result['cercania']['metodo'])
             con, sin = result['avisos']
             self.assertEqual(con['cercania']['subte'], {'m': 0, 'estacion': 'Primera Junta', 'linea': 'A'})
+            self.assertEqual(con['cercania']['subte_ascensor'], {'m': 0, 'estacion': 'Primera Junta', 'linea': 'A'})
             self.assertEqual(con['cercania']['escuela']['nivel'], 'primario')
             self.assertGreater(con['cercania']['escuela']['m'], 0)
             self.assertEqual(con['cercania']['ruido_diurno'], {'dba': 70})

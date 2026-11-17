@@ -64,7 +64,7 @@ def collection(features):
 def point_features(items, kind, bbox):
     return [{'type': 'Feature', 'geometry': {'type': 'Point', 'coordinates': [i['lon'], i['lat']]},
              'properties': {'kind': kind, 'name': i['name'], 'tooltip': i['tooltip'],
-                            'line': i.get('line'), 'web': i.get('web')}}
+                            'line': i.get('line'), 'web': i.get('web'), 'elevators': i.get('elevators')}}
             for i in items if bbox is None or entorno.in_bbox(i['lon'], i['lat'], bbox)]
 
 

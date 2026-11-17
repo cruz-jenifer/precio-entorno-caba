@@ -8,6 +8,7 @@ fuente, sin precisión declarada; la API solo lo usa si `ubicacion.quality` lo c
 - Se redondea a decenas de metros para no sugerir más exactitud de la que tiene el punto.
 - Plazas y parques: distancia al borde del polígono, muestreado cada PASO_M metros (error de pocos metros).
 - Ruido: el nivel típico diurno de la celda de 100 m que contiene el punto, o None si no hay celda relevada.
+- Subte con ascensor: la estación más cercana con al menos un ascensor informado por SBASE. No dice si funciona.
 """
 
 import math
@@ -134,6 +135,7 @@ class Cercania:
             return items, Puntos(metros([i['lon'] for i in items], [i['lat'] for i in items]) if items else [])
 
         self.subte, self.subte_xy = de(puntos.get('subte', []))
+        self.ascensor, self.ascensor_xy = de(s for s in puntos.get('subte', []) if (s.get('elevators') or 0) > 0)
         self.escuelas = {nivel: de(e for e in puntos.get('escuelas', []) if nivel in e.get('levels', ()))[1]
                          for nivel in NIVELES}
         self.cesac = de(puntos.get('cesac', []))[1]
@@ -163,6 +165,9 @@ class Cercania:
             d, idx = cercanos(origen, self.subte_xy)
             poner('subte', d, lambda i: {'estacion': self.subte[idx[i]]['name'],
                                          'linea': self.subte[idx[i]].get('line')})
+            d, idx_a = cercanos(origen, self.ascensor_xy)
+            poner('subte_ascensor', d, lambda i: {'estacion': self.ascensor[idx_a[i]]['name'],
+                                                  'linea': self.ascensor[idx_a[i]].get('line')})
         if 'escuelas' in capas:
             poner('escuela', cercanos(origen, self.escuelas[nivel])[0], lambda i: {'nivel': nivel})
         if 'salud' in capas:

@@ -2,6 +2,8 @@
 
 ## Localizar estacionamientos
 
+La capa **Estacionamiento** del mapa muestra todos los garajes del inventario en la ciudad, no solo los del barrio elegido, con puntos más chicos cuando el mapa está alejado. La leyenda indica el total.
+
 En modo real, la ficha de cada barrio incluye «Localizar estacionamientos». Permite consultar todo el barrio oficial, un radio alrededor de un aviso con ubicación o el centro actual del mapa. Los radios disponibles son 300, 500 y 1000 metros; la búsqueda cercana incluye barrios vecinos y ordena por distancia en línea recta. «Ver en mapa» centra y abre el punto; «Cómo llegar» abre Google Maps con ese destino.
 
 La API `/api/estacionamientos?barrio=Caballito` consulta el barrio. Con `lat`, `lon` y `radio` consulta cercanía. Distingue una capa sin cargar de una búsqueda sin coincidencias. Fuente: inventario oficial de garajes comerciales de Buenos Aires Data, publicado el 10 de mayo de 2021. El portal no informa la fecha del relevamiento; los campos del archivo llevan el sufijo `_16`, que sugiere un relevamiento de 2016 sin confirmar. No informa funcionamiento actual, cupos, horarios ni tarifas; estos datos requieren confirmación con el establecimiento.

@@ -65,7 +65,7 @@ def point_features(items, kind, bbox):
     return [{'type': 'Feature', 'geometry': {'type': 'Point', 'coordinates': [i['lon'], i['lat']]},
              'properties': {'kind': kind, 'name': i['name'], 'tooltip': i['tooltip'],
                             'line': i.get('line'), 'web': i.get('web')}}
-            for i in items if entorno.in_bbox(i['lon'], i['lat'], bbox)]
+            for i in items if bbox is None or entorno.in_bbox(i['lon'], i['lat'], bbox)]
 
 
 def create_app(demo_path=None, real_path=None, entorno_dir=None, raw_dir=None, web_dir=None,
@@ -263,7 +263,8 @@ def create_app(demo_path=None, real_path=None, entorno_dir=None, raw_dir=None, w
             out['salud'] = collection(point_features(points['cesac'], 'cesac', bbox)
                                       + point_features(points['hospitales'], 'hospital', bbox))
         if 'estacionamiento' in capas:
-            garages = point_features(points.get('estacionamiento', []), 'garaje', bbox)
+            # Toda la ciudad: el mapa los muestra fuera del barrio al desplazarse.
+            garages = point_features(points.get('estacionamiento', []), 'garaje', None)
             out['estacionamiento'] = {**collection(garages), 'disponible': 'estacionamiento' in points}
         if 'verdes' in capas:
             out['verdes'] = entorno.features_in(data['verdes'], bbox)

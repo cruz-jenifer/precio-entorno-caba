@@ -150,8 +150,10 @@ class ApiTests(unittest.TestCase):
             poi, raw = build_sources(Path(temp))
             garage = ({'NOMBRE': 'Garaje de prueba', 'calle_nombre': 'Calle', 'calle_altura': 123},
                       point(-58.445, -34.615))
+            # Almagro, fuera del recuadro de Caballito: la capa cubre toda la ciudad.
+            lejano = ({'NOMBRE': 'Garaje lejano'}, point(-58.4305, -34.615))
             write(raw / entorno.GARAJES_ARCHIVO, collection(
-                garage, garage, ({'nombre': 'Fuera de CABA'}, point(-58.30, -34.615))))
+                garage, garage, lejano, ({'nombre': 'Fuera de CABA'}, point(-58.30, -34.615))))
             target = Path(temp) / 'processed'
             entorno.convert(poi, raw, target)
             with TestClient(create_app(entorno_dir=target)) as client:
@@ -159,8 +161,8 @@ class ApiTests(unittest.TestCase):
                 self.assertEqual(result.status_code, 200)
                 layer = result.json()['estacionamiento']
                 self.assertTrue(layer['disponible'])
-                feature, = layer['features']
-                self.assertEqual(feature['properties']['tooltip'], 'Garaje de prueba · Calle 123')
+                tooltips = sorted(f['properties']['tooltip'] for f in layer['features'])
+                self.assertEqual(tooltips, ['Garaje de prueba · Calle 123', 'Garaje lejano'])
                 sources = client.get('/api/fuentes').json()['fuentes']
                 self.assertTrue(any(s['url'] == entorno.GARAJES_FUENTE for s in sources))
 

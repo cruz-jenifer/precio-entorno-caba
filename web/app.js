@@ -760,8 +760,10 @@ async function prepararMapa() {
     paint: { 'circle-radius': 6.5, 'circle-color': ['match', ['get', 'line'], ...Object.entries(SUBTE).flat(), '#55626B'],
       'circle-stroke-color': '#FFFFFF', 'circle-stroke-width': 2 } });
   mapa.addLayer({ id: 'estacionamiento', type: 'circle', source: 'estacionamiento',
-    paint: { 'circle-radius': 6, 'circle-color': COLOR.estacionamiento,
-      'circle-stroke-color': '#FFFFFF', 'circle-stroke-width': 1.5 } });
+    // Toda la ciudad: puntos chicos con el mapa alejado para que se lean los 2.700 garajes.
+    paint: { 'circle-radius': ['interpolate', ['linear'], ['zoom'], 11, 2.5, 14, 4.5, 16, 6],
+      'circle-color': COLOR.estacionamiento,
+      'circle-stroke-color': '#FFFFFF', 'circle-stroke-width': ['interpolate', ['linear'], ['zoom'], 11, 0.5, 14, 1.5] } });
   // Avisos que encajan: relleno si la ubicación publicada es coherente con el barrio, hueco si es aproximada.
   // Un punto con varios avisos (un mismo edificio) se dibuja más grande.
   mapa.addLayer({ id: 'avisos', type: 'circle', source: 'avisos',
@@ -948,7 +950,8 @@ function encuadrarPin(pin) {
 /* Capas del barrio elegido */
 
 function claveCapa(clave) {
-  return [estado.seleccionado, clave, clave === 'escuelas' ? estado.nivel : '', clave === 'ruido' ? estado.ruido : ''].join('|');
+  // Los garajes cubren toda la ciudad: se piden una vez, sin importar el barrio.
+  return [clave === 'estacionamiento' ? 'CABA' : estado.seleccionado, clave, clave === 'escuelas' ? estado.nivel : '', clave === 'ruido' ? estado.ruido : ''].join('|');
 }
 
 async function actualizarCapas() {
@@ -1088,8 +1091,8 @@ function renderLeyenda() {
     else if (c.clave === 'salud') items = [muestra(COLOR.cesac, 'CeSAC'), muestra(COLOR.hospital, 'Hospital')];
     else if (c.clave === 'estacionamiento') {
       const capa = estado.capasDatos[claveCapa(c.clave)];
-      if (capa?.features.length) items = [muestra(COLOR.estacionamiento, 'Garaje comercial')];
-      else if (capa) items = [esc(capa.disponible ? 'Sin garajes registrados en esta zona.' : 'Inventario de garajes sin cargar.')];
+      if (capa?.features.length) items = [muestra(COLOR.estacionamiento, `Garaje comercial · ${numero.format(capa.features.length)} en toda la ciudad`)];
+      else if (capa) items = [esc(capa.disponible ? 'Sin garajes registrados.' : 'Inventario de garajes sin cargar.')];
     }
     else if (c.clave === 'riesgo') items = [muestra(COLOR.riesgo, 'Área de prevención')];
     else if (c.clave === 'ruido') {

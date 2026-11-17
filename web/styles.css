@@ -971,3 +971,10 @@ button, input, select { font: inherit; color: inherit; }
 .lugar-nombre { font-weight: 600; min-width: 0; overflow-wrap: anywhere; }
 .lugar-datos { grid-column: 1; color: var(--asfalto-suave); font-size: var(--t-chico); font-variant-numeric: tabular-nums; }
 .lugar-enlace { grid-column: 2; grid-row: 1 / span 2; align-self: center; font-size: var(--t-chico); white-space: nowrap; }
+
+/* Ubicación del navegador usada en una búsqueda de estacionamientos o cocheras. */
+.mi-ubicacion {
+  width: 16px; height: 16px; border-radius: 50%;
+  background: #1E88E5; border: 3px solid #FFFFFF;
+  box-shadow: 0 0 0 6px rgba(30, 136, 229, 0.25);
+}

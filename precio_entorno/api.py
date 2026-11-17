@@ -17,8 +17,8 @@ from fastapi import FastAPI, HTTPException, Query
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from . import (concentracion, entorno, lugares as lugares_google, make_webhook, parecidos as barrios_parecidos,
-               preferencias, radar, ubicacion, cocheras)
+from . import (cercania, concentracion, descripcion, entorno, lugares as lugares_google, make_webhook,
+               parecidos as barrios_parecidos, preferencias, radar, ubicacion, cocheras)
 from .bases import REAL_BASE, ROOT, demo_base, open_store
 from .importing import BARRIOS, usable_pin
 from .matching import matches
@@ -87,8 +87,14 @@ def create_app(demo_path=None, real_path=None, entorno_dir=None, raw_dir=None, w
         marker = entorno_dir / 'resumen.json'
         stamp = marker.stat().st_mtime if marker.exists() else None
         if 'layers' not in cache or cache.get('stamp') != stamp:
-            cache.update(stamp=stamp, layers=entorno.load(entorno_dir) if stamp else None)
+            cache.update(stamp=stamp, layers=entorno.load(entorno_dir) if stamp else None, cercania=None)
         return cache['layers']
+
+    def proximity_index():
+        data = layers()
+        if data is not None and cache.get('cercania') is None:
+            cache['cercania'] = cercania.Cercania(data)
+        return cache.get('cercania')
 
     def store_for(mode, operation):
         return open_store(mode == 'demo', operation, demo_path or demo_base(), real_path or REAL_BASE)
@@ -163,9 +169,14 @@ def create_app(demo_path=None, real_path=None, entorno_dir=None, raw_dir=None, w
     @app.get('/api/barrios/{barrio}/avisos')
     def listings_for(barrio: str, modo: Mode = 'demo', operacion: Operation = 'venta',
                      presupuesto: int = Query(110_000, ge=1), superficie: int = Query(40, ge=1),
-                     ambientes: int = Query(2, ge=1), moneda: str = 'USD', ambientes_o_mas: bool = False):
+                     ambientes: int = Query(2, ge=1), moneda: str = 'USD', ambientes_o_mas: bool = False,
+                     capas: list[str] = Query(default=[]),
+                     nivel: Literal['inicial', 'primario', 'secundario'] = 'primario'):
         check_barrio(barrio)
         check_currency(operacion, moneda)
+        for name in capas:
+            if name not in cercania.CAPAS:
+                raise HTTPException(422, f"Sin distancias para la capa {name}. Opciones: {', '.join(cercania.CAPAS)}.")
         found = [i for i in store_for(modo, operacion).listings()
                  if i['neighborhood'] == barrio and matches(i, presupuesto, superficie, ambientes, moneda, ambientes_o_mas)]
         found.sort(key=lambda i: (i['price'], -i['covered_area']))
@@ -184,8 +195,23 @@ def create_app(demo_path=None, real_path=None, entorno_dir=None, raw_dir=None, w
                 # Punto para el mapa: solo si es coherente con el barrio (ver precio_entorno/ubicacion.py).
                 'ubicacion': location,
                 'lat': i['latitude'] if location else None, 'lon': i['longitude'] if location else None,
-                'enlace': i.get('url') if modo == 'real' else None})
-        return {'avisos': avisos}
+                'enlace': i.get('url') if modo == 'real' else None,
+                # Rasgos leídos del texto del aviso: 1 lo menciona, 0 el texto no lo menciona, None sin texto.
+                'rasgos': {name: i.get(column) for name, column in descripcion.SPANISH_NAMES.items()},
+                'antiguedad': i.get('age_years')})
+        index = proximity_index() if capas else None
+        if capas:
+            # Distancias desde el punto publicado; un aviso sin ubicación usable queda sin distancia.
+            located = [a for a in avisos if a['ubicacion']]
+            values = index.calcular([a['lon'] for a in located], [a['lat'] for a in located], capas, nivel) if index else []
+            for aviso in avisos:
+                aviso['cercania'] = None
+            for aviso, value in zip(located, values):
+                aviso['cercania'] = value
+        return {'avisos': avisos, **({'cercania': {
+            'disponible': index is not None, 'capas': capas, 'nivel': nivel,
+            'metodo': 'Línea recta desde el punto que publica la fuente, sin precisión declarada; '
+                      'redondeada a decenas de metros. No es un recorrido por calles.'}} if capas else {})}
 
     @app.get('/api/estacionamientos')
     def parking_locations(barrio: str,

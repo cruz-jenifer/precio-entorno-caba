@@ -320,10 +320,11 @@ async function elegirColectivo(linea) {
   if (estado.colectivo?.linea === linea) { quitarColectivo(); return; }
   estado.colectivo = { linea, datos: null };
   renderPanel();
+  renderControles();
   try {
     const datos = await api(`/api/colectivos/${encodeURIComponent(linea)}`);
     if (estado.colectivo?.linea !== linea) return;
-    datos.properties.tooltip = `Línea ${linea} · Recorrido del GTFS de 2019`;
+    datos.properties.tooltip = `Línea ${linea} · Recorrido del GTFS de 2019 · Tocá para quitarlo`;
     estado.colectivo.datos = datos;
     mapa.getSource('colectivo')?.setData({ type: 'FeatureCollection', features: [datos] });
     const coords = datos.geometry.coordinates.flat();
@@ -337,12 +338,17 @@ async function elegirColectivo(linea) {
     mostrarAvisoMapa(`No se pudo cargar el recorrido: ${error.message}`);
   }
   renderPanel();
+  renderControles();
 }
 
 function quitarColectivo() {
+  if (!estado.colectivo) return;
   estado.colectivo = null;
   mapa.getSource('colectivo')?.setData(VACIO);
+  popup.remove();
   renderPanel();
+  renderControles();
+  if (estado.seleccionado) encuadrar(estado.seleccionado);
 }
 
 // Origen compartido por las búsquedas de estacionamientos y cocheras.
@@ -877,6 +883,10 @@ async function prepararMapa() {
       return;
     }
     popupAviso.remove();
+    if (estado.colectivo && mapa.queryRenderedFeatures(evento.point, { layers: ['colectivo'] }).length) {
+      quitarColectivo();
+      return;
+    }
     const linea = mapa.queryRenderedFeatures(evento.point, { layers: ['colectivos'] })[0];
     if (linea) {
       elegirColectivo(String(linea.properties.linea));
@@ -1132,6 +1142,10 @@ function renderControles() {
     } else {
       partes.push(`<p class="control-flotante">${esc(d.motivo)}</p>`);
     }
+  }
+  if (estado.colectivo) {
+    partes.push(`<div class="control-flotante">Línea ${esc(estado.colectivo.linea)}
+      <button class="boton-texto" type="button" data-quitar-colectivo>Quitar recorrido</button></div>`);
   }
   $('#capa-controles').innerHTML = partes.join('');
 }
@@ -1520,6 +1534,10 @@ function conectarEventos() {
     }
   });
   document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && estado.colectivo && importa.hidden && !document.querySelector('dialog[open]')) {
+      quitarColectivo();
+      return;
+    }
     if (e.key === 'Escape' && !importa.hidden) {
       importa.hidden = true;
       abrirImporta.setAttribute('aria-expanded', 'false');
@@ -1685,6 +1703,7 @@ function conectarEventos() {
     if (['anio', 'tipo', 'franja', 'radio'].includes(control)) { estado.delitos[control] = e.target.value; actualizarCapas(); }
   });
   $('#capa-controles').addEventListener('click', (e) => {
+    if (e.target.closest('[data-quitar-colectivo]')) { quitarColectivo(); return; }
     if (e.target.closest('[data-quitar-inmueble]')) { estado.delitos.inmueble = ''; actualizarCapas(); encuadrar(estado.seleccionado); }
     const boton = e.target.closest('[data-ruido]');
     if (boton && boton.dataset.ruido !== estado.ruido) { estado.ruido = boton.dataset.ruido; actualizarCapas(); }

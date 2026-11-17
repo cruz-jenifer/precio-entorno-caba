@@ -4,6 +4,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from fastapi.testclient import TestClient
+from precio_entorno import entorno
 from precio_entorno.api import create_app
 
 
@@ -19,7 +20,7 @@ class ParkingLocationsTests(unittest.TestCase):
                 self.assertEqual(len(client.get(route).json()['estacionamientos']), 2)
                 data = client.get(route + '&lat=-34.615&lon=-58.44&radio=300').json()
                 self.assertEqual([r['nombre'] for r in data['estacionamientos']], ['Vecino', 'Cerca'])
-                self.assertEqual(data['periodo'], '2019')
+                self.assertEqual(data['periodo'], entorno.GARAJES_PERIODO)
                 for query in ('&lat=-34.615', '&lat=nan&lon=-58.44', '&radio=0', '&lat=0&lon=0'):
                     self.assertEqual(client.get(route + query).status_code, 422)
 

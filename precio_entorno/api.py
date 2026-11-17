@@ -208,7 +208,7 @@ def create_app(demo_path=None, real_path=None, entorno_dir=None, raw_dir=None, w
             if row['distancia_m'] is not None:
                 row['distancia_m'] = round(row['distancia_m'])
         return dict(disponible='estacionamiento' in points, estacionamientos=found,
-                    periodo='2019', fuente=entorno.GARAJES_FUENTE)
+                    periodo=entorno.GARAJES_PERIODO, fuente=entorno.GARAJES_FUENTE)
 
     @app.get('/api/cocheras')
     def parking_rentals(barrio: str, moneda: Literal['ARS', 'USD'] = 'ARS',

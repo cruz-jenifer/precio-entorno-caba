@@ -82,6 +82,8 @@ SUBTE_COLORS = {'A': '#18CCCC', 'B': '#EB0909', 'C': '#233AA8', 'D': '#02A17A', 
 GASTRONOMIA = ('restaurantes', 'cafes', 'bares')
 GARAJES_ARCHIVO = 'garajes-comerciales.geojson'
 GARAJES_FUENTE = 'https://data.buenosaires.gob.ar/dataset/garajes-comerciales'
+# El portal muestra la publicación (10/05/2021) pero no la fecha del relevamiento.
+GARAJES_PERIODO = 'Publicado en 2021 · fecha de relevamiento no informada'
 
 
 def polygons(geometry):
@@ -507,7 +509,7 @@ def convert(poi_dir, entorno_dir, target, downloaded=None, osm_dir=None):
                         'licencia': 'CC-BY 2.5 AR · Buenos Aires Data'})
     if 'estacionamiento' in points:
         sources.append({'capa': 'estacionamiento', 'titulo': 'Garajes comerciales habilitados',
-                        'archivo': garage_path.name, 'periodo': 'Inventario histórico · archivo publicado en 2019; vigencia a confirmar',
+                        'archivo': garage_path.name, 'periodo': GARAJES_PERIODO + '; vigencia a confirmar',
                         'url': GARAJES_FUENTE, 'sha256': digest(garage_path),
                         'licencia': 'CC-BY 2.5 AR · Buenos Aires Data'})
     if food is not None:

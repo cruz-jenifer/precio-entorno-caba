@@ -10,11 +10,16 @@ const PREFERENCIAS = [
   { clave: 'ruido', nombre: 'Ruido' },
   { clave: 'riesgo', nombre: 'Riesgo hídrico' },
 ];
-const CAPAS_MAPA = [...PREFERENCIAS, { clave: 'estacionamiento', nombre: 'Estacionamiento' }];
+const CAPAS_MAPA = [...PREFERENCIAS, { clave: 'estacionamiento', nombre: 'Estacionamiento' },
+  { clave: 'clubes', nombre: 'Clubes' }, { clave: 'gimnasios', nombre: 'Gimnasios' },
+  { clave: 'colectivos', nombre: 'Colectivos' }];
+// Capas de puntos de toda la ciudad: se piden una vez, sin importar el barrio.
+const CAPAS_CIUDAD = new Set(['estacionamiento', 'clubes', 'gimnasios']);
 const CAPAS = [...CAPAS_MAPA, { clave: 'delitos', nombre: 'Delitos registrados' }];
 const SUBTE = { A: '#18CCCC', B: '#EB0909', C: '#233AA8', D: '#02A17A', E: '#AE3D97', H: '#FFD600' };
 const COLOR = { verdes: '#5E7D4F', riesgo: '#1E88E5', escuela: '#1E2A32', cesac: '#00897B', hospital: '#795548',
-  aviso: '#6A4FB3', estacionamiento: '#1671A3', ascensor: '#1E2A32' };
+  aviso: '#6A4FB3', estacionamiento: '#1671A3', clubes: '#C2410C', gimnasios: '#0F766E', colectivo: '#D81B60',
+  ascensor: '#1E2A32' };
 const RUIDO = [[50, '#FFFFCC'], [55, '#FFEDA0'], [60, '#FED976'], [65, '#FEB24C'], [70, '#FD8D3C'], [75, '#F03B20'], [80, '#BD0026']];
 const DELITOS = ['#D3DBE3', '#A9B8C8', '#7E93AB', '#55708E', '#2E4560'];
 const ESTILO = 'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json';
@@ -29,6 +34,9 @@ const NOTAS = {
   ruido: 'Nivel exterior típico por celda de 100 m, medido sobre todo en calles. No describe el interior de un departamento.',
   riesgo: 'Áreas de prevención publicadas en 2020. Si una dirección cae dentro, conviene preguntarlo en la visita.',
   estacionamiento: 'Inventario oficial publicado en 2021, sin fecha de relevamiento informada. Confirmá que el garaje siga funcionando y consultá cupos y abonos mensuales.',
+  clubes: 'Clubes de barrio y polideportivos del listado de la Ciudad. Consultá actividades, cuotas y horarios con cada club.',
+  gimnasios: 'Gimnasios cargados en OpenStreetMap. La cobertura depende de quién mapea cada zona y puede haber cierres o aperturas recientes.',
+  colectivos: 'Líneas que pasan por el barrio, según el GTFS oficial con calendario de 2019. Los recorridos pueden haber cambiado: confirmalos en la app oficial.',
   delitos: 'Hechos registrados por celda de 200 m. Más circulación puede concentrar más eventos y existe subregistro. No equivalen a la probabilidad individual de victimización.',
 };
 /* Explorador de necesidades (docs/plan-explorador-necesidades.md). Apagado por defecto: se prueba con
@@ -38,8 +46,7 @@ const EXPLORADOR = (() => {
 })();
 const NECESIDADES = [
   { clave: 'sin_auto', nombre: 'Me muevo sin auto', descripcion: 'Subte cercano y líneas de colectivo del barrio.',
-    capas: ['subte'], columnas: ['subte', 'subte_ascensor'],
-    advertencias: ['Las líneas de colectivo salen de recorridos publicados en 2019: confirmá el recorrido vigente.'] },
+    capas: ['subte', 'colectivos'], columnas: ['subte', 'subte_ascensor'], advertencias: [] },
   { clave: 'familia', nombre: 'Escuelas y salud cerca', descripcion: 'Escuelas del nivel elegido, centros de salud y plazas.',
     capas: ['escuelas', 'salud', 'verdes'],
     columnas: ['escuela', 'cesac', 'hospital', 'plaza', 'ambientes', 'superficie', 'patio', 'balcon'], advertencias: [] },
@@ -125,7 +132,7 @@ function columnasExplorador() {
   return extra;
 }
 
-function renderSegunNecesidades(b) {
+function renderSegunNecesidades() {
   if (!EXPLORADOR || !estado.necesidades.size) return '';
   const r = explorador();
   const nombres = NECESIDADES.filter((n) => estado.necesidades.has(n.clave)).map((n) => n.nombre);
@@ -133,8 +140,6 @@ function renderSegunNecesidades(b) {
   const origen = (c) => (r.origen[c].includes('manual') ? 'Elegida por vos'
     : `Sugerida por «${r.origen[c].map((k) => NECESIDADES.find((n) => n.clave === k).nombre).join('» y «')}»`);
   const filas = r.capas.filter((c) => c !== 'delitos').map((c) => `<dt>${esc(nombreCapa(c))}</dt><dd>${esc(origen(c))}</dd>`);
-  const colectivos = estado.necesidades.has('sin_auto') && b.entorno?.colectivos?.length
-    ? `<dt>Colectivos</dt><dd>${b.entorno.colectivos.length} líneas pasan por el barrio, según recorridos de 2019</dd>` : '';
   const conCercania = estado.avisos.filter((a) => a.cercania).length;
   const sinUbicacion = estado.avisos.filter((a) => !a.ubicacion).length;
   const distancias = r.cercania.length && estado.avisos.length && estado.cercaniaInfo
@@ -144,7 +149,7 @@ function renderSegunNecesidades(b) {
   return `<section class="segun" aria-labelledby="titulo-segun">
       <h2 id="titulo-segun">Según lo que elegiste</h2>
       <p class="fuente">${esc(enumerar(nombres))}. <button class="boton-texto" type="button" data-abrir-importa>Cambiar</button></p>
-      ${filas.length || colectivos ? `<dl class="hechos">${filas.join('')}${colectivos}</dl>` : ''}
+      ${filas.length ? `<dl class="hechos">${filas.join('')}</dl>` : ''}
       ${distancias}
       ${r.advertencias.length ? `<ul class="segun-avisos">${r.advertencias.map((a) => `<li>${esc(a)}</li>`).join('')}</ul>` : ''}
     </section>`;
@@ -204,6 +209,7 @@ const estado = {
   barrios: [],
   formas: null,
   seleccionado: null,
+  colectivo: null, // { linea, datos } de la línea de colectivo dibujada en el mapa
   avisos: [],
   cercaniaInfo: null,
   capas: new Set(),
@@ -336,6 +342,11 @@ function renderFicha() {
       ['Plazas y parques', e.verdes_cantidad
         ? `${e.verdes_cantidad} ${plural(e.verdes_cantidad, 'plaza o parque', 'plazas y parques')}, ${decimal.format(e.verdes_ha)} ha`
         : 'Ninguno en el inventario'],
+      ...(e.colectivos ? [['Colectivos', e.colectivos.length
+        ? `${e.colectivos.length} ${plural(e.colectivos.length, 'línea pasa', 'líneas pasan')} por el barrio`
+        : 'Ninguna línea en el recorrido cargado']] : []),
+      ...(e.clubes != null ? [['Clubes', `${e.clubes} ${plural(e.clubes, 'club de barrio o polideportivo', 'clubes de barrio y polideportivos')}`]] : []),
+      ...(e.gimnasios != null ? [['Gimnasios', `${e.gimnasios} en OpenStreetMap`]] : []),
       ...(e.gastronomia ? [['Cafés, bares y restaurantes', textoGastronomia(e)]] : []),
       [`Escuelas de nivel ${estado.nivel}`, `${total}, de las que ${escuelas.Estatal || 0} son de gestión estatal`],
       ['Salud', `${e.cesac} CeSAC y ${e.hospitales} ${plural(e.hospitales, 'hospital', 'hospitales')}`],
@@ -385,7 +396,8 @@ function renderFicha() {
         <p class="fuente">Datos abiertos de Buenos Aires Data, por barrio oficial. Describen el barrio, no un departamento.
           ${e?.gastronomia ? `Cafés, bares y restaurantes: © colaboradores de OpenStreetMap${e.gastronomia.captura ? `, captura del ${fechaCorta(e.gastronomia.captura)}` : ''}. La cobertura depende de quién mapea cada zona.` : ''}
           <button class="boton-texto" type="button" data-fuentes>Ver fuentes</button></p>` : ''}
-      ${renderSegunNecesidades(b)}
+      ${renderColectivos(e)}
+      ${renderSegunNecesidades()}
       ${renderParecidos(b.barrio)}
       ${renderLugares(b.barrio)}
       ${estado.modo === 'real' ? `<h2>Localizar estacionamientos</h2>
@@ -414,6 +426,56 @@ function renderFicha() {
       ${renderAnalisisDelitos()}
       ${renderRadarFicha(b.barrio)}
     </article>`;
+}
+
+function renderColectivos(e) {
+  if (!e?.colectivos?.length) return '';
+  const elegido = estado.colectivo?.linea;
+  const ramales = estado.colectivo?.datos?.properties.ramales || [];
+  return `<h2>Colectivos</h2>
+    <p class="fuente">Tocá una línea para ver su recorrido en el mapa.</p>
+    <div class="lineas-colectivo">${e.colectivos.map((l) => `<button type="button" class="chip" data-colectivo="${esc(l)}"
+      aria-pressed="${l === elegido}">${esc(l)}</button>`).join('')}</div>
+    ${elegido ? `<p class="estado" role="status">Línea ${esc(elegido)}${estado.colectivo.datos
+      ? ` · ${ramales.length} ${plural(ramales.length, 'ramal', 'ramales')}: ${esc(ramales.join(' · '))}` : ' · cargando recorrido…'}
+      <button class="boton-texto" type="button" data-quitar-colectivo>Quitar recorrido</button></p>` : ''}
+    <p class="fuente">GTFS oficial de colectivos de Buenos Aires Data, con calendario de septiembre a diciembre de 2019.
+      Los recorridos pueden haber cambiado: confirmalos en la app oficial o con la empresa.</p>`;
+}
+
+async function elegirColectivo(linea) {
+  if (estado.colectivo?.linea === linea) { quitarColectivo(); return; }
+  estado.colectivo = { linea, datos: null };
+  renderPanel();
+  renderControles();
+  try {
+    const datos = await api(`/api/colectivos/${encodeURIComponent(linea)}`);
+    if (estado.colectivo?.linea !== linea) return;
+    datos.properties.tooltip = `Línea ${linea} · Recorrido del GTFS de 2019 · Tocá para quitarlo`;
+    estado.colectivo.datos = datos;
+    mapa.getSource('colectivo')?.setData({ type: 'FeatureCollection', features: [datos] });
+    const coords = datos.geometry.coordinates.flat();
+    const lons = coords.map((c) => c[0]);
+    const lats = coords.map((c) => c[1]);
+    mapa.fitBounds([[Math.min(...lons), Math.min(...lats)], [Math.max(...lons), Math.max(...lats)]],
+      { padding: 40, maxZoom: 14 });
+    if (celular()) plegarPanel(false);
+  } catch (error) {
+    if (estado.colectivo?.linea === linea) estado.colectivo = null;
+    mostrarAvisoMapa(`No se pudo cargar el recorrido: ${error.message}`);
+  }
+  renderPanel();
+  renderControles();
+}
+
+function quitarColectivo() {
+  if (!estado.colectivo) return;
+  estado.colectivo = null;
+  mapa.getSource('colectivo')?.setData(VACIO);
+  popup.remove();
+  renderPanel();
+  renderControles();
+  if (estado.seleccionado) encuadrar(estado.seleccionado);
 }
 
 // Origen compartido por las búsquedas de estacionamientos y cocheras.
@@ -846,7 +908,7 @@ async function prepararMapa() {
   if (!estado.seleccionado) encuadrar(null, true);
   const simbolo = mapa.getStyle().layers.find((capa) => capa.type === 'symbol')?.id;
   mapa.addSource('barrios', { type: 'geojson', data: formas, promoteId: 'barrio' });
-  for (const id of ['delitos', 'radios', 'inmueble', ...CAPAS_MAPA.map((c) => c.clave), 'avisos']) {
+  for (const id of ['delitos', 'radios', 'inmueble', 'colectivo', ...CAPAS_MAPA.map((c) => c.clave), 'avisos']) {
     mapa.addSource(id, { type: 'geojson', data: VACIO });
   }
   const sel = ['boolean', ['feature-state', 'sel'], false];
@@ -879,6 +941,15 @@ async function prepararMapa() {
       'line-width': ['case', sel, 3.2, hover, 2.2, 0.7],
       'line-opacity': ['case', sel, 1, hover, 0.9, 0.45],
     } });
+  // Todas las líneas del barrio, recortadas a su zona; cada color es una línea.
+  mapa.addLayer({ id: 'colectivos', type: 'line', source: 'colectivos',
+    layout: { 'line-cap': 'round', 'line-join': 'round' },
+    paint: { 'line-color': ['get', 'color'], 'line-width': ['interpolate', ['linear'], ['zoom'], 12, 1.5, 15, 3.5],
+      'line-opacity': 0.7 } });
+  // Recorrido completo de la línea elegida, por encima de las demás y debajo de los puntos.
+  mapa.addLayer({ id: 'colectivo', type: 'line', source: 'colectivo',
+    layout: { 'line-cap': 'round', 'line-join': 'round' },
+    paint: { 'line-color': COLOR.colectivo, 'line-width': ['interpolate', ['linear'], ['zoom'], 11, 2.5, 15, 5], 'line-opacity': 0.85 } });
   mapa.addLayer({ id: 'escuelas', type: 'circle', source: 'escuelas',
     paint: { 'circle-radius': 4.5, 'circle-color': COLOR.escuela, 'circle-stroke-color': '#FFFFFF', 'circle-stroke-width': 1.2 } });
   mapa.addLayer({ id: 'salud', type: 'circle', source: 'salud',
@@ -895,6 +966,11 @@ async function prepararMapa() {
     paint: { 'circle-radius': ['interpolate', ['linear'], ['zoom'], 11, 2.5, 14, 4.5, 16, 6],
       'circle-color': COLOR.estacionamiento,
       'circle-stroke-color': '#FFFFFF', 'circle-stroke-width': ['interpolate', ['linear'], ['zoom'], 11, 0.5, 14, 1.5] } });
+  for (const id of ['clubes', 'gimnasios']) {
+    mapa.addLayer({ id, type: 'circle', source: id,
+      paint: { 'circle-radius': ['interpolate', ['linear'], ['zoom'], 11, 3, 14, 5, 16, 6.5], 'circle-color': COLOR[id],
+        'circle-stroke-color': '#FFFFFF', 'circle-stroke-width': ['interpolate', ['linear'], ['zoom'], 11, 0.6, 14, 1.5] } });
+  }
   // Avisos que encajan: relleno si la ubicación publicada es coherente con el barrio, hueco si es aproximada.
   // Un punto con varios avisos (un mismo edificio) se dibuja más grande.
   mapa.addLayer({ id: 'avisos', type: 'circle', source: 'avisos',
@@ -909,8 +985,8 @@ async function prepararMapa() {
   mapa.addLayer({ id: 'inmueble', type: 'circle', source: 'inmueble',
     paint: { 'circle-radius': 7, 'circle-color': '#6A4FB3', 'circle-stroke-color': '#FFFFFF', 'circle-stroke-width': 2 } });
 
-  const puntos = ['subte', 'salud', 'escuelas', 'estacionamiento'];
-  const conTexto = [...puntos, 'verdes', 'riesgo', 'ruido', 'delitos'];
+  const puntos = ['subte', 'salud', 'escuelas', 'estacionamiento', 'clubes', 'gimnasios'];
+  const conTexto = [...puntos, 'colectivo', 'colectivos', 'verdes', 'riesgo', 'ruido', 'delitos'];
 
   mapa.on('mousemove', (evento) => {
     const barrio = mapa.queryRenderedFeatures(evento.point, { layers: ['barrios-relleno'] })[0];
@@ -936,6 +1012,15 @@ async function prepararMapa() {
       return;
     }
     popupAviso.remove();
+    if (estado.colectivo && mapa.queryRenderedFeatures(evento.point, { layers: ['colectivo'] }).length) {
+      quitarColectivo();
+      return;
+    }
+    const linea = mapa.queryRenderedFeatures(evento.point, { layers: ['colectivos'] })[0];
+    if (linea) {
+      elegirColectivo(String(linea.properties.linea));
+      return;
+    }
     const elemento = mapa.queryRenderedFeatures(evento.point, { layers: conTexto })[0];
     if (elemento) {
       popup.setLngLat(evento.lngLat).setHTML(esc(textoElemento(elemento))).addTo(mapa);
@@ -1082,14 +1167,15 @@ function encuadrarPin(pin) {
 
 function claveCapa(clave) {
   // Los garajes cubren toda la ciudad: se piden una vez, sin importar el barrio.
-  return [clave === 'estacionamiento' ? 'CABA' : estado.seleccionado, clave, clave === 'escuelas' ? estado.nivel : '', clave === 'ruido' ? estado.ruido : ''].join('|');
+  return [CAPAS_CIUDAD.has(clave) ? 'CABA' : estado.seleccionado, clave, clave === 'escuelas' ? estado.nivel : '', clave === 'ruido' ? estado.ruido : ''].join('|');
 }
 
 async function actualizarCapas() {
   const barrio = estado.seleccionado;
   const fijas = CAPAS_MAPA.map((c) => c.clave);
   if (!barrio) {
-    fijas.concat('delitos', 'radios', 'inmueble').forEach((id) => mapa.getSource(id)?.setData(VACIO));
+    fijas.concat('delitos', 'radios', 'inmueble', 'colectivo').forEach((id) => mapa.getSource(id)?.setData(VACIO));
+    estado.colectivo = null;
     renderControles();
     renderLeyenda();
     return;
@@ -1209,6 +1295,10 @@ function renderControles() {
       partes.push(`<p class="control-flotante">${esc(d.motivo)}</p>`);
     }
   }
+  if (estado.colectivo) {
+    partes.push(`<div class="control-flotante">Línea ${esc(estado.colectivo.linea)}
+      <button class="boton-texto" type="button" data-quitar-colectivo>Quitar recorrido</button></div>`);
+  }
   $('#capa-controles').innerHTML = partes.join('');
 }
 
@@ -1248,6 +1338,17 @@ function renderLeyenda() {
       const capa = estado.capasDatos[claveCapa(c.clave)];
       if (capa?.features.length) items = [muestra(COLOR.estacionamiento, `Garaje comercial · ${numero.format(capa.features.length)} en toda la ciudad`)];
       else if (capa) items = [esc(capa.disponible ? 'Sin garajes registrados.' : 'Inventario de garajes sin cargar.')];
+    }
+    else if (c.clave === 'clubes' || c.clave === 'gimnasios') {
+      const capa = estado.capasDatos[claveCapa(c.clave)];
+      const nombre = c.clave === 'clubes' ? 'Club o polideportivo' : 'Gimnasio';
+      if (capa?.features.length) items = [muestra(COLOR[c.clave], `${nombre} · ${numero.format(capa.features.length)} en toda la ciudad`)];
+      else if (capa) items = [esc(capa.disponible ? 'Sin lugares registrados.' : 'Capa sin cargar.')];
+    }
+    else if (c.clave === 'colectivos') {
+      const capa = estado.capasDatos[claveCapa(c.clave)];
+      if (capa?.features.length) items = [muestra(COLOR.colectivo, `${capa.features.length} ${plural(capa.features.length, 'línea', 'líneas')} · cada color es una línea; tocá una para ver su recorrido completo`)];
+      else if (capa) items = [esc(capa.disponible ? 'Ninguna línea en el recorrido cargado.' : 'Recorridos sin cargar.')];
     }
     else if (c.clave === 'riesgo') items = [muestra(COLOR.riesgo, 'Área de prevención')];
     else if (c.clave === 'ruido') {
@@ -1635,6 +1736,10 @@ function conectarEventos() {
     }
   });
   document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && estado.colectivo && importa.hidden && !document.querySelector('dialog[open]')) {
+      quitarColectivo();
+      return;
+    }
     if (e.key === 'Escape' && !importa.hidden) {
       importa.hidden = true;
       abrirImporta.setAttribute('aria-expanded', 'false');
@@ -1745,6 +1850,9 @@ function conectarEventos() {
   });
 
   $('#contenido').addEventListener('click', async (e) => {
+    const colectivo = e.target.closest('[data-colectivo]');
+    if (colectivo) { elegirColectivo(colectivo.dataset.colectivo); return; }
+    if (e.target.closest('[data-quitar-colectivo]')) { quitarColectivo(); return; }
     const estacionamiento = e.target.closest('[data-estacionamiento-lat]');
     if (estacionamiento) {
       const coords = [Number(estacionamiento.dataset.estacionamientoLon), Number(estacionamiento.dataset.estacionamientoLat)];
@@ -1820,6 +1928,7 @@ function conectarEventos() {
     if (['anio', 'tipo', 'franja', 'radio'].includes(control)) { estado.delitos[control] = e.target.value; actualizarCapas(); }
   });
   $('#capa-controles').addEventListener('click', (e) => {
+    if (e.target.closest('[data-quitar-colectivo]')) { quitarColectivo(); return; }
     if (e.target.closest('[data-quitar-inmueble]')) { estado.delitos.inmueble = ''; actualizarCapas(); encuadrar(estado.seleccionado); }
     const boton = e.target.closest('[data-ruido]');
     if (boton && boton.dataset.ruido !== estado.ruido) { estado.ruido = boton.dataset.ruido; actualizarCapas(); }

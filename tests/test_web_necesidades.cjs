@@ -62,7 +62,7 @@ test('una necesidad suma sus capas, columnas y advertencias, sin filtros', () =>
 test('varias necesidades se unen sin duplicados y guardan de dónde viene cada capa', () => {
   const run = runtime();
   const r = resolver(run, ['familia', 'teletrabajo', 'sin_auto'], ['subte']);
-  assert.deepEqual(r.capas, ['subte', 'verdes', 'escuelas', 'salud', 'ruido']);
+  assert.deepEqual(r.capas, ['subte', 'verdes', 'escuelas', 'salud', 'ruido', 'colectivos']);
   assert.deepEqual(r.origen.subte, ['sin_auto', 'manual']);
   assert.equal(new Set(r.columnas).size, r.columnas.length);
   assert.equal(new Set(r.advertencias).size, r.advertencias.length);
@@ -94,11 +94,11 @@ test('sin el interruptor la app sigue igual: capas de «Lo que me importa» y na
 test('con el interruptor, apagar una capa sugerida dura al cambiar de barrio', () => {
   const run = runtime('?explorador=1', { prefs: ['verdes'], necesidades: ['sin_auto'] });
   assert.equal(run('EXPLORADOR'), true);
-  assert.deepEqual(run('[...capasIniciales()]'), ['subte', 'verdes']);
+  assert.deepEqual(run('[...capasIniciales()]'), ['subte', 'verdes', 'colectivos']);
   run("estado.seleccionado = 'Almagro'; estado.capas = capasIniciales(); alternarCapa('subte');");
-  assert.deepEqual(run('[...capasIniciales()]'), ['verdes']);
+  assert.deepEqual(run('[...capasIniciales()]'), ['verdes', 'colectivos']);
   run("alternarCapa('subte');");                            // volver a prenderla la recupera
-  assert.deepEqual(run('[...capasIniciales()]'), ['subte', 'verdes']);
+  assert.deepEqual(run('[...capasIniciales()]'), ['subte', 'verdes', 'colectivos']);
   assert.deepEqual(run('[...estado.apagadas]'), []);
 });
 

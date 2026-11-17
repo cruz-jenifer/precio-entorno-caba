@@ -1036,3 +1036,7 @@ button, input, select { font: inherit; color: inherit; }
   background: #1E88E5; border: 3px solid #FFFFFF;
   box-shadow: 0 0 0 6px rgba(30, 136, 229, 0.25);
 }
+
+/* Líneas de colectivo que pasan por el barrio. */
+.lineas-colectivo { display: flex; flex-wrap: wrap; gap: 0.35rem; margin: 0.5rem 0; }
+.lineas-colectivo .chip { min-width: 2.75rem; justify-content: center; font-variant-numeric: tabular-nums; }

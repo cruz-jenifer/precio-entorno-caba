@@ -94,6 +94,10 @@ El informe ya está armado: [Precio y Entorno CABA - Dashboard Analytics](https:
 | **Mapa de barrios** | ¿Dónde se concentra la oferta? | Mapa de burbujas: color según mediana USD/m², tamaño según avisos y nombre del barrio al pasar el cursor. Control desplegable de comuna |
 | **Oferta y contexto** | ¿Cómo se reparten los precios y qué los acompaña? | Histograma de USD/m², USD/m² por ambientes, tabla de correlaciones (Pearson y Spearman), dispersión de delitos contra USD/m² y nota de fuentes |
 
+**Estética (17/11).** Tema propio: fondo `#EEF2FA`, tarjetas blancas con borde `#DCE3F0` y radio de 12, tipografía Roboto. Cada página abre con una banda en degradado `#172554 → #1D4ED8` y el título en blanco. La página 1 tiene filtros de comuna y barrio, y seis indicadores en tarjetas: Avisos en blanco, y las otras cinco en degradado (azul marino, celeste, verde, rosa y violeta): mediana USD/m², mediana de precio, barrios, filas descartadas en el ETL y posibles duplicados. Los filtros aplican a la tabla y al gráfico de barrios; los indicadores muestran el total de la corrida (pestaña `resumen`). En las fuentes, los campos visibles tienen nombres legibles («Mediana USD/m²», «Delitos registrados (2025)»…) y `filas_descartadas` pasó de fecha a número.
+
+Para editar el diseño: el degradado de una **forma** no se dibuja en modo vista, así que la banda es el fondo del cuadro de texto del título. Los gráficos se dibujan en iframes, y al zoom «Ajustar» no se pueden achicar arrastrando dentro de ellos: hay que poner el zoom del editor en 100 %.
+
 En la fuente `barrios`, `ubicacion` es de tipo **Latitud, longitud** y `comuna` es **Texto**. El mapa no tiene una vista fija: se ajusta solo a los 48 barrios en el tamaño real del informe. Para la versión estática, usar **Descargar › PDF**.
 
 Los pasos de abajo sirven para rehacerlo o ampliarlo.

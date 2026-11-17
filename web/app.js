@@ -10,10 +10,11 @@ const PREFERENCIAS = [
   { clave: 'ruido', nombre: 'Ruido' },
   { clave: 'riesgo', nombre: 'Riesgo hídrico' },
 ];
-const CAPAS = [...PREFERENCIAS, { clave: 'delitos', nombre: 'Delitos registrados' }];
+const CAPAS_MAPA = [...PREFERENCIAS, { clave: 'estacionamiento', nombre: 'Estacionamiento' }];
+const CAPAS = [...CAPAS_MAPA, { clave: 'delitos', nombre: 'Delitos registrados' }];
 const SUBTE = { A: '#18CCCC', B: '#EB0909', C: '#233AA8', D: '#02A17A', E: '#AE3D97', H: '#FFD600' };
 const COLOR = { verdes: '#5E7D4F', riesgo: '#1E88E5', escuela: '#1E2A32', cesac: '#00897B', hospital: '#795548',
-  aviso: '#6A4FB3' };
+  aviso: '#6A4FB3', estacionamiento: '#1671A3' };
 const RUIDO = [[50, '#FFFFCC'], [55, '#FFEDA0'], [60, '#FED976'], [65, '#FEB24C'], [70, '#FD8D3C'], [75, '#F03B20'], [80, '#BD0026']];
 const DELITOS = ['#D3DBE3', '#A9B8C8', '#7E93AB', '#55708E', '#2E4560'];
 const ESTILO = 'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json';
@@ -26,6 +27,7 @@ const NOTAS = {
   salud: 'Estar cerca no asegura turnos.',
   ruido: 'Nivel exterior típico por celda de 100 m, medido sobre todo en calles. No describe el interior de un departamento.',
   riesgo: 'Áreas de prevención publicadas en 2020. Si una dirección cae dentro, conviene preguntarlo en la visita.',
+  estacionamiento: 'Inventario histórico oficial, archivo publicado en 2019. Confirmá que el garaje siga funcionando y consultá cupos y abonos mensuales.',
   delitos: 'Hechos registrados por celda de 200 m. Más circulación puede concentrar más eventos y existe subregistro. No equivalen a la probabilidad individual de victimización.',
 };
 const PRESUPUESTO = { 'venta-USD': 110000, 'alquiler-ARS': 800000, 'alquiler-USD': 900 };
@@ -223,6 +225,7 @@ function renderFicha() {
       <td>${dinero(a.precio, a.moneda)}</td>
       <td>${a.superficie} m²</td>
       <td>${a.ambientes}</td>
+      <td>${a.cocheras == null ? 'No informada' : a.cocheras === 0 ? 'Sin cochera' : a.cocheras}</td>
       ${alquiler ? `<td>${a.expensas == null ? '—' : dinero(a.expensas, 'ARS')}</td>` : ''}
       <td>${a.enlace ? `<a href="${esc(a.enlace)}" target="_blank" rel="noopener">Ver aviso</a>` : 'Ejemplo'}</td>
       <td>${a.pin_utilizable ? `<button class="boton-texto" type="button" data-inmueble="${esc(a.id)}">${estado.delitos.inmueble === a.id ? 'Entorno elegido' : 'Ver registros cerca'}</button>`
@@ -257,9 +260,29 @@ function renderFicha() {
           <button class="boton-texto" type="button" data-fuentes>Ver fuentes</button></p>` : ''}
       ${renderParecidos(b.barrio)}
       ${renderLugares(b.barrio)}
+      ${estado.modo === 'real' ? `<h2>Localizar estacionamientos</h2>
+        <p class="fuente">Inventario oficial de 2019. Confirmá funcionamiento, horarios, cupos y tarifas con el lugar.</p>
+        <form id="buscar-estacionamientos">
+          <label>Buscar desde <select name="origen"><option value="barrio">Todo el barrio</option>
+            <option value="mapa">El centro del mapa</option>
+            <option value="actual">Mi ubicación actual</option>
+            ${estado.avisos.filter((a) => a.ubicacion).map((a) => `<option value="${esc(a.id)}">Aviso ${esc(a.id)}</option>`).join('')}
+          </select></label>
+          <label>Radio para búsqueda cercana <select name="radio"><option value="300">300 m</option><option value="500" selected>500 m</option><option value="1000">1 km</option></select></label>
+          <button type="submit" class="boton-texto">Localizar estacionamientos</button>
+        </form><p class="fuente">Si elegís tu ubicación actual, el navegador solicitará acceso al buscar.</p><div id="resultado-estacionamientos" role="status"></div>
+        <h2>Cocheras en alquiler mensual</h2>
+        <form id="buscar-cocheras">
+          <label>Moneda <select name="moneda"><option>ARS</option><option>USD</option></select></label>
+          <label>Hasta <input name="presupuesto" type="number" min="1" value="250000" required></label>
+          <label>Ubicación <select name="inmueble"><option value="">Todo el barrio</option>
+            ${estado.avisos.filter((a) => a.ubicacion).map((a) => `<option value="${esc(a.id)}">A 500 m del aviso ${esc(a.id)}</option>`).join('')}
+          </select></label>
+          <button type="submit" class="boton-texto">Buscar cocheras</button>
+        </form><div id="resultado-cocheras" role="status"></div>` : ''}
       ${b.coincidencias ? `<h2>Avisos que encajan</h2>
         <table class="avisos">
-          <thead><tr><th>Precio publicado</th><th>Cubierta</th><th>Amb.</th>${alquiler ? '<th>Expensas</th>' : ''}<th><span hidden>Enlace</span></th><th>Mapa</th></tr></thead>
+          <thead><tr><th>Precio publicado</th><th>Cubierta</th><th>Amb.</th><th>Cocheras</th>${alquiler ? '<th>Expensas</th>' : ''}<th><span hidden>Enlace</span></th><th>Mapa</th></tr></thead>
           <tbody>${filas}</tbody>
         </table>
         ${estado.avisos.length > visibles.length ? `<p class="fuente">Se muestran los ${visibles.length} más baratos de ${estado.avisos.length}. <button class="boton-texto" type="button" id="ver-todos">Ver todos</button></p>` : ''}
@@ -268,6 +291,25 @@ function renderFicha() {
       ${renderAnalisisDelitos()}
       ${renderRadarFicha(b.barrio)}
     </article>`;
+}
+
+function costoMensual(vivienda, cochera) {
+  const totales = {};
+  const componentes = [
+    [vivienda.precio, vivienda.moneda],
+    [cochera.precio, cochera.moneda],
+    [vivienda.expensas, 'ARS'],
+    [cochera.expensas, cochera.moneda_expensas],
+  ];
+  for (const [importe, moneda] of componentes) {
+    if (importe != null) totales[moneda] = (totales[moneda] || 0) + importe;
+  }
+  const pendientes = [];
+  if (vivienda.expensas == null) pendientes.push('expensas de la vivienda');
+  if (cochera.expensas == null) pendientes.push('expensas de la cochera');
+  const total = Object.entries(totales).map(([moneda, importe]) => dinero(importe, moneda)).join(' + ');
+  return `<p>Vivienda y cochera por mes · ${pendientes.length ? 'Subtotal conocido' : 'Alquileres y expensas'} ${total}.
+    ${pendientes.length ? 'Falta informar ' + pendientes.join(' y ') + '.' : ''}</p>`;
 }
 
 function textoPrecioParecido(p, barrio) {
@@ -605,7 +647,7 @@ async function prepararMapa() {
   if (!estado.seleccionado) encuadrar(null, true);
   const simbolo = mapa.getStyle().layers.find((capa) => capa.type === 'symbol')?.id;
   mapa.addSource('barrios', { type: 'geojson', data: formas, promoteId: 'barrio' });
-  for (const id of ['ruido', 'delitos', 'radios', 'inmueble', 'riesgo', 'verdes', 'subte', 'escuelas', 'salud', 'avisos']) {
+  for (const id of ['delitos', 'radios', 'inmueble', ...CAPAS_MAPA.map((c) => c.clave), 'avisos']) {
     mapa.addSource(id, { type: 'geojson', data: VACIO });
   }
   const sel = ['boolean', ['feature-state', 'sel'], false];
@@ -647,6 +689,9 @@ async function prepararMapa() {
   mapa.addLayer({ id: 'subte', type: 'circle', source: 'subte',
     paint: { 'circle-radius': 6.5, 'circle-color': ['match', ['get', 'line'], ...Object.entries(SUBTE).flat(), '#55626B'],
       'circle-stroke-color': '#FFFFFF', 'circle-stroke-width': 2 } });
+  mapa.addLayer({ id: 'estacionamiento', type: 'circle', source: 'estacionamiento',
+    paint: { 'circle-radius': 6, 'circle-color': COLOR.estacionamiento,
+      'circle-stroke-color': '#FFFFFF', 'circle-stroke-width': 1.5 } });
   // Avisos que encajan: relleno si la ubicación publicada es coherente con el barrio, hueco si es aproximada.
   // Un punto con varios avisos (un mismo edificio) se dibuja más grande.
   mapa.addLayer({ id: 'avisos', type: 'circle', source: 'avisos',
@@ -661,7 +706,7 @@ async function prepararMapa() {
   mapa.addLayer({ id: 'inmueble', type: 'circle', source: 'inmueble',
     paint: { 'circle-radius': 7, 'circle-color': '#6A4FB3', 'circle-stroke-color': '#FFFFFF', 'circle-stroke-width': 2 } });
 
-  const puntos = ['subte', 'salud', 'escuelas'];
+  const puntos = ['subte', 'salud', 'escuelas', 'estacionamiento'];
   const conTexto = [...puntos, 'verdes', 'riesgo', 'ruido', 'delitos'];
 
   mapa.on('mousemove', (evento) => {
@@ -838,7 +883,7 @@ function claveCapa(clave) {
 
 async function actualizarCapas() {
   const barrio = estado.seleccionado;
-  const fijas = ['subte', 'verdes', 'escuelas', 'salud', 'ruido', 'riesgo'];
+  const fijas = CAPAS_MAPA.map((c) => c.clave);
   if (!barrio) {
     fijas.concat('delitos', 'radios', 'inmueble').forEach((id) => mapa.getSource(id)?.setData(VACIO));
     renderControles();
@@ -971,6 +1016,11 @@ function renderLeyenda() {
     } else if (c.clave === 'verdes') items = [muestra(COLOR.verdes, 'Plaza o parque')];
     else if (c.clave === 'escuelas') items = [muestra(COLOR.escuela, `Escuela de nivel ${estado.nivel}`)];
     else if (c.clave === 'salud') items = [muestra(COLOR.cesac, 'CeSAC'), muestra(COLOR.hospital, 'Hospital')];
+    else if (c.clave === 'estacionamiento') {
+      const capa = estado.capasDatos[claveCapa(c.clave)];
+      if (capa?.features.length) items = [muestra(COLOR.estacionamiento, 'Garaje comercial')];
+      else if (capa) items = [esc(capa.disponible ? 'Sin garajes registrados en esta zona.' : 'Inventario de garajes sin cargar.')];
+    }
     else if (c.clave === 'riesgo') items = [muestra(COLOR.riesgo, 'Área de prevención')];
     else if (c.clave === 'ruido') {
       items = RUIDO.map(([v, color]) => muestra(color, v === 50 ? 'Menos de 55 dBA' : v === 80 ? '80 dBA o más' : `${v} a ${v + 5} dBA`));
@@ -1329,7 +1379,95 @@ function conectarEventos() {
   });
   $('#nivel').addEventListener('change', (e) => { cambiarNivel(e.target.value); });
 
+  let consultaEstacionamientos = 0;
+  $('#contenido').addEventListener('submit', async (e) => {
+    if (e.target.id !== 'buscar-estacionamientos') return;
+    e.preventDefault();
+    const output = $('#resultado-estacionamientos');
+    const fields = new FormData(e.target);
+    const origin = fields.get('origen');
+    const params = new URLSearchParams({ barrio: estado.seleccionado, radio: fields.get('radio') });
+    const request = ++consultaEstacionamientos;
+    let accuracy = null;
+    output.textContent = 'Buscando estacionamientos…';
+    try {
+      if (origin !== 'barrio') {
+        let point;
+        if (origin === 'actual') {
+          if (!navigator.geolocation) throw new Error('Este navegador no permite consultar la ubicación. Elegí el centro del mapa.');
+          output.textContent = 'Esperando tu ubicación…';
+          const position = await new Promise((resolve, reject) => navigator.geolocation.getCurrentPosition(resolve,
+            (error) => reject(new Error(error.code === 1 ? 'No se autorizó el acceso a la ubicación. Podés usar el centro del mapa.'
+              : error.code === 3 ? 'La consulta de ubicación tardó demasiado. Intentá otra vez o usá el mapa.'
+                : 'No se pudo obtener tu ubicación. Podés usar el centro del mapa.')),
+            { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }));
+          if (!output.isConnected || request !== consultaEstacionamientos) return;
+          point = { lat: position.coords.latitude, lon: position.coords.longitude };
+          accuracy = Math.round(position.coords.accuracy);
+        } else point = origin === 'mapa' ? mapa.getCenter() : estado.avisos.find((a) => a.id === origin);
+        if (!point) throw new Error('Elegí una ubicación disponible.');
+        const lon = point.lng ?? point.lon;
+        if (point.lat < -34.73 || point.lat > -34.52 || lon < -58.54 || lon > -58.32)
+          throw new Error('La ubicación está fuera del área de consulta de CABA. Mové el mapa hasta la zona que querés explorar.');
+        params.set('lat', point.lat); params.set('lon', lon);
+      }
+      output.textContent = 'Buscando estacionamientos…';
+      const data = await api('/api/estacionamientos?' + params);
+      if (!output.isConnected || request !== consultaEstacionamientos) return;
+      if (!data.disponible) { output.textContent = 'El inventario de estacionamientos todavía no está cargado.'; return; }
+      output.innerHTML = `<p>${data.estacionamientos.length} estacionamientos en el inventario para esta búsqueda.</p>`
+        + (accuracy == null ? '' : `<p class="fuente">Precisión informada por el dispositivo: aproximadamente ${accuracy} m.${accuracy > Number(fields.get('radio')) ? ' Supera el radio elegido; usá el centro del mapa para precisar la búsqueda.' : ''}</p>`)
+        + (data.estacionamientos.length ? '<ul>' + data.estacionamientos.map((r) => `<li>
+          <strong>${esc(r.detalle)}</strong> · ${esc(r.barrio)}
+          ${r.distancia_m == null ? '' : `· ${r.distancia_m} m en línea recta`}
+          <button type="button" class="boton-texto" data-estacionamiento-lat="${r.lat}" data-estacionamiento-lon="${r.lon}" data-estacionamiento-texto="${esc(r.detalle)}">Ver en mapa</button>
+          <a href="https://www.google.com/maps/dir/?api=1&amp;destination=${r.lat},${r.lon}" target="_blank" rel="noopener">Cómo llegar</a>
+          </li>`).join('') + '</ul>' : '<p>La cobertura histórica puede ser incompleta.</p>')
+        + `<p class="fuente">Fuente: <a href="${esc(data.fuente)}" target="_blank" rel="noopener">Buenos Aires Data</a>, ${esc(data.periodo)}. Las distancias no representan recorridos a pie.</p>`;
+    } catch (error) {
+      if (output.isConnected && request === consultaEstacionamientos) output.textContent = 'No se pudo completar la búsqueda. ' + error.message;
+    }
+  });
+  let consultaCocheras = 0;
+  $('#contenido').addEventListener('submit', async (e) => {
+    if (e.target.id !== 'buscar-cocheras') return;
+    e.preventDefault();
+    const output = $('#resultado-cocheras');
+    const fields = new FormData(e.target);
+    const params = new URLSearchParams({ barrio: estado.seleccionado,
+      moneda: fields.get('moneda'), presupuesto: fields.get('presupuesto') });
+    const aviso = estado.avisos.find((a) => a.id === fields.get('inmueble'));
+    const operacion = estado.operacion;
+    const consulta = ++consultaCocheras;
+    if (aviso) { params.set('lat', aviso.lat); params.set('lon', aviso.lon); }
+    output.textContent = 'Buscando cocheras…';
+    try {
+      const data = await api('/api/cocheras?' + params);
+      if (!output.isConnected || consulta !== consultaCocheras) return;
+      if (!data.disponible) { output.textContent = 'El catálogo de cocheras está pendiente de incorporación.'; return; }
+      output.innerHTML = data.avisos.length ? '<ul>' + data.avisos.map((r) =>
+        `<li><a href="${esc(r.url)}" target="_blank" rel="noopener">${esc(r.direccion || r.barrio)}</a>
+        · ${dinero(r.precio, r.moneda)} por mes
+        · ${r.expensas == null ? 'Expensas no informadas' : `Expensas ${dinero(r.expensas, r.moneda_expensas)}`}
+        ${r.distancia_m == null ? '' : `· aproximadamente ${r.distancia_m} m en línea recta`}
+        · Captura ${esc(fechaCorta(r.capturado))}
+        ${aviso && operacion === 'alquiler' ? costoMensual(aviso, r) : ''}</li>`).join('') + '</ul>'
+        : 'Sin coincidencias en el catálogo para estos filtros.';
+      if (aviso) output.innerHTML += '<p class="fuente">Distancias estimadas desde las ubicaciones publicadas.</p>';
+    } catch (error) {
+      if (output.isConnected && consulta === consultaCocheras) output.textContent = 'No se pudo consultar el catálogo. ' + error.message;
+    }
+  });
+
   $('#contenido').addEventListener('click', async (e) => {
+    const estacionamiento = e.target.closest('[data-estacionamiento-lat]');
+    if (estacionamiento) {
+      const coords = [Number(estacionamiento.dataset.estacionamientoLon), Number(estacionamiento.dataset.estacionamientoLat)];
+      mapa.flyTo({ center: coords, zoom: 17 });
+      popupAviso.setLngLat(coords).setHTML(esc(estacionamiento.dataset.estacionamientoTexto) + '<p>Inventario de 2019. Confirmá funcionamiento y cupos.</p>').addTo(mapa);
+      if (celular()) plegarPanel(false);
+      return;
+    }
     const inmueble = e.target.closest('[data-inmueble]');
     if (inmueble) {
       estado.delitos.inmueble = inmueble.dataset.inmueble;

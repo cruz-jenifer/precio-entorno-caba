@@ -18,14 +18,14 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from . import (concentracion, entorno, lugares as lugares_google, make_webhook, parecidos as barrios_parecidos,
-               preferencias, radar, ubicacion)
+               preferencias, radar, ubicacion, cocheras)
 from .bases import REAL_BASE, ROOT, demo_base, open_store
 from .importing import BARRIOS, usable_pin
 from .matching import matches
 
 Mode = Literal['demo', 'real']
 Operation = Literal['venta', 'alquiler']
-LAYER_KEYS = ('subte', 'verdes', 'escuelas', 'salud', 'ruido', 'riesgo')
+LAYER_KEYS = ('subte', 'verdes', 'escuelas', 'salud', 'ruido', 'riesgo', 'estacionamiento')
 CURRENCIES = {'venta': ('USD',), 'alquiler': ('ARS', 'USD')}
 OFFICIAL = sorted(set(BARRIOS.values()))
 
@@ -179,12 +179,61 @@ def create_app(demo_path=None, real_path=None, entorno_dir=None, raw_dir=None, w
                 'id': i['id'], 'precio': i['price'], 'moneda': i.get('currency') or 'USD',
                 'superficie': i['covered_area'], 'superficie_total': i.get('total_area_m2'), 'ambientes': i['rooms'],
                 'expensas': i.get('expenses'), 'capturado': i.get('captured_at'),
+                'cocheras': i.get('garages'),
                 'pin_utilizable': modo == 'real' and usable_pin(i),
                 # Punto para el mapa: solo si es coherente con el barrio (ver precio_entorno/ubicacion.py).
                 'ubicacion': location,
                 'lat': i['latitude'] if location else None, 'lon': i['longitude'] if location else None,
                 'enlace': i.get('url') if modo == 'real' else None})
         return {'avisos': avisos}
+
+    @app.get('/api/estacionamientos')
+    def parking_locations(barrio: str,
+                          lat: float | None = Query(None, ge=-34.73, le=-34.52),
+                          lon: float | None = Query(None, ge=-58.54, le=-58.32),
+                          radio: int = Query(500, ge=100, le=2000)):
+        check_barrio(barrio)
+        if (lat is None) != (lon is None):
+            raise HTTPException(422, 'Se requieren ambas coordenadas.')
+        points = (layers() or {}).get('puntos', {})
+        found = []
+        for row in points.get('estacionamiento', []):
+            distance = concentracion.distance_m(lon, lat, row['lon'], row['lat']) if lat is not None else None
+            if (distance is None and row['barrio'] != barrio) or (distance is not None and distance > radio):
+                continue
+            found.append(dict(nombre=row['name'], detalle=row['tooltip'], barrio=row['barrio'],
+                              lat=row['lat'], lon=row['lon'], distancia_m=distance))
+        found.sort(key=lambda r: (r['distancia_m'] or 0, r['detalle']))
+        for row in found:
+            if row['distancia_m'] is not None:
+                row['distancia_m'] = round(row['distancia_m'])
+        return dict(disponible='estacionamiento' in points, estacionamientos=found,
+                    periodo='2019', fuente=entorno.GARAJES_FUENTE)
+
+    @app.get('/api/cocheras')
+    def parking_rentals(barrio: str, moneda: Literal['ARS', 'USD'] = 'ARS',
+                        presupuesto: float = Query(1_000_000, gt=0, allow_inf_nan=False),
+                        lat: float | None = Query(None, ge=-34.73, le=-34.52),
+                        lon: float | None = Query(None, ge=-58.54, le=-58.32),
+                        radio: int = Query(500, ge=100, le=2000)):
+        check_barrio(barrio)
+        if (lat is None) != (lon is None):
+            raise HTTPException(422, 'Se requieren ambas coordenadas.')
+        try:
+            rows = cocheras.load()
+        except (ValueError, KeyError, TypeError, OSError):
+            raise HTTPException(503, 'El catálogo de cocheras requiere revisión.') from None
+        candidates = [r for r in (rows or []) if r['moneda'] == moneda and r['precio'] <= presupuesto]
+        if lat is None:
+            candidates = [r for r in candidates if r['barrio'] == barrio]
+        else:
+            candidates = [dict(r, distancia_m=concentracion.distance_m(lon, lat, r['lon'], r['lat']))
+                          for r in candidates if r['lat'] is not None]
+            candidates = [r for r in candidates if r['distancia_m'] <= radio]
+            candidates = [dict(r, distancia_m=round(r['distancia_m'])) for r in candidates]
+        found = sorted(candidates,
+                       key=lambda r: r['precio'])
+        return {'disponible': rows is not None, 'avisos': found}
 
     @app.get('/api/mapa/barrios')
     def neighborhood_shapes():
@@ -213,6 +262,9 @@ def create_app(demo_path=None, real_path=None, entorno_dir=None, raw_dir=None, w
         if 'salud' in capas:
             out['salud'] = collection(point_features(points['cesac'], 'cesac', bbox)
                                       + point_features(points['hospitales'], 'hospital', bbox))
+        if 'estacionamiento' in capas:
+            garages = point_features(points.get('estacionamiento', []), 'garaje', bbox)
+            out['estacionamiento'] = {**collection(garages), 'disponible': 'estacionamiento' in points}
         if 'verdes' in capas:
             out['verdes'] = entorno.features_in(data['verdes'], bbox)
         if 'riesgo' in capas:

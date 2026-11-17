@@ -173,6 +173,10 @@ En **1. Qué estás buscando**, la pregunta **¿Qué te importa del entorno?** p
 
 Después de elegir un barrio, el mapa abre centrado en él con las mismas capas encendidas. Los botones de **Capas del mapa** encienden o apagan cada una: estaciones de subte por línea, plazas y parques, escuelas del nivel elegido, CeSAC y hospitales, ruido diurno o nocturno, áreas de prevención por riesgo hídrico y delitos registrados. Al pasar el cursor por un elemento se ve su detalle. Debajo del mapa están la leyenda, la advertencia de cada capa, la ficha del barrio y las fuentes.
 
+Para activar los puntos de **Estacionamiento**, descargá el GeoJSON de [Garajes Comerciales de Buenos Aires Data](https://data.buenosaires.gob.ar/dataset/garajes-comerciales), guardalo como `data/raw/badata-entorno/garajes-comerciales.geojson` y ejecutá `python -m precio_entorno.entorno`. Después elegí un barrio y activá la capa en el mapa. El inventario indica ubicaciones registradas. Los cupos y abonos se consultan con el operador. La columna **Cocheras** usa la cantidad que informa cada aviso y distingue un cero explícito de un dato faltante.
+
+En datos reales, la ficha del barrio suma **Localizar estacionamientos** (todo el barrio o un radio de 300, 500 o 1.000 m desde un aviso, el centro del mapa o la ubicación del navegador) y **Cocheras en alquiler mensual**, que lee un catálogo autorizado importado en `data/local/cocheras.json` y, para un alquiler, suma vivienda y cochera por mes. Importación, verificación de periodicidad y límites: [docs/cocheras.md](docs/cocheras.md).
+
 - **Ruido:** nivel exterior típico de cada celda de 100 m según el Mapa de Ruido 2025. El mapa oficial cubre sobre todo calles y veredas. Los cortes de 70 dBA de día y 65 dBA de noche son descriptivos.
 - **Delitos:** hechos registrados por celda de 200 m en el mes y el tipo elegidos. La capa lee el CSV cargado en la base desde `data/raw/` y verifica que su SHA-256 coincida. En la demo no se mapean, porque sus delitos son ficticios.
 - **Unidad geográfica:** el barrio oficial de CABA. Las columnas describen el barrio, no un aviso, porque los pines de los avisos no declaran su precisión.

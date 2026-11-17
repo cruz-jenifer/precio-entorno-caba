@@ -12,9 +12,9 @@ from precio_entorno.importing import import_crimes
 from precio_entorno.store import Store
 
 try:
-    from test_entorno import build_sources
+    from test_entorno import build_sources, collection, point, write
 except ImportError:  # Ejecutado como tests.test_api
-    from tests.test_entorno import build_sources
+    from tests.test_entorno import build_sources, collection, point, write
 
 CRIMES = (
     '"id-mapa","fecha","franja","tipo","barrio","latitud","longitud","cantidad"\n'
@@ -139,6 +139,30 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(kinds, {'cesac', 'hospital'})
         bad = self.client.get('/api/mapa/capas', params={'barrio': 'Caballito', 'capas': 'bares'})
         self.assertEqual(bad.status_code, 422)
+
+    def test_optional_commercial_garages_layer(self):
+        params = {'barrio': 'Caballito', 'capas': 'estacionamiento'}
+        missing = self.get('/api/mapa/capas', **params)['estacionamiento']
+        self.assertFalse(missing['disponible'])
+        self.assertEqual(missing['features'], [])
+
+        with tempfile.TemporaryDirectory() as temp:
+            poi, raw = build_sources(Path(temp))
+            garage = ({'NOMBRE': 'Garaje de prueba', 'calle_nombre': 'Calle', 'calle_altura': 123},
+                      point(-58.445, -34.615))
+            write(raw / entorno.GARAJES_ARCHIVO, collection(
+                garage, garage, ({'nombre': 'Fuera de CABA'}, point(-58.30, -34.615))))
+            target = Path(temp) / 'processed'
+            entorno.convert(poi, raw, target)
+            with TestClient(create_app(entorno_dir=target)) as client:
+                result = client.get('/api/mapa/capas', params=params)
+                self.assertEqual(result.status_code, 200)
+                layer = result.json()['estacionamiento']
+                self.assertTrue(layer['disponible'])
+                feature, = layer['features']
+                self.assertEqual(feature['properties']['tooltip'], 'Garaje de prueba · Calle 123')
+                sources = client.get('/api/fuentes').json()['fuentes']
+                self.assertTrue(any(s['url'] == entorno.GARAJES_FUENTE for s in sources))
 
     def test_crimes_are_mapped_only_with_real_data_and_matching_file(self):
         demo = self.get('/api/delitos', barrio='Caballito', modo='demo')

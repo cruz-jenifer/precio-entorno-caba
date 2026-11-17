@@ -80,6 +80,8 @@ SOURCES = {
 }
 SUBTE_COLORS = {'A': '#18CCCC', 'B': '#EB0909', 'C': '#233AA8', 'D': '#02A17A', 'E': '#AE3D97', 'H': '#FFD600'}
 GASTRONOMIA = ('restaurantes', 'cafes', 'bares')
+GARAJES_ARCHIVO = 'garajes-comerciales.geojson'
+GARAJES_FUENTE = 'https://data.buenosaires.gob.ar/dataset/garajes-comerciales'
 
 
 def polygons(geometry):
@@ -281,6 +283,32 @@ def cesac(collection):
     return out
 
 
+def commercial_garages(collection):
+    if collection.get('type') != 'FeatureCollection' or not isinstance(collection.get('features'), list):
+        raise ValueError('El archivo de garajes debe ser una colección GeoJSON de puntos.')
+    garages = {}
+    for feature in collection['features']:
+        geometry = feature.get('geometry') or {}
+        coordinates = geometry.get('coordinates')
+        if geometry.get('type') != 'Point' or not isinstance(coordinates, list) or len(coordinates) < 2:
+            continue
+        lon, lat = coordinates[:2]
+        if not (isinstance(lon, (int, float)) and isinstance(lat, (int, float))
+                and -180 <= lon <= 180 and -90 <= lat <= 90):
+            continue
+        props = {key(name): value for name, value in (feature.get('properties') or {}).items()}
+        name = props.get('nombre') or props.get('fna') or props.get('nam') or 'Garaje comercial'
+        address = props.get('direccion') or props.get('domicilio')
+        if not address and props.get('calle'):
+            address = f"{props['calle']} {props.get('num') or ''}".strip()
+        if not address and props.get('calle_nombre'):
+            address = f"{props['calle_nombre']} {props.get('calle_altura') or ''}".strip()
+        tooltip = f'{name} · {address}' if address else str(name)
+        lon, lat = round(lon, DECIMALS), round(lat, DECIMALS)
+        garages[lon, lat, tooltip] = {'name': str(name), 'lon': lon, 'lat': lat, 'tooltip': tooltip}
+    return list(garages.values())
+
+
 def green_spaces(collection):
     features = []
     for feature in collection['features']:
@@ -396,6 +424,9 @@ def convert(poi_dir, entorno_dir, target, downloaded=None, osm_dir=None):
         'hospitales': hospitals(read(path['hospitales']), local),
         'escuelas': schools(read(path['escuelas']), local),
     }
+    garage_path = entorno_dir / GARAJES_ARCHIVO
+    if garage_path.is_file():
+        points['estacionamiento'] = commercial_garages(read(garage_path))
     for items in points.values():
         for item, name in zip(items, barrios.of([(i['lon'], i['lat']) for i in items])):
             item['barrio'] = name
@@ -473,6 +504,11 @@ def convert(poi_dir, entorno_dir, target, downloaded=None, osm_dir=None):
     for name, (folder, file, url, title, period) in SOURCES.items():
         sources.append({'capa': name, 'titulo': title, 'archivo': file, 'periodo': period,
                         'url': CDN + url if url else None, 'sha256': digest(path[name]),
+                        'licencia': 'CC-BY 2.5 AR · Buenos Aires Data'})
+    if 'estacionamiento' in points:
+        sources.append({'capa': 'estacionamiento', 'titulo': 'Garajes comerciales habilitados',
+                        'archivo': garage_path.name, 'periodo': 'Inventario histórico · archivo publicado en 2019; vigencia a confirmar',
+                        'url': GARAJES_FUENTE, 'sha256': digest(garage_path),
                         'licencia': 'CC-BY 2.5 AR · Buenos Aires Data'})
     if food is not None:
         combined = sha256(b''.join((osm_dir / f'{n}.json').read_bytes() for n in GASTRONOMIA)).hexdigest()

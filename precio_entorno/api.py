@@ -18,14 +18,16 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from . import (concentracion, entorno, lugares as lugares_google, make_webhook, parecidos as barrios_parecidos,
-               preferencias, radar, ubicacion, cocheras)
+               preferencias, radar, ubicacion, cocheras, colectivos)
 from .bases import REAL_BASE, ROOT, demo_base, open_store
 from .importing import BARRIOS, usable_pin
 from .matching import matches
 
 Mode = Literal['demo', 'real']
 Operation = Literal['venta', 'alquiler']
-LAYER_KEYS = ('subte', 'verdes', 'escuelas', 'salud', 'ruido', 'riesgo', 'estacionamiento')
+LAYER_KEYS = ('subte', 'verdes', 'escuelas', 'salud', 'ruido', 'riesgo', 'estacionamiento', 'clubes', 'gimnasios')
+# Capas de puntos que cubren toda la ciudad, no solo el recuadro del barrio elegido.
+CITYWIDE = {'estacionamiento': 'garaje', 'clubes': 'club', 'gimnasios': 'gimnasio'}
 CURRENCIES = {'venta': ('USD',), 'alquiler': ('ARS', 'USD')}
 OFFICIAL = sorted(set(BARRIOS.values()))
 
@@ -235,6 +237,25 @@ def create_app(demo_path=None, real_path=None, entorno_dir=None, raw_dir=None, w
                        key=lambda r: r['precio'])
         return {'disponible': rows is not None, 'avisos': found}
 
+    @app.get('/api/colectivos')
+    def bus_lines(barrio: str):
+        check_barrio(barrio)
+        lines = (layers() or {}).get('colectivos')
+        found = [] if lines is None else [
+            {'linea': name, 'ramales': len(line['ramales'])}
+            for name, line in lines.items() if barrio in line['barrios']]
+        return {'disponible': lines is not None, 'lineas': found,
+                'periodo': colectivos.PERIODO, 'fuente': colectivos.FUENTE}
+
+    @app.get('/api/colectivos/{linea}')
+    def bus_route(linea: str):
+        line = ((layers() or {}).get('colectivos') or {}).get(linea)
+        if line is None:
+            raise HTTPException(404, 'Línea sin recorrido cargado.')
+        return {'type': 'Feature', 'geometry': {'type': 'MultiLineString', 'coordinates': line['recorrido']},
+                'properties': {'linea': linea, 'ramales': line['ramales'], 'barrios': line['barrios'],
+                               'periodo': colectivos.PERIODO}}
+
     @app.get('/api/mapa/barrios')
     def neighborhood_shapes():
         data = layers()
@@ -262,10 +283,11 @@ def create_app(demo_path=None, real_path=None, entorno_dir=None, raw_dir=None, w
         if 'salud' in capas:
             out['salud'] = collection(point_features(points['cesac'], 'cesac', bbox)
                                       + point_features(points['hospitales'], 'hospital', bbox))
-        if 'estacionamiento' in capas:
-            # Toda la ciudad: el mapa los muestra fuera del barrio al desplazarse.
-            garages = point_features(points.get('estacionamiento', []), 'garaje', None)
-            out['estacionamiento'] = {**collection(garages), 'disponible': 'estacionamiento' in points}
+        for layer, kind in CITYWIDE.items():
+            if layer in capas:
+                # Toda la ciudad: el mapa los muestra fuera del barrio al desplazarse.
+                features = point_features(points.get(layer, []), kind, None)
+                out[layer] = {**collection(features), 'disponible': layer in points}
         if 'verdes' in capas:
             out['verdes'] = entorno.features_in(data['verdes'], bbox)
         if 'riesgo' in capas:

@@ -25,6 +25,7 @@ import argparse
 import csv
 import json
 import math
+import re
 import warnings
 from collections import Counter, defaultdict
 from datetime import date
@@ -34,6 +35,7 @@ from pathlib import Path
 import numpy as np
 from matplotlib.path import Path as Shape
 
+from . import colectivos as colectivos_gtfs
 from .badata_poi import PARK_CLASSES
 from .importing import BARRIOS, key
 
@@ -83,6 +85,12 @@ GASTRONOMIA = ('restaurantes', 'cafes', 'bares')
 GARAJES_ARCHIVO = 'garajes-comerciales.geojson'
 GARAJES_FUENTE = 'https://data.buenosaires.gob.ar/dataset/garajes-comerciales'
 # El portal muestra la publicación (10/05/2021) pero no la fecha del relevamiento.
+CLUBES_ARCHIVO = 'clubes.csv'
+CLUBES_FUENTE = 'https://data.buenosaires.gob.ar/dataset/clubes'
+POLIDEPORTIVOS_ARCHIVO = 'polideportivos.geojson'
+POLIDEPORTIVOS_FUENTE = 'https://data.buenosaires.gob.ar/dataset/polideportivos'
+# Sedes sin actividad deportiva: no se muestran en la capa de clubes.
+SEDES_ADMINISTRATIVAS = {'sede administrativa', 'anexo administrativo'}
 GARAJES_PERIODO = 'Publicado en 2021 · fecha de relevamiento no informada'
 
 
@@ -311,6 +319,59 @@ def commercial_garages(collection):
     return list(garages.values())
 
 
+def wkt_point(text):
+    """`POINT (lon lat)` → (lon, lat), o None."""
+    match = re.fullmatch(r'\s*POINT\s*\(\s*(-?[\d.]+)\s+(-?[\d.]+)\s*\)\s*', text or '', re.I)
+    return (float(match[1]), float(match[2])) if match else None
+
+
+def sports_clubs(club_rows, polideportivos=None):
+    """Clubes de barrio y polideportivos de la Ciudad. No se guardan teléfonos, correos ni redes."""
+    out = {}
+    for row in club_rows:
+        point = wkt_point(row.get('geometry'))
+        if not point or (row.get('tipo_sede') or '').strip().lower() in SEDES_ADMINISTRATIVAS:
+            continue
+        name = (row.get('nombre') or 'Club').strip()
+        parts = [name, (row.get('tipo') or 'Club').strip(), (row.get('direccion') or '').strip()]
+        lon, lat = round(point[0], DECIMALS), round(point[1], DECIMALS)
+        out[lon, lat, name] = {'name': name, 'lon': lon, 'lat': lat, 'tooltip': ' · '.join(p for p in parts if p)}
+    for feature in (polideportivos or {}).get('features', []):
+        geometry = feature.get('geometry') or {}
+        if geometry.get('type') != 'Point':
+            continue
+        props = feature.get('properties') or {}
+        name = (props.get('nombre') or 'Polideportivo').strip()
+        address = (props.get('dirreccion') or props.get('direccion') or '').strip()
+        lon, lat = (round(v, DECIMALS) for v in geometry['coordinates'][:2])
+        out[lon, lat, name] = {'name': name, 'lon': lon, 'lat': lat,
+                               'tooltip': ' · '.join(p for p in (name, 'Polideportivo de la Ciudad', address) if p)}
+    return list(out.values())
+
+
+def gyms(overpass):
+    """Gimnasios de OpenStreetMap (`leisure=fitness_centre` y centros deportivos de fitness)."""
+    out = {}
+    for element in overpass.get('elements', []):
+        tags = element.get('tags') or {}
+        center = element.get('center') or element
+        lon, lat = center.get('lon'), center.get('lat')
+        if not isinstance(lon, (int, float)) or not isinstance(lat, (int, float)):
+            continue
+        name = (tags.get('name') or 'Gimnasio').strip()
+        street = ' '.join(v for v in (tags.get('addr:street'), tags.get('addr:housenumber')) if v)
+        lon, lat = round(lon, DECIMALS), round(lat, DECIMALS)
+        out[lon, lat, name] = {'name': name, 'lon': lon, 'lat': lat,
+                               'tooltip': f'{name} · {street}' if street else name}
+    return list(out.values())
+
+
+def latest_gyms(raw_dir):
+    """`osm-gimnasios-AAAAMMDD/gimnasios.json` más reciente, o None."""
+    found = sorted(Path(raw_dir).glob('osm-gimnasios-*/gimnasios.json'))
+    return found[-1] if found else None
+
+
 def green_spaces(collection):
     features = []
     for feature in collection['features']:
@@ -401,7 +462,7 @@ def gastronomy(osm_dir, barrios):
     return counts
 
 
-def convert(poi_dir, entorno_dir, target, downloaded=None, osm_dir=None):
+def convert(poi_dir, entorno_dir, target, downloaded=None, osm_dir=None, gyms_path=None, gtfs_zip=None):
     from pyproj import Transformer
 
     target.mkdir(parents=True, exist_ok=True)
@@ -429,6 +490,13 @@ def convert(poi_dir, entorno_dir, target, downloaded=None, osm_dir=None):
     garage_path = entorno_dir / GARAJES_ARCHIVO
     if garage_path.is_file():
         points['estacionamiento'] = commercial_garages(read(garage_path))
+    clubs_path, poli_path = entorno_dir / CLUBES_ARCHIVO, entorno_dir / POLIDEPORTIVOS_ARCHIVO
+    if clubs_path.is_file():
+        with clubs_path.open(encoding='utf-8-sig', newline='') as handle:
+            points['clubes'] = sports_clubs(csv.DictReader(handle), read(poli_path) if poli_path.is_file() else None)
+    gyms_path = Path(gyms_path) if gyms_path else None
+    if gyms_path and gyms_path.is_file():
+        points['gimnasios'] = gyms(read(gyms_path))
     for items in points.values():
         for item, name in zip(items, barrios.of([(i['lon'], i['lat']) for i in items])):
             item['barrio'] = name
@@ -460,6 +528,10 @@ def convert(poi_dir, entorno_dir, target, downloaded=None, osm_dir=None):
             cy = int((cell[1] - grid.south) / grid.dlat) // grid.sub
             cx = int((cell[0] - grid.west) / grid.dlon) // grid.sub
             cell.append(names[cell_barrio[cy, cx]])
+
+    gtfs_zip = Path(gtfs_zip) if gtfs_zip else None
+    lines = colectivos_gtfs.build(gtfs_zip, barrios) if gtfs_zip and gtfs_zip.is_file() else None
+    lines_of = colectivos_gtfs.by_barrio(lines) if lines is not None else {}
 
     osm_dir = Path(osm_dir) if osm_dir else None
     food = gastronomy(osm_dir, barrios) if osm_dir else None
@@ -493,6 +565,11 @@ def convert(poi_dir, entorno_dir, target, downloaded=None, osm_dir=None):
             'ruido': noise_summary,
             'riesgo_hidrico': share(risk, within),
         }
+        for layer in ('clubes', 'gimnasios'):
+            if layer in points:
+                summary[name][layer] = len(mine[layer])
+        if lines is not None:
+            summary[name]['colectivos'] = lines_of.get(name, [])
         if food is not None:
             summary[name]['gastronomia'] = {**{k: food[name][k] for k in GASTRONOMIA}, 'captura': capture}
 
@@ -512,6 +589,24 @@ def convert(poi_dir, entorno_dir, target, downloaded=None, osm_dir=None):
                         'archivo': garage_path.name, 'periodo': GARAJES_PERIODO + '; vigencia a confirmar',
                         'url': GARAJES_FUENTE, 'sha256': digest(garage_path),
                         'licencia': 'CC-BY 2.5 AR · Buenos Aires Data'})
+    if 'clubes' in points:
+        sources.append({'capa': 'clubes', 'titulo': 'Clubes de barrio', 'archivo': clubs_path.name,
+                        'periodo': 'Listado que la Ciudad actualiza cada trimestre', 'url': CLUBES_FUENTE,
+                        'sha256': digest(clubs_path), 'licencia': 'CC-BY 2.5 AR · Buenos Aires Data'})
+        if poli_path.is_file():
+            sources.append({'capa': 'clubes', 'titulo': 'Polideportivos de la Ciudad', 'archivo': poli_path.name,
+                            'periodo': 'Listado que la Ciudad actualiza cada trimestre', 'url': POLIDEPORTIVOS_FUENTE,
+                            'sha256': digest(poli_path), 'licencia': 'CC-BY 2.5 AR · Buenos Aires Data'})
+    if 'gimnasios' in points:
+        stamp = osm_capture_date(gyms_path.parent.with_name(gyms_path.parent.name.replace('osm-gimnasios-', 'osm-')))
+        sources.append({'capa': 'gimnasios', 'titulo': 'Gimnasios', 'archivo': gyms_path.name,
+                        'periodo': f'Captura del {stamp}' if stamp else 'Captura de OpenStreetMap',
+                        'url': 'https://www.openstreetmap.org/copyright', 'sha256': digest(gyms_path),
+                        'licencia': 'ODbL · © colaboradores de OpenStreetMap'})
+    if lines is not None:
+        sources.append({'capa': 'colectivos', 'titulo': 'Recorridos de colectivos (GTFS)', 'archivo': gtfs_zip.name,
+                        'periodo': colectivos_gtfs.PERIODO, 'url': colectivos_gtfs.FUENTE,
+                        'sha256': digest(gtfs_zip), 'licencia': 'CC-BY 2.5 AR · Buenos Aires Data'})
     if food is not None:
         combined = sha256(b''.join((osm_dir / f'{n}.json').read_bytes() for n in GASTRONOMIA)).hexdigest()
         sources.append({'capa': 'gastronomia', 'titulo': 'Restaurantes, cafés y bares',
@@ -526,6 +621,10 @@ def convert(poi_dir, entorno_dir, target, downloaded=None, osm_dir=None):
     write('puntos.json', points)
     write('ruido.json', {'celda_m': CELL_M, 'umbral_dba': LOUD_DBA, 'colores': noise_colors, **noise})
     write('resumen.json', summary)
+    if lines is not None:
+        write('colectivos.json', lines)
+    elif (target / 'colectivos.json').exists():
+        (target / 'colectivos.json').unlink()
     write('fuentes.json', {'generado': (downloaded or date.today()).isoformat(), 'fuentes': sources})
     return summary
 
@@ -537,7 +636,10 @@ def load(folder):
              'resumen.json', 'fuentes.json')
     if not all((folder / name).exists() for name in files):
         return None
-    return {name.split('.')[0]: read(folder / name) for name in files}
+    data = {name.split('.')[0]: read(folder / name) for name in files}
+    if (folder / 'colectivos.json').exists():
+        data['colectivos'] = read(folder / 'colectivos.json')
+    return data
 
 
 def percent(value):
@@ -633,8 +735,11 @@ def main():
                         help='Captura de OpenStreetMap para gastronomía (por defecto, la osm-AAAAMMDD más reciente).')
     parser.add_argument('--sin-osm', action='store_true', help='No sumar la gastronomía de OpenStreetMap.')
     args = parser.parse_args()
-    osm_dir = None if args.sin_osm else (args.osm or latest_osm(ROOT / 'data/raw'))
-    summary = convert(args.poi, args.entorno, args.destino, osm_dir=osm_dir)
+    raw = ROOT / 'data/raw'
+    osm_dir = None if args.sin_osm else (args.osm or latest_osm(raw))
+    gtfs_dir = colectivos_gtfs.latest(raw)
+    summary = convert(args.poi, args.entorno, args.destino, osm_dir=osm_dir, gyms_path=latest_gyms(raw),
+                      gtfs_zip=gtfs_dir / colectivos_gtfs.ARCHIVO if gtfs_dir else None)
     with_food = any('gastronomia' in s for s in summary.values())
     print(json.dumps({'barrios': len(summary), 'destino': str(args.destino),
                       'gastronomia': str(osm_dir) if with_food else None}, ensure_ascii=False))

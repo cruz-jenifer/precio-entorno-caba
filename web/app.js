@@ -30,6 +30,44 @@ const NOTAS = {
   estacionamiento: 'Inventario oficial publicado en 2021, sin fecha de relevamiento informada. Confirmá que el garaje siga funcionando y consultá cupos y abonos mensuales.',
   delitos: 'Hechos registrados por celda de 200 m. Más circulación puede concentrar más eventos y existe subregistro. No equivalen a la probabilidad individual de victimización.',
 };
+/* Explorador de necesidades (docs/plan-explorador-necesidades.md). Apagado por defecto: se prueba con
+   ?explorador=1. Cada necesidad sugiere capas y columnas; no filtra avisos ni arma puntajes. */
+const EXPLORADOR = (() => {
+  try { return new URLSearchParams(window.location?.search || '').get('explorador') === '1'; } catch { return false; }
+})();
+const NECESIDADES = [
+  { clave: 'sin_auto', nombre: 'Me muevo sin auto', descripcion: 'Subte cercano y líneas de colectivo del barrio.',
+    capas: ['subte'], columnas: ['subte'],
+    advertencias: ['Las líneas de colectivo salen de recorridos publicados en 2019: confirmá el recorrido vigente.'] },
+  { clave: 'familia', nombre: 'Escuelas y salud cerca', descripcion: 'Escuelas del nivel elegido, centros de salud y plazas.',
+    capas: ['escuelas', 'salud', 'verdes'],
+    columnas: ['escuela', 'cesac', 'hospital', 'plaza', 'ambientes', 'superficie', 'patio', 'balcon'], advertencias: [] },
+  { clave: 'teletrabajo', nombre: 'Trabajo desde casa', descripcion: 'Ruido exterior de día, ambientes, luz y contrafrente.',
+    capas: ['ruido'], columnas: ['ruido_diurno', 'ambientes', 'superficie', 'luminoso', 'contrafrente'], advertencias: [] },
+  { clave: 'costo_mensual', nombre: 'Quiero ver el costo mensual', descripcion: 'Precio publicado, expensas y cocheras.',
+    capas: [], columnas: ['precio', 'expensas', 'cocheras'],
+    advertencias: ['Los importes se suman por moneda, sin convertir. Si el aviso no informa las expensas, se indica.'] },
+];
+// Capas con distancia por aviso en /api/barrios/{barrio}/avisos (precio_entorno/cercania.py).
+const CAPAS_CERCANIA = ['subte', 'escuelas', 'salud', 'verdes', 'ruido'];
+
+/* Combina las necesidades elegidas con las decisiones manuales. La elección manual gana: una capa apagada a mano
+   no vuelve aunque una necesidad la sugiera. Devuelve capas en el orden del mapa, sin duplicados. */
+function resolverNecesidades(seleccion, manual = { encendidas: new Set(), apagadas: new Set() }) {
+  const elegidas = NECESIDADES.filter((n) => seleccion.has(n.clave));
+  const origen = {};
+  for (const n of elegidas) for (const c of n.capas) (origen[c] ||= []).push(n.clave);
+  for (const c of manual.encendidas) (origen[c] ||= []).push('manual');
+  const capas = CAPAS.map((c) => c.clave).filter((c) => origen[c] && !manual.apagadas.has(c));
+  return {
+    capas,
+    columnas: [...new Set(elegidas.flatMap((n) => n.columnas))],
+    cercania: capas.filter((c) => CAPAS_CERCANIA.includes(c)),
+    advertencias: [...new Set([...capas.map((c) => NOTAS[c]), ...elegidas.flatMap((n) => n.advertencias)].filter(Boolean))],
+    origen: Object.fromEntries(capas.map((c) => [c, origen[c]])),
+  };
+}
+
 const PRESUPUESTO = { 'venta-USD': 110000, 'alquiler-ARS': 800000, 'alquiler-USD': 900 };
 const VACIO = { type: 'FeatureCollection', features: [] };
 const reducido = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -74,6 +112,8 @@ const estado = {
   ambientesOMas: Boolean(guardado.ambientesOMas),
   verTodos: false,
   prefs: new Set(guardado.prefs || ['subte', 'verdes']),
+  necesidades: new Set(EXPLORADOR ? guardado.necesidades || [] : []),
+  apagadas: new Set(EXPLORADOR ? guardado.apagadas || [] : []),
   nivel: guardado.nivel || 'primario',
   ruido: 'diurno',
   delitos: { anio: '', tipo: 'todos', franja: 'todas', radio: '500', inmueble: '' },
@@ -97,7 +137,8 @@ function guardar() {
   const { modo, operacion, moneda, presupuesto, superficie, ambientes, nivel } = estado;
   try {
     localStorage.setItem('precio-entorno-filtros', JSON.stringify(
-      { modo, operacion, moneda, presupuesto, superficie, ambientes, ambientesOMas: estado.ambientesOMas, nivel, prefs: [...estado.prefs] }));
+      { modo, operacion, moneda, presupuesto, superficie, ambientes, ambientesOMas: estado.ambientesOMas, nivel, prefs: [...estado.prefs],
+        ...(EXPLORADOR ? { necesidades: [...estado.necesidades], apagadas: [...estado.apagadas] } : {}) }));
   } catch { /* Sin almacenamiento local: los filtros vuelven a los valores iniciales. */ }
 }
 
@@ -1015,6 +1056,30 @@ function mostrarAvisoMapa(texto) {
   $('#mapa-pista').textContent = texto;
 }
 
+// Capas al elegir un barrio. Sin el explorador, las de «Lo que me importa», como siempre.
+function capasIniciales() {
+  if (!EXPLORADOR) return new Set(estado.prefs);
+  return new Set(resolverNecesidades(estado.necesidades, { encendidas: estado.prefs, apagadas: estado.apagadas }).capas);
+}
+
+/* Prende o apaga una capa desde los chips del mapa. Con el explorador, la decisión se recuerda: prender la suma a
+   «Lo que me importa» y apagar una capa sugerida por una necesidad la deja apagada al cambiar de barrio. Delitos
+   nunca se recuerda. */
+function alternarCapa(clave) {
+  const prender = !estado.capas.has(clave);
+  if (prender) estado.capas.add(clave); else estado.capas.delete(clave);
+  if (!EXPLORADOR || !CAPAS_MAPA.some((c) => c.clave === clave)) return;
+  if (prender) {
+    estado.prefs.add(clave);
+    estado.apagadas.delete(clave);
+  } else {
+    estado.prefs.delete(clave);
+    if (NECESIDADES.some((n) => estado.necesidades.has(n.clave) && n.capas.includes(clave))) estado.apagadas.add(clave);
+  }
+  guardar();
+  sincronizarControles();
+}
+
 function renderChips() {
   const contenedor = $('#capas');
   contenedor.hidden = !estado.seleccionado;
@@ -1155,7 +1220,7 @@ async function seleccionar(nombre) {
   popup.remove();
   popupAviso.remove();
   if (nombre && mapa.getSource('barrios')) mapa.setFeatureState({ source: 'barrios', id: nombre }, { sel: true });
-  estado.capas = new Set(nombre ? estado.prefs : []);
+  estado.capas = nombre ? capasIniciales() : new Set();
   pintarCoropletas();
   encuadrar(nombre);
   renderChips();
@@ -1440,6 +1505,10 @@ function conectarEventos() {
   $('#preferencias').addEventListener('change', (e) => {
     const clave = e.target.value;
     if (e.target.checked) estado.prefs.add(clave); else estado.prefs.delete(clave);
+    if (e.target.checked) estado.apagadas.delete(clave);
+    else if (EXPLORADOR && NECESIDADES.some((n) => estado.necesidades.has(n.clave) && n.capas.includes(clave))) {
+      estado.apagadas.add(clave);
+    }
     if (estado.seleccionado) {
       if (e.target.checked) estado.capas.add(clave); else estado.capas.delete(clave);
       renderChips();
@@ -1582,7 +1651,7 @@ function conectarEventos() {
     const chip = e.target.closest('[data-capa]');
     if (!chip) return;
     const clave = chip.dataset.capa;
-    if (estado.capas.has(clave)) estado.capas.delete(clave); else estado.capas.add(clave);
+    alternarCapa(clave);
     chip.setAttribute('aria-pressed', estado.capas.has(clave));
     renderPanel();
     actualizarCapas();

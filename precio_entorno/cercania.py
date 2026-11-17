@@ -8,6 +8,8 @@ fuente, sin precisión declarada; la API solo lo usa si `ubicacion.quality` lo c
 - Se redondea a decenas de metros para no sugerir más exactitud de la que tiene el punto.
 - Plazas y parques: distancia al borde del polígono, muestreado cada PASO_M metros (error de pocos metros).
 - Ruido: el nivel típico diurno de la celda de 100 m que contiene el punto, o None si no hay celda relevada.
+- Ciclovías: distancia al tramo más cercano, muestreado como los bordes de las plazas. No dice si el recorrido
+  sigue ni si el tramo es protegido.
 - Subte con ascensor: la estación más cercana con al menos un ascensor informado por SBASE. No dice si funciona.
 """
 
@@ -15,7 +17,7 @@ import math
 
 import numpy as np
 
-CAPAS = ('subte', 'escuelas', 'salud', 'verdes', 'ruido')
+CAPAS = ('subte', 'escuelas', 'salud', 'verdes', 'ruido', 'ciclovias', 'ecobici', 'bibliotecas')
 NIVELES = ('inicial', 'primario', 'secundario')
 M_LAT = 111_320
 KX = M_LAT * math.cos(math.radians(-34.62))
@@ -100,10 +102,15 @@ def cercanos(origenes, capa):
 
 
 def anillos(geometria):
+    """Líneas de un polígono (sus anillos) o de una línea; `bordes` las muestrea igual."""
     if geometria['type'] == 'Polygon':
         return geometria['coordinates']
     if geometria['type'] == 'MultiPolygon':
         return [ring for poligono in geometria['coordinates'] for ring in poligono]
+    if geometria['type'] == 'LineString':
+        return [geometria['coordinates']]
+    if geometria['type'] == 'MultiLineString':
+        return geometria['coordinates']
     return []
 
 
@@ -141,6 +148,12 @@ class Cercania:
         self.cesac = de(puntos.get('cesac', []))[1]
         self.hospitales = de(puntos.get('hospitales', []))[1]
         self.verdes = Puntos(bordes(capas.get('verdes') or {}))
+        self.ciclovias = Puntos(bordes(capas.get('ciclovias') or {}))
+        self.ecobici = de(puntos.get('ecobici', []))[1]
+        self.bibliotecas = de(puntos.get('bibliotecas', []))[1]
+        # Sin la capa cargada no se informa distancia (None), en lugar de «ninguna cerca».
+        self.disponibles = {'ciclovias': bool(capas.get('ciclovias')), 'ecobici': 'ecobici' in puntos,
+                            'bibliotecas': 'bibliotecas' in puntos}
         ruido = capas.get('ruido') or {}
         celdas = ruido.get('diurno', [])
         self.celda_m = ruido.get('celda_m', 100)
@@ -175,6 +188,10 @@ class Cercania:
             poner('hospital', cercanos(origen, self.hospitales)[0])
         if 'verdes' in capas:
             poner('plaza', cercanos(origen, self.verdes)[0])
+        for capa, clave, indice in (('ciclovias', 'ciclovia', self.ciclovias), ('ecobici', 'ecobici', self.ecobici),
+                                    ('bibliotecas', 'biblioteca', self.bibliotecas)):
+            if capa in capas:
+                poner(clave, cercanos(origen, indice)[0] if self.disponibles[capa] else [math.inf] * len(origen))
         if 'ruido' in capas:
             # La celda que contiene el punto: el centro más cercano a no más de media celda en cada eje.
             _, idx = cercanos(origen, self.ruido)

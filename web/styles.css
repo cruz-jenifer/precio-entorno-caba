@@ -192,6 +192,8 @@ button, input, select { font: inherit; color: inherit; }
   box-shadow: var(--sombra-flotante);
   padding: 1rem;
   z-index: 10;
+  max-height: calc(100dvh - var(--barra-alto) - 1rem);
+  overflow-y: auto;
 }
 
 .importa-ayuda {
@@ -217,6 +219,52 @@ button, input, select { font: inherit; color: inherit; }
 }
 
 .importa-opciones input { accent-color: var(--jacaranda); width: 1rem; height: 1rem; }
+
+/* Explorador de necesidades (?explorador=1) */
+.importa-titulo {
+  padding: 0;
+  margin-bottom: 0.25rem;
+  font-size: var(--t-chico);
+  font-weight: 600;
+  color: var(--asfalto-suave);
+}
+
+
+.importa-opciones .necesidad { align-items: flex-start; }
+.necesidad input { margin-top: 0.15rem; flex: none; }
+.necesidad small {
+  display: block;
+  color: var(--asfalto-suave);
+  font-size: var(--t-chico);
+}
+
+.necesidades-pie {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin: 0.5rem 0 0.75rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid var(--cordon);
+}
+
+.necesidades-pie .importa-ayuda { margin: 0; }
+.necesidades-pie .boton-texto { flex: none; font-size: var(--t-chico); }
+
+.segun-avisos {
+  margin: 0.625rem 0 0;
+  padding-left: 1.1rem;
+  color: var(--asfalto-suave);
+  font-size: var(--t-chico);
+}
+
+.segun-avisos li + li { margin-top: 0.25rem; }
+
+.sugerida {
+  margin-left: auto;
+  color: var(--jacaranda-oscuro);
+  font-size: var(--t-chico);
+}
 
 .importa-nivel {
   display: flex;
@@ -809,6 +857,9 @@ button, input, select { font: inherit; color: inherit; }
 .control-flotante select { max-width: 100%; min-width: 0; }
 .control-flotante .fuente { flex-basis: 100%; max-width: 28rem; margin: 0.25rem 0; }
 .ficha > .avisos { display: block; overflow-x: auto; }
+/* El precio queda a la vista al desplazar la tabla hacia las columnas del explorador. */
+.ficha > .avisos th:first-child,
+.ficha > .avisos td:first-child { position: sticky; left: 0; z-index: 1; background: var(--papel); padding-right: 0.5rem; }
 
 @media (max-width: 820px) {
   .capa-controles { max-height: 28dvh; overflow-y: auto; }

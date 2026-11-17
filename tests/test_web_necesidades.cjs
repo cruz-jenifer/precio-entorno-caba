@@ -109,3 +109,31 @@ test('con el interruptor, prender un chip lo suma a «Lo que me importa»; delit
   assert.ok(!run("estado.prefs.has('delitos')"));
   assert.ok(run("estado.capas.has('delitos')"));
 });
+
+test('las columnas siguen a las necesidades y a las capas prendidas', () => {
+  const run = runtime('?explorador=1', { prefs: [], necesidades: ['familia', 'costo_mensual'], apagadas: ['salud'] });
+  assert.deepEqual(run('columnasExplorador().map((c) => c.titulo)'),
+    ['Escuela (primario)', 'Plaza', 'El texto menciona', 'Expensas']);   // salud apagada: sin CeSAC ni hospital
+  run("estado.operacion = 'alquiler';");
+  assert.equal(run('columnasExplorador().at(-1).titulo'), 'Por mes');
+  assert.deepEqual(runtime('', { necesidades: ['familia'] })('columnasExplorador()'), []);   // sin interruptor
+});
+
+test('los textos no confunden «no menciona» ni «sin ubicación» con «no tiene»', () => {
+  const run = runtime('?explorador=1');
+  const def = "COLUMNAS_DISTANCIA.subte";
+  assert.equal(run(`celdaDistancia(${def}, { cercania: null })`), '—');
+  assert.match(run(`celdaDistancia(${def}, { ubicacion: 'publicada', cercania: { subte: { m: 1250, estacion: 'X', linea: 'D' } } })`), /1,3 km · D/);
+  assert.match(run(`celdaDistancia(${def}, { ubicacion: 'aproximada', cercania: { subte: { m: 80, estacion: 'X', linea: 'A' } } })`), /80 m.*aprox\./);
+  assert.equal(run("celdaDistancia(COLUMNAS_DISTANCIA.ruido_diurno, { cercania: { ruido_diurno: { dba: null } } })"), 'Sin celda relevada');
+  assert.match(run("celdaRasgos(['patio', 'balcon'], { rasgos: { patio: null, balcon: null } })"), /Sin texto/);
+  assert.match(run("celdaRasgos(['patio', 'balcon'], { rasgos: { patio: 0, balcon: 0 } })"), /No los menciona/);
+  assert.equal(run("celdaRasgos(['patio', 'balcon'], { rasgos: { patio: 1, balcon: 1 } })"), 'patio y balcón');
+});
+
+test('el costo por mes no suma monedas distintas ni inventa expensas', () => {
+  const run = runtime('?explorador=1');
+  assert.equal(run("porMes({ precio: 800000, moneda: 'ARS', expensas: 95000 })"), 'ARS 895.000');
+  assert.equal(run("porMes({ precio: 900, moneda: 'USD', expensas: 95000 })"), 'USD 900 + ARS 95.000');
+  assert.match(run("porMes({ precio: 800000, moneda: 'ARS', expensas: null })"), /expensas sin informar/);
+});

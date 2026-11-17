@@ -68,6 +68,85 @@ function resolverNecesidades(seleccion, manual = { encendidas: new Set(), apagad
   };
 }
 
+function explorador() {
+  return resolverNecesidades(estado.necesidades, { encendidas: estado.prefs, apagadas: estado.apagadas });
+}
+
+const metrosTexto = (m) => (m < 1000 ? `${numero.format(m)} m` : `${decimal.format(m / 1000)} km`);
+// Columnas de distancia de la tabla de avisos: la capa tiene que estar prendida para que la API la calcule.
+const COLUMNAS_DISTANCIA = {
+  subte: { capa: 'subte', titulo: () => 'Subte', valor: (c) => c.subte,
+    texto: (v) => `<span title="Estación ${esc(v.estacion)}">${metrosTexto(v.m)} · ${esc(v.linea)}</span>` },
+  escuela: { capa: 'escuelas', titulo: () => `Escuela (${estado.nivel})`, valor: (c) => c.escuela },
+  cesac: { capa: 'salud', titulo: () => 'CeSAC', valor: (c) => c.cesac },
+  hospital: { capa: 'salud', titulo: () => 'Hospital', valor: (c) => c.hospital },
+  plaza: { capa: 'verdes', titulo: () => 'Plaza', valor: (c) => c.plaza },
+  ruido_diurno: { capa: 'ruido', titulo: () => 'Ruido de día', valor: (c) => c.ruido_diurno,
+    texto: (v) => (v.dba == null ? 'Sin celda relevada' : `${v.dba} dBA`) },
+};
+const RASGOS_TEXTO = { patio: 'patio', balcon: 'balcón', luminoso: 'luminoso', contrafrente: 'contrafrente' };
+
+function celdaDistancia(def, aviso) {
+  const v = aviso.cercania && def.valor(aviso.cercania);
+  if (!v || (!('dba' in v) && v.m == null)) return '—';
+  const texto = def.texto ? def.texto(v) : metrosTexto(v.m);
+  return aviso.ubicacion === 'aproximada' ? `${texto} <span class="fuente">aprox.</span>` : texto;
+}
+
+function celdaRasgos(claves, aviso) {
+  if (claves.every((k) => aviso.rasgos?.[k] == null)) return '<span class="fuente">Sin texto</span>';
+  const menciona = claves.filter((k) => aviso.rasgos[k] === 1).map((k) => RASGOS_TEXTO[k]);
+  return menciona.length ? esc(enumerar(menciona)) : '<span class="fuente">No los menciona</span>';
+}
+
+function porMes(aviso) {
+  if (aviso.expensas == null) return `${dinero(aviso.precio, aviso.moneda)} <span class="fuente">+ expensas sin informar</span>`;
+  if (aviso.moneda === 'ARS') return dinero(aviso.precio + aviso.expensas, 'ARS');
+  return `${dinero(aviso.precio, aviso.moneda)} + ${dinero(aviso.expensas, 'ARS')}`;
+}
+
+// Columnas extra de la tabla según las necesidades: [{ titulo, celda(aviso) }].
+function columnasExplorador() {
+  if (!EXPLORADOR || !estado.necesidades.size) return [];
+  const { columnas, capas } = explorador();
+  const extra = Object.entries(COLUMNAS_DISTANCIA)
+    .filter(([clave, def]) => columnas.includes(clave) && capas.includes(def.capa))
+    .map(([, def]) => ({ titulo: def.titulo(), celda: (a) => celdaDistancia(def, a) }));
+  const rasgos = Object.keys(RASGOS_TEXTO).filter((k) => columnas.includes(k));
+  if (rasgos.length) extra.push({ titulo: 'El texto menciona', celda: (a) => celdaRasgos(rasgos, a) });
+  if (columnas.includes('expensas')) {
+    extra.push(estado.operacion === 'alquiler'
+      ? { titulo: 'Por mes', celda: porMes }
+      : { titulo: 'Expensas', celda: (a) => (a.expensas == null ? '<span class="fuente">No informadas</span>' : dinero(a.expensas, 'ARS')) });
+  }
+  return extra;
+}
+
+function renderSegunNecesidades(b) {
+  if (!EXPLORADOR || !estado.necesidades.size) return '';
+  const r = explorador();
+  const nombres = NECESIDADES.filter((n) => estado.necesidades.has(n.clave)).map((n) => n.nombre);
+  const nombreCapa = (c) => CAPAS.find((x) => x.clave === c)?.nombre || c;
+  const origen = (c) => (r.origen[c].includes('manual') ? 'Elegida por vos'
+    : `Sugerida por «${r.origen[c].map((k) => NECESIDADES.find((n) => n.clave === k).nombre).join('» y «')}»`);
+  const filas = r.capas.filter((c) => c !== 'delitos').map((c) => `<dt>${esc(nombreCapa(c))}</dt><dd>${esc(origen(c))}</dd>`);
+  const colectivos = estado.necesidades.has('sin_auto') && b.entorno?.colectivos?.length
+    ? `<dt>Colectivos</dt><dd>${b.entorno.colectivos.length} líneas pasan por el barrio, según recorridos de 2019</dd>` : '';
+  const conCercania = estado.avisos.filter((a) => a.cercania).length;
+  const sinUbicacion = estado.avisos.filter((a) => !a.ubicacion).length;
+  const distancias = r.cercania.length && estado.avisos.length && estado.cercaniaInfo
+    ? `<p class="fuente">${conCercania} de ${estado.avisos.length} ${plural(estado.avisos.length, 'aviso tiene', 'avisos tienen')} distancias en la tabla.
+        ${sinUbicacion ? `${sinUbicacion} sin ubicación publicada ${plural(sinUbicacion, 'queda', 'quedan')} sin distancia.` : ''}
+        ${esc(estado.cercaniaInfo.metodo || '')}</p>` : '';
+  return `<section class="segun" aria-labelledby="titulo-segun">
+      <h2 id="titulo-segun">Según lo que elegiste</h2>
+      <p class="fuente">${esc(enumerar(nombres))}. <button class="boton-texto" type="button" data-abrir-importa>Cambiar</button></p>
+      ${filas.length || colectivos ? `<dl class="hechos">${filas.join('')}${colectivos}</dl>` : ''}
+      ${distancias}
+      ${r.advertencias.length ? `<ul class="segun-avisos">${r.advertencias.map((a) => `<li>${esc(a)}</li>`).join('')}</ul>` : ''}
+    </section>`;
+}
+
 const PRESUPUESTO = { 'venta-USD': 110000, 'alquiler-ARS': 800000, 'alquiler-USD': 900 };
 const VACIO = { type: 'FeatureCollection', features: [] };
 const reducido = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -123,6 +202,7 @@ const estado = {
   formas: null,
   seleccionado: null,
   avisos: [],
+  cercaniaInfo: null,
   capas: new Set(),
   capasDatos: {},
   delitosDatos: null,
@@ -180,7 +260,8 @@ function datosEntorno(e) {
 
 function lineaEntorno(e) {
   const datos = datosEntorno(e);
-  const partes = PREFERENCIAS.filter((p) => estado.prefs.has(p.clave)).map((p) => datos[p.clave]);
+  const elegidas = EXPLORADOR ? new Set(explorador().capas) : estado.prefs;
+  const partes = PREFERENCIAS.filter((p) => elegidas.has(p.clave)).map((p) => datos[p.clave]);
   return partes.length ? `${partes.join('. ')}.` : '';
 }
 
@@ -262,12 +343,14 @@ function renderFicha() {
   }
   const alquiler = estado.operacion === 'alquiler';
   const visibles = estado.verTodos ? estado.avisos : estado.avisos.slice(0, 25);
+  const extra = columnasExplorador();
   const filas = visibles.map((a) => `<tr>
       <td>${dinero(a.precio, a.moneda)}</td>
       <td>${a.superficie} m²</td>
       <td>${a.ambientes}</td>
       <td>${a.cocheras == null ? 'No informada' : a.cocheras === 0 ? 'Sin cochera' : a.cocheras}</td>
       ${alquiler ? `<td>${a.expensas == null ? '—' : dinero(a.expensas, 'ARS')}</td>` : ''}
+      ${extra.map((c) => `<td>${c.celda(a)}</td>`).join('')}
       <td>${a.enlace ? `<a href="${esc(a.enlace)}" target="_blank" rel="noopener">Ver aviso</a>` : 'Ejemplo'}</td>
       <td>${a.pin_utilizable ? `<button class="boton-texto" type="button" data-inmueble="${esc(a.id)}">${estado.delitos.inmueble === a.id ? 'Entorno elegido' : 'Ver registros cerca'}</button>`
         : a.ubicacion ? `<button class="boton-texto" type="button" data-ubicar="${esc(a.id)}" title="Ver en el mapa">Ubicar</button>`
@@ -299,6 +382,7 @@ function renderFicha() {
         <p class="fuente">Datos abiertos de Buenos Aires Data, por barrio oficial. Describen el barrio, no un departamento.
           ${e?.gastronomia ? `Cafés, bares y restaurantes: © colaboradores de OpenStreetMap${e.gastronomia.captura ? `, captura del ${fechaCorta(e.gastronomia.captura)}` : ''}. La cobertura depende de quién mapea cada zona.` : ''}
           <button class="boton-texto" type="button" data-fuentes>Ver fuentes</button></p>` : ''}
+      ${renderSegunNecesidades(b)}
       ${renderParecidos(b.barrio)}
       ${renderLugares(b.barrio)}
       ${estado.modo === 'real' ? `<h2>Localizar estacionamientos</h2>
@@ -316,8 +400,9 @@ function renderFicha() {
         </form><div id="resultado-cocheras" role="status"></div>
         <p class="fuente">Con «Mi ubicación actual», el navegador pide permiso al buscar. La ubicación se usa solo para esa consulta y no se guarda.</p>` : ''}
       ${b.coincidencias ? `<h2>Avisos que encajan</h2>
+        ${extra.length ? `<p class="fuente">Deslizá la tabla hacia la derecha para ver ${enumerar(extra.map((c) => `«${c.titulo}»`))}.</p>` : ''}
         <table class="avisos">
-          <thead><tr><th>Precio publicado</th><th>Cubierta</th><th>Amb.</th><th>Cocheras</th>${alquiler ? '<th>Expensas</th>' : ''}<th><span hidden>Enlace</span></th><th>Mapa</th></tr></thead>
+          <thead><tr><th>Precio publicado</th><th>Cubierta</th><th>Amb.</th><th>Cocheras</th>${alquiler ? '<th>Expensas</th>' : ''}${extra.map((c) => `<th>${esc(c.titulo)}</th>`).join('')}<th><span hidden>Enlace</span></th><th>Mapa</th></tr></thead>
           <tbody>${filas}</tbody>
         </table>
         ${estado.avisos.length > visibles.length ? `<p class="fuente">Se muestran los ${visibles.length} más baratos de ${estado.avisos.length}. <button class="boton-texto" type="button" id="ver-todos">Ver todos</button></p>` : ''}
@@ -1058,8 +1143,7 @@ function mostrarAvisoMapa(texto) {
 
 // Capas al elegir un barrio. Sin el explorador, las de «Lo que me importa», como siempre.
 function capasIniciales() {
-  if (!EXPLORADOR) return new Set(estado.prefs);
-  return new Set(resolverNecesidades(estado.necesidades, { encendidas: estado.prefs, apagadas: estado.apagadas }).capas);
+  return new Set(EXPLORADOR ? explorador().capas : estado.prefs);
 }
 
 /* Prende o apaga una capa desde los chips del mapa. Con el explorador, la decisión se recuerda: prender la suma a
@@ -1202,8 +1286,17 @@ async function cargarBarrios() {
 async function cargarAvisos() {
   if (!estado.seleccionado) return;
   const barrio = estado.seleccionado;
-  const datos = await api(`/api/barrios/${encodeURIComponent(barrio)}/avisos?${consulta()}`);
-  if (barrio === estado.seleccionado) estado.avisos = datos.avisos;
+  const pedido = consulta();
+  if (EXPLORADOR && estado.necesidades.size) {
+    const { cercania } = explorador();
+    cercania.forEach((c) => pedido.append('capas', c));
+    if (cercania.includes('escuelas')) pedido.set('nivel', estado.nivel);
+  }
+  const datos = await api(`/api/barrios/${encodeURIComponent(barrio)}/avisos?${pedido}`);
+  if (barrio === estado.seleccionado) {
+    estado.avisos = datos.avisos;
+    estado.cercaniaInfo = datos.cercania || null;
+  }
 }
 
 async function seleccionar(nombre) {
@@ -1278,12 +1371,52 @@ function sincronizarControles() {
   ambientes.value = valor;
   $('#nivel').value = estado.nivel;
   $('#franja-demo').hidden = estado.modo !== 'demo';
-  $('#preferencias').innerHTML = `<legend hidden>Lo que me importa</legend>${PREFERENCIAS.map((p) => `
-    <label><input type="checkbox" value="${p.clave}"${estado.prefs.has(p.clave) ? ' checked' : ''}>${esc(p.nombre)}</label>`).join('')}`;
+  // Capas que alguna necesidad elegida sugiere, aunque estén apagadas a mano.
+  const sugeridas = new Set(EXPLORADOR ? NECESIDADES.filter((n) => estado.necesidades.has(n.clave)).flatMap((n) => n.capas) : []);
+  $('#preferencias').innerHTML = `<legend ${EXPLORADOR ? 'class="importa-titulo"' : 'hidden'}>${EXPLORADOR ? 'Capas del mapa' : 'Lo que me importa'}</legend>${PREFERENCIAS.map((p) => `
+    <label><input type="checkbox" value="${p.clave}"${estado.prefs.has(p.clave) ? ' checked' : ''}>${esc(p.nombre)}${
+      sugeridas.has(p.clave) && !estado.prefs.has(p.clave) ? `<small class="sugerida">${estado.apagadas.has(p.clave) ? 'sugerida, apagada' : 'sugerida'}</small>` : ''}</label>`).join('')}`;
   $('#nivel-campo').hidden = !estado.prefs.has('escuelas');
-  const elegidas = estado.prefs.size;
+  renderResumenNecesidades();
+  const elegidas = estado.prefs.size + estado.necesidades.size;
   $('#abrir-importa').textContent = elegidas ? `Lo que me importa: ${elegidas}` : 'Lo que me importa';
   $('#abrir-importa').classList.toggle('con-eleccion', elegidas > 0);
+}
+
+// Casillas de necesidades. Se dibujan al iniciar y al restablecer, no en cada cambio, para no perder el foco.
+function renderNecesidades() {
+  // Sin el interruptor no se toca nada; con una página vieja en caché tampoco hay casillas que dibujar.
+  const contenedor = $('#necesidades');
+  if (!EXPLORADOR || !contenedor) return;
+  contenedor.hidden = false;
+  $('#necesidades-pie').hidden = false;
+  contenedor.innerHTML = `<legend class="importa-titulo">Lo que necesitás</legend>${NECESIDADES.map((n) => `
+    <label class="necesidad"><input type="checkbox" value="${n.clave}"${estado.necesidades.has(n.clave) ? ' checked' : ''}>
+      <span>${esc(n.nombre)}<small>${esc(n.descripcion)}</small></span></label>`).join('')}`;
+}
+
+function renderResumenNecesidades() {
+  if (!EXPLORADOR || !$('#necesidades-resumen')) return;
+  const r = explorador();
+  const nombres = r.capas.map((c) => CAPAS.find((x) => x.clave === c)?.nombre || c);
+  const columnas = columnasExplorador().map((c) => c.titulo);
+  $('#necesidades-resumen').textContent = estado.necesidades.size
+    ? `En el mapa: ${nombres.length ? enumerar(nombres) : 'ninguna capa'}.`
+      + (columnas.length ? ` En la tabla de avisos: ${enumerar(columnas)}.` : '') + ' No se oculta ningún aviso.'
+    : 'Elegí una o más para ver capas y datos relacionados. No filtran avisos ni arman puntajes.';
+}
+
+async function aplicarNecesidades() {
+  guardar();
+  sincronizarControles();
+  if (!estado.seleccionado) { renderPanel(); return; }
+  const delitos = estado.capas.has('delitos');
+  estado.capas = capasIniciales();
+  if (delitos) estado.capas.add('delitos');
+  renderChips();
+  actualizarCapas();
+  try { await cargarAvisos(); } catch { /* La ficha sigue con los avisos anteriores. */ }
+  renderPanel();
 }
 
 function enteroDe(texto) {
@@ -1520,6 +1653,25 @@ function conectarEventos() {
     cargarParecidos();
   });
   $('#nivel').addEventListener('change', (e) => { cambiarNivel(e.target.value); });
+  $('#necesidades')?.addEventListener('change', (e) => {
+    const clave = e.target.value;
+    if (e.target.checked) estado.necesidades.add(clave); else estado.necesidades.delete(clave);
+    aplicarNecesidades();
+  });
+  $('#restablecer-necesidades')?.addEventListener('click', () => {
+    estado.necesidades.clear();
+    estado.apagadas.clear();
+    estado.prefs = new Set(['subte', 'verdes']);
+    renderNecesidades();
+    aplicarNecesidades();
+  });
+  $('#contenido').addEventListener('click', (e) => {
+    if (!e.target.closest('[data-abrir-importa]')) return;
+    e.stopPropagation();
+    $('#importa').hidden = false;
+    $('#abrir-importa').setAttribute('aria-expanded', 'true');
+    $('#necesidades input')?.focus();
+  });
 
   let consultaEstacionamientos = 0;
   $('#contenido').addEventListener('submit', async (e) => {
@@ -1680,6 +1832,9 @@ function cambiarNivel(nivel) {
   renderPanel();
   actualizarCapas();
   if (estado.prefs.has('escuelas')) cargarParecidos();
+  if (EXPLORADOR && estado.seleccionado && explorador().cercania.includes('escuelas')) {
+    cargarAvisos().then(renderPanel).catch(() => {});
+  }
 }
 
 async function crearAlerta(boton) {
@@ -1769,6 +1924,7 @@ async function abrirFuentes() {
 }
 
 async function iniciar() {
+  renderNecesidades();
   sincronizarControles();
   conectarEventos();
   renderChips();

@@ -1,83 +1,90 @@
 {
-  "version": 1,
+  "version": 2,
   "skills": {
     "competitive-research-snapshot": {
       "source": "deanpeters/Product-Manager-Skills",
       "sourceType": "github",
       "skillPath": "skills/competitive-research-snapshot/SKILL.md",
-      "computedHash": "a052be2f3df095e24b7eda9c57f80373c22133fe47dee952df23462243bd2e2c"
+      "computedHash": ""
     },
     "discovery-interview-prep": {
       "source": "deanpeters/Product-Manager-Skills",
       "sourceType": "github",
       "skillPath": "skills/discovery-interview-prep/SKILL.md",
-      "computedHash": "32e2a593858a5786bedc2fbe0f391131d70c1a574282f73b22346b9b09284796"
+      "computedHash": ""
     },
     "finance-based-pricing-advisor": {
       "source": "deanpeters/Product-Manager-Skills",
       "sourceType": "github",
       "skillPath": "skills/finance-based-pricing-advisor/SKILL.md",
-      "computedHash": "3de699dafb6fe42de253d1ac32640c38c5a100fc8cbb7713fb39c64c7135fc4a"
+      "computedHash": ""
     },
     "frontend-design": {
       "source": "anthropics/skills",
       "sourceType": "github",
       "skillPath": "skills/frontend-design/SKILL.md",
-      "computedHash": "106acf230014cbb43ca34e6410371321b56ca742f9ee0442e8ec05bf02eb0384"
+      "computedHash": ""
     },
     "jobs-to-be-done": {
       "source": "deanpeters/Product-Manager-Skills",
       "sourceType": "github",
       "skillPath": "skills/jobs-to-be-done/SKILL.md",
-      "computedHash": "cd9564cd741fea6e15eaff93472c0a37f8c74922865512c8a641be43a8b7fa7d"
+      "computedHash": ""
+    },
+    "looker-studio-bigquery": {
+      "source": "akillness/jeo-skills",
+      "commit": "c68c8d6de324d044223e0e1eb491a0086f6b8ca3",
+      "sourceType": "github",
+      "skillPath": ".agent-skills/looker-studio-bigquery/SKILL.md",
+      "computedHash": "57973f859804eefc4f8dc377c59ed3f44cdb997d6c04cb845730eb5d771c2caf"
     },
     "market-landscape-scan": {
       "source": "deanpeters/Product-Manager-Skills",
       "sourceType": "github",
       "skillPath": "skills/market-landscape-scan/SKILL.md",
-      "computedHash": "4a220f00219aa2dc5c75b44ab5a5a49d9e08d17040b1a6268e901eb27e310ab1"
+      "computedHash": ""
     },
     "opportunity-solution-tree": {
       "source": "deanpeters/Product-Manager-Skills",
       "sourceType": "github",
       "skillPath": "skills/opportunity-solution-tree/SKILL.md",
-      "computedHash": "2d03c50572e344f600feeffacc34fb47444d2f59b3f12f49f4432a73a8ab90cc"
+      "computedHash": ""
     },
     "positioning-statement": {
       "source": "deanpeters/Product-Manager-Skills",
       "sourceType": "github",
       "skillPath": "skills/positioning-statement/SKILL.md",
-      "computedHash": "57d7ed2cdfd4fedaa4f75335c0d57e24242c0e687aaf73386924218ad14c8b68"
+      "computedHash": ""
     },
     "prd-development": {
       "source": "deanpeters/Product-Manager-Skills",
       "sourceType": "github",
       "skillPath": "skills/prd-development/SKILL.md",
-      "computedHash": "5a9ea4305e0218b1fd927a030c174ac418b5a47eddb93ff988e8ef625f90dd01"
+      "computedHash": ""
     },
     "pricing-strategy": {
       "source": "sickn33/agentic-awesome-skills",
       "sourceType": "github",
       "skillPath": "skills/pricing-strategy/SKILL.md",
-      "computedHash": "48073b412344cdf2f37a8b85306b3c011b826bee7e7bcdef9bb6c28a3a94f7eb"
+      "computedHash": ""
     },
     "problem-statement": {
       "source": "deanpeters/Product-Manager-Skills",
       "sourceType": "github",
       "skillPath": "skills/problem-statement/SKILL.md",
-      "computedHash": "993839bf1e0b085c4ea0764fcf016dae045cb08758954b4668ce2e741db982e2"
+      "computedHash": ""
     },
     "proto-persona": {
       "source": "deanpeters/Product-Manager-Skills",
       "sourceType": "github",
       "skillPath": "skills/proto-persona/SKILL.md",
-      "computedHash": "b28bf9fae64d149f7eab2eaee75edc9006bbdad03a8b513daa440d066be32f27"
+      "computedHash": ""
     },
     "tam-sam-som-calculator": {
       "source": "deanpeters/Product-Manager-Skills",
       "sourceType": "github",
       "skillPath": "skills/tam-sam-som-calculator/SKILL.md",
-      "computedHash": "beeb71274f7557b0426e9de8a50ca528a910d7687645263f380083021286d84c"
+      "computedHash": ""
     }
   }
 }

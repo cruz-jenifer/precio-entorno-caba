@@ -9,7 +9,7 @@ despliegue porque el autor del commit no es miembro del proyecto.
 - Código: lo confirmado en HEAD (`git archive`), no el árbol de trabajo, para no publicar cambios a medias.
   Se suma `precio_entorno/vercel_app.py` del disco por si todavía no se confirmó.
 - Datos: las bases reales (copiadas con la API de respaldo de SQLite, consistentes aunque estén abiertas),
-  las capas del mapa, los CSV anuales del Mapa del Delito y el radar. No se copian `.env`, crudos de
+  las capas del mapa, el catálogo de cocheras, los CSV anuales del Mapa del Delito y el radar. No se copian `.env`, crudos de
   captura ni la app de Streamlit.
 - Conserva `.vercel/`, donde la CLI guarda a qué proyecto está vinculada la carpeta.
 
@@ -32,6 +32,7 @@ CODE = ('precio_entorno', 'web', 'data/fixtures')
 DATA = {
     'data/processed/entorno': '*',
     'data/local/radar': '**/*',
+    'data/local': 'cocheras.json',  # catálogo autorizado de cocheras mensuales (docs/cocheras.md)
     'data/raw': 'delitos_20[0-9][0-9].csv',
 }
 BASES = ('real.sqlite3', 'real-alquiler.sqlite3')
@@ -40,7 +41,7 @@ PYPROJECT = '''[project]
 name = "precio-entorno-caba"
 version = "0.1.0"
 requires-python = ">=3.12"
-dependencies = ["fastapi>=0.115,<1", "numpy>=1.26,<3", "matplotlib>=3.8,<4"]
+dependencies = ["fastapi>=0.115,<1", "numpy>=1.26,<3", "matplotlib>=3.8,<4", "httpx>=0.27,<1"]
 
 [tool.vercel]
 entrypoint = "precio_entorno.vercel_app:app"

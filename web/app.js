@@ -943,6 +943,11 @@ async function prepararMapa() {
   estado.formas = formas;
   mapa.resize();
   if (!estado.seleccionado) encuadrar(null, true);
+  // Del mapa base se ocultan edificios, números de calle y lugares: no aportan a elegir barrio y son lo que
+  // más cuesta dibujar al mover el mapa (medido en docs/ui-rediseno.md).
+  for (const capa of mapa.getStyle().layers) {
+    if (/^(poi|building|housenumber)/.test(capa.id)) mapa.setLayoutProperty(capa.id, 'visibility', 'none');
+  }
   const simbolo = mapa.getStyle().layers.find((capa) => capa.type === 'symbol')?.id;
   mapa.addSource('barrios', { type: 'geojson', data: formas, promoteId: 'barrio' });
   for (const id of ['delitos', 'radios', 'inmueble', 'colectivo', ...CAPAS_MAPA.map((c) => c.clave), 'avisos']) {
@@ -962,11 +967,11 @@ async function prepararMapa() {
   // Ruido: un brillo suave por celda, solo donde la calle llega al umbral (filtro en actualizarCapas).
   mapa.addLayer({ id: 'ruido', type: 'circle', source: 'ruido', filter: ['>=', ['get', 'tipico'], 70],
     paint: { 'circle-color': escalaRuido, 'circle-opacity': 0.42, 'circle-blur': 0.85,
-      'circle-radius': ['interpolate', ['exponential', 2], ['zoom'], 12, 9, 16, 150] } }, simbolo);
+      'circle-radius': ['interpolate', ['exponential', 2], ['zoom'], 12, 9, 15, 34, 17, 80] } }, simbolo);
   // Delitos: el mismo brillo, en gris azulado, sobre las zonas del barrio con más hechos registrados.
   mapa.addLayer({ id: 'delitos', type: 'circle', source: 'delitos',
     paint: { 'circle-color': DELITOS[4], 'circle-opacity': 0.34, 'circle-blur': 0.9,
-      'circle-radius': ['interpolate', ['exponential', 2], ['zoom'], 12, 15, 16, 260] } }, simbolo);
+      'circle-radius': ['interpolate', ['exponential', 2], ['zoom'], 12, 15, 15, 64, 17, 150] } }, simbolo);
   mapa.addLayer({ id: 'riesgo', type: 'fill', source: 'riesgo',
     paint: { 'fill-color': COLOR.riesgo, 'fill-opacity': 0.26 } }, simbolo);
   mapa.addLayer({ id: 'riesgo-borde', type: 'line', source: 'riesgo',
@@ -1036,7 +1041,13 @@ async function prepararMapa() {
   const puntos = ['subte', 'salud', 'escuelas', 'estacionamiento', 'clubes', 'gimnasios', 'ecobici', 'bibliotecas', 'rampas'];
   const conTexto = [...puntos, 'colectivo', 'colectivos', 'ciclovias', 'verdes', 'riesgo', 'ruido', 'delitos'];
 
+  let movimiento = null;
   mapa.on('mousemove', (evento) => {
+    if (!movimiento) requestAnimationFrame(() => { const e = movimiento; movimiento = null; alMoverMouse(e); });
+    movimiento = evento;
+  });
+  const alMoverMouse = (evento) => {
+    if (!evento) return;
     const barrio = mapa.queryRenderedFeatures(evento.point, { layers: ['barrios-relleno'] })[0];
     marcarHover(barrio ? barrio.id : null, 'mapa');
     const pin = mapa.queryRenderedFeatures(evento.point, { layers: ['avisos'] })[0];
@@ -1051,7 +1062,7 @@ async function prepararMapa() {
     mapa.getCanvas().style.cursor = barrio || elemento ? 'pointer' : '';
     if (texto) popup.setLngLat(evento.lngLat).setHTML(esc(texto)).addTo(mapa);
     else popup.remove();
-  });
+  };
   mapa.on('mouseout', () => { popup.remove(); marcarHover(null, 'mapa'); });
   mapa.on('click', (evento) => {
     const pin = mapa.queryRenderedFeatures(evento.point, { layers: ['avisos'] })[0];
@@ -1190,24 +1201,28 @@ function limitesCiudad() {
   return [[Math.min(...lons), Math.min(...lats)], [Math.max(...lons), Math.max(...lats)]];
 }
 
+// Lo que tapa el mapa: la barra de filtros arriba, la hoja a la izquierda (abajo en celular) y las capas abajo.
+function margenesLibres() {
+  const alto = mapa.getContainer().clientHeight;
+  const barra = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--barra-real')) || 60;
+  const hoja = document.querySelector('#panel')?.getBoundingClientRect();
+  if (celular()) {
+    return { top: barra + 30, bottom: Math.round(alto - (hoja?.top ?? alto * 0.54)) + 70, left: 24, right: 24 };
+  }
+  return { top: barra + 40, bottom: 90, left: Math.round((hoja?.right ?? 460) + 24), right: 70 };
+}
+
 function encuadrar(nombre, inmediato = false) {
   if (!estado.formas) return;
-  const alto = mapa.getContainer().clientHeight;
-  const abajo = celular() ? Math.round(alto * 0.44) : 60;
-  const arriba = celular() ? 110 : 70;
-  const duracion = reducido || inmediato ? 0 : 900;
-  const relleno = { top: nombre ? arriba + 60 : arriba, bottom: abajo, left: 40, right: 60 };
-  mapa.fitBounds(nombre ? limites(nombre) : limitesCiudad(), { padding: relleno, duration: duracion });
+  const duracion = reducido || inmediato ? 0 : 700;
+  mapa.fitBounds(nombre ? limites(nombre) : limitesCiudad(), { padding: margenesLibres(), duration: duracion });
 }
 
 function encuadrarPin(pin) {
   const dlat = 1100 / 111320;
   const dlon = dlat / Math.cos(pin.lat * Math.PI / 180);
-  const alto = mapa.getContainer().clientHeight;
-  const controles = document.querySelector('.mapa-arriba').getBoundingClientRect().height;
   mapa.fitBounds([[pin.lon - dlon, pin.lat - dlat], [pin.lon + dlon, pin.lat + dlat]], {
-    padding: { top: Math.min(controles + 25, alto * 0.3), bottom: celular() ? alto * 0.44 : 50, left: 30, right: 45 },
-    duration: reducido ? 0 : 500,
+    padding: margenesLibres(), duration: reducido ? 0 : 500,
   });
 }
 

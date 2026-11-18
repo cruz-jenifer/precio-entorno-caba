@@ -4,6 +4,7 @@ Se ejecuta con `python -m precio_entorno.api` y sirve la página de `web/` en ht
 """
 
 import argparse
+import json
 import math
 import re
 import secrets
@@ -13,7 +14,7 @@ from pathlib import Path
 from statistics import median
 from typing import Literal
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
@@ -82,6 +83,7 @@ def create_app(demo_path=None, real_path=None, entorno_dir=None, raw_dir=None, w
     web_dir = Path(web_dir or ROOT / 'web')
     radar_dir = Path(radar_dir or radar.RADAR_DIR)
     cache = {}
+    layer_cache = {}  # (versión, capa, barrio, variante) → GeoJSON listo para el mapa
     interprete = interprete if interprete is not None else preferencias.Interprete.from_env(ROOT / 'data/local')
     lugares = lugares if lugares is not None else lugares_google.Lugares.from_env(ROOT / 'data/local')
     app = FastAPI(title='Precio y Entorno CABA', docs_url='/api/docs', openapi_url='/api/openapi.json')
@@ -298,46 +300,62 @@ def create_app(demo_path=None, real_path=None, entorno_dir=None, raw_dir=None, w
         if data is None:
             raise HTTPException(503, 'Las capas no se generaron. Ejecutá python -m precio_entorno.entorno.')
         bbox = entorno.bbox_of(data['barrios'], barrio)
-        points, out = data['puntos'], {}
+        points = data['puntos']
         for name in capas:
             if name not in LAYER_KEYS:
                 raise HTTPException(422, f'Capa desconocida: {name}.')
-        if 'subte' in capas:
-            out['subte'] = collection(point_features(points['subte'], 'subte', bbox))
-        if 'escuelas' in capas:
-            out['escuelas'] = collection(point_features(
-                [s for s in points['escuelas'] if nivel in s['levels']], 'escuela', bbox))
-        if 'salud' in capas:
-            out['salud'] = collection(point_features(points['cesac'], 'cesac', bbox)
-                                      + point_features(points['hospitales'], 'hospital', bbox))
-        for layer, kind in CITYWIDE.items():
-            if layer in capas:
+
+        def build(name):
+            out = {}
+            if name == 'subte':
+                out['subte'] = collection(point_features(points['subte'], 'subte', bbox))
+            if name == 'escuelas':
+                out['escuelas'] = collection(point_features(
+                    [s for s in points['escuelas'] if nivel in s['levels']], 'escuela', bbox))
+            if name == 'salud':
+                out['salud'] = collection(point_features(points['cesac'], 'cesac', bbox)
+                                          + point_features(points['hospitales'], 'hospital', bbox))
+            if name in CITYWIDE:
                 # Toda la ciudad: el mapa los muestra fuera del barrio al desplazarse.
-                features = point_features(points.get(layer, []), kind, None)
-                out[layer] = {**collection(features), 'disponible': layer in points}
-        if 'colectivos' in capas:
-            lines = data.get('colectivos')
-            out['colectivos'] = {**collection(colectivos.barrio_features(lines or {}, barrio, bbox)),
-                                 'disponible': lines is not None}
-        if 'verdes' in capas:
-            out['verdes'] = entorno.features_in(data['verdes'], bbox)
-        for name, kind in (('ecobici', 'ecobici'), ('bibliotecas', 'biblioteca'), ('rampas', 'rampa')):
-            if name in capas:
+                features = point_features(points.get(name, []), CITYWIDE[name], None)
+                out[name] = {**collection(features), 'disponible': name in points}
+            if name == 'colectivos':
+                lines = data.get('colectivos')
+                out['colectivos'] = {**collection(colectivos.barrio_features(lines or {}, barrio, bbox)),
+                                     'disponible': lines is not None}
+            if name == 'verdes':
+                out['verdes'] = entorno.features_in(data['verdes'], bbox)
+            if name in ('ecobici', 'bibliotecas', 'rampas'):
+                kind = {'ecobici': 'ecobici', 'bibliotecas': 'biblioteca', 'rampas': 'rampa'}[name]
                 out[name] = {**collection(point_features(points.get(name, []), kind, bbox)), 'disponible': name in points}
-        if 'ciclovias' in capas:
-            lanes = data.get('ciclovias')
-            out['ciclovias'] = {**(entorno.features_in(lanes, bbox) if lanes else collection([])),
-                                'disponible': lanes is not None}
-        if 'riesgo' in capas:
-            out['riesgo'] = entorno.features_in(data['riesgo_hidrico'], bbox)
-        if 'ruido' in capas:
-            # Solo las celdas asignadas al barrio, como punto en su centro: el mapa dibuja un brillo por celda.
-            out['ruido'] = {**collection([
-                {'type': 'Feature', 'geometry': {'type': 'Point', 'coordinates': [lon, lat]},
-                 'properties': {'tipico': typical, 'maximo': top}}
-                for lon, lat, typical, top, name in data['ruido'][ruido] if name == barrio]),
-                'celda_m': data['ruido']['celda_m'], 'umbral_dba': data['ruido']['umbral_dba'][ruido]}
-        return out
+            if name == 'ciclovias':
+                lanes = data.get('ciclovias')
+                out['ciclovias'] = {**(entorno.features_in(lanes, bbox) if lanes else collection([])),
+                                    'disponible': lanes is not None}
+            if name == 'riesgo':
+                out['riesgo'] = entorno.features_in(data['riesgo_hidrico'], bbox)
+            if name == 'ruido':
+                # Solo las celdas asignadas al barrio, como punto en su centro: el mapa dibuja un brillo por celda.
+                out['ruido'] = {**collection([
+                    {'type': 'Feature', 'geometry': {'type': 'Point', 'coordinates': [lon, lat]},
+                     'properties': {'tipico': typical, 'maximo': top}}
+                    for lon, lat, typical, top, cell_barrio in data['ruido'][ruido] if cell_barrio == barrio]),
+                    'celda_m': data['ruido']['celda_m'], 'umbral_dba': data['ruido']['umbral_dba'][ruido]}
+            return out[name]
+
+        # Las capas no cambian entre pedidos: se guardan por versión de las capas, barrio y variante.
+        out = {}
+        for name in capas:
+            key = ('capa', cache.get('stamp'), name, None if name in CITYWIDE else barrio,
+                   nivel if name == 'escuelas' else None, ruido if name == 'ruido' else None)
+            if key not in layer_cache:
+                if len(layer_cache) >= 300:
+                    layer_cache.pop(next(iter(layer_cache)))
+                # Se guarda ya convertida a JSON: convertir cientos de KB en cada pedido era lo que más tardaba.
+                layer_cache[key] = json.dumps(build(name), ensure_ascii=False, separators=(',', ':'))
+            out[name] = layer_cache[key]
+        body = '{' + ','.join(f'{json.dumps(name)}:{texto}' for name, texto in out.items()) + '}'
+        return Response(content=body, media_type='application/json')
 
     @app.get('/api/delitos')
     def crimes(barrio: str, periodo: str | None = None, tipo: str | None = None,

@@ -493,6 +493,47 @@ def latest_gyms(raw_dir):
     return found[-1] if found else None
 
 
+# Tolerancia para simplificar los polígonos de plazas: imperceptible a escala de barrio y aligera el mapa.
+SIMPLIFICAR_VERDES_M = 1.5
+
+
+def simplify_ring(ring, tolerance_m=SIMPLIFICAR_VERDES_M):
+    """Douglas-Peucker sobre un anillo cerrado, en metros planos. Devuelve el anillo original si quedaría degenerado."""
+    points = np.asarray(ring, float)
+    n = len(points)
+    if n <= 5:
+        return ring
+    scale = 111_320 * math.cos(math.radians(points[:, 1].mean()))
+    xy = np.column_stack([points[:, 0] * scale, points[:, 1] * 111_320])
+    keep = np.zeros(n, bool)
+    keep[0] = keep[-1] = True
+    # El anillo empieza y termina en el mismo punto: se parte en el vértice más lejano a ese punto.
+    far = int(np.argmax(np.hypot(*(xy - xy[0]).T)))
+    keep[far] = True
+    stack = [(0, far), (far, n - 1)]
+    while stack:
+        i, j = stack.pop()
+        if j <= i + 1:
+            continue
+        a, b = xy[i], xy[j]
+        segment = b - a
+        length = math.hypot(*segment)
+        inner = xy[i + 1:j] - a
+        dist = (np.abs(segment[0] * inner[:, 1] - segment[1] * inner[:, 0]) / length if length
+                else np.hypot(*inner.T))
+        k = int(np.argmax(dist))
+        if dist[k] > tolerance_m:
+            keep[i + 1 + k] = True
+            stack += [(i, i + 1 + k), (i + 1 + k, j)]
+    out = [ring[m] for m in np.flatnonzero(keep)]
+    return out if len(out) >= 4 else ring
+
+
+def simplify_polygons(geometry):
+    coords = [[simplify_ring(ring) for ring in polygon] for polygon in geometry['coordinates']]
+    return {'type': geometry['type'], 'coordinates': coords}
+
+
 def green_spaces(collection):
     features = []
     for feature in collection['features']:
@@ -500,14 +541,17 @@ def green_spaces(collection):
         kind = (props.get('clasificac') or '').upper()
         if kind not in PARK_CLASSES or not feature.get('geometry'):
             continue
-        geometry = rounded(feature['geometry'])
-        if not geometry['coordinates']:
+        full = rounded(feature['geometry'])
+        if not full['coordinates']:
             continue
+        geometry = simplify_polygons(full)
         area = props.get('area') or 0
         name = props.get('nombre') or kind.capitalize()
         features.append({'type': 'Feature', 'geometry': geometry, 'properties': {
             'name': name, 'kind': kind.capitalize(), 'area_m2': round(area),
-            'tooltip': f'{name} · {kind.capitalize()} · {area / 10_000:.2f} ha'}})
+            'tooltip': f'{name} · {kind.capitalize()} · {area / 10_000:.2f} ha'},
+            # Centro del polígono sin simplificar: el barrio no depende de cuántos vértices se dibujan.
+            '_centro': np.asarray(full['coordinates'][0][0]).mean(axis=0)})
     return features
 
 
@@ -640,7 +684,7 @@ def convert(poi_dir, entorno_dir, target, downloaded=None, osm_dir=None, gyms_pa
         items[:] = [item for item in items if item['barrio']]
 
     greens = green_spaces(read(path['verdes']))
-    centers = [np.asarray(f['geometry']['coordinates'][0][0]).mean(axis=0) for f in greens]
+    centers = [f.pop('_centro') for f in greens]
     for feature, name in zip(greens, barrios.of(centers)):
         feature['properties']['barrio'] = name
     greens = [f for f in greens if f['properties']['barrio']]

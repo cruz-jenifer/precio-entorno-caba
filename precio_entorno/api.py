@@ -331,11 +331,12 @@ def create_app(demo_path=None, real_path=None, entorno_dir=None, raw_dir=None, w
         if 'riesgo' in capas:
             out['riesgo'] = entorno.features_in(data['riesgo_hidrico'], bbox)
         if 'ruido' in capas:
-            size = data['ruido']['celda_m']
-            out['ruido'] = collection([
-                {'type': 'Feature', 'geometry': square(lon, lat, size),
+            # Solo las celdas asignadas al barrio, como punto en su centro: el mapa dibuja un brillo por celda.
+            out['ruido'] = {**collection([
+                {'type': 'Feature', 'geometry': {'type': 'Point', 'coordinates': [lon, lat]},
                  'properties': {'tipico': typical, 'maximo': top}}
-                for lon, lat, typical, top, _ in data['ruido'][ruido] if entorno.in_bbox(lon, lat, bbox)])
+                for lon, lat, typical, top, name in data['ruido'][ruido] if name == barrio]),
+                'celda_m': data['ruido']['celda_m'], 'umbral_dba': data['ruido']['umbral_dba'][ruido]}
         return out
 
     @app.get('/api/delitos')

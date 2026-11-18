@@ -33,7 +33,7 @@ const NOTAS = {
   verdes: 'Plazas, parques, jardines y paseos. No incluye canteros ni plazoletas.',
   escuelas: 'Estar cerca no asegura una vacante. Consultá cada escuela.',
   salud: 'Estar cerca no asegura turnos.',
-  ruido: 'Nivel exterior típico por celda de 100 m, medido sobre todo en calles. No describe el interior de un departamento.',
+  ruido: 'Se marcan solo las celdas de 100 m del barrio con nivel exterior típico de 70 dBA o más de día (65 de noche), medido sobre todo en calles. No describe el interior de un departamento.',
   riesgo: 'Áreas de prevención publicadas en 2020. Si una dirección cae dentro, conviene preguntarlo en la visita.',
   estacionamiento: 'Inventario oficial publicado en 2021, sin fecha de relevamiento informada. Confirmá que el garaje siga funcionando y consultá cupos y abonos mensuales.',
   clubes: 'Clubes de barrio y polideportivos del listado de la Ciudad. Consultá actividades, cuotas y horarios con cada club.',
@@ -44,7 +44,7 @@ const NOTAS = {
   bibliotecas: 'Bibliotecas de la Red de la Ciudad, incluidas las populares (listado de marzo de 2025). Confirmá horarios y servicios con cada una.',
   rampas: 'Rampas registradas en obras de 2011 a 2016 (BA Data), ubicadas por dirección. No es un inventario: que una esquina no tenga punto no '
     + 'significa que no tenga rampa, y una rampa registrada pudo haber cambiado. No certifica recorridos accesibles.',
-  delitos: 'Hechos registrados por celda de 200 m. Más circulación puede concentrar más eventos y existe subregistro. No equivalen a la probabilidad individual de victimización.',
+  delitos: 'Se marcan las zonas del barrio con más hechos registrados: el 20 % de las celdas de 200 m con más hechos en el año elegido, o las que se repiten entre años. Hechos registrados por celda de 200 m. Más circulación puede concentrar más eventos y existe subregistro. No equivalen a la probabilidad individual de victimización.',
 };
 /* Explorador de necesidades (docs/plan-explorador-necesidades.md). Apagado por defecto: se prueba con
    ?explorador=1. Cada necesidad sugiere capas y columnas; no filtra avisos ni arma puntajes. */
@@ -959,11 +959,14 @@ async function prepararMapa() {
     },
   }, simbolo);
   const escalaRuido = ['step', ['get', 'tipico'], RUIDO[0][1], ...RUIDO.slice(1).flat()];
-  mapa.addLayer({ id: 'ruido', type: 'fill', source: 'ruido',
-    paint: { 'fill-color': escalaRuido, 'fill-opacity': ['case', ['<', ['get', 'tipico'], 55], 0.3, 0.55] } }, simbolo);
-  mapa.addLayer({ id: 'delitos', type: 'fill', source: 'delitos',
-    paint: { 'fill-color': ['step', ['get', 'paso'], DELITOS[0], 1, DELITOS[1], 2, DELITOS[2], 3, DELITOS[3], 4, DELITOS[4]],
-      'fill-opacity': ['interpolate', ['linear'], ['get', 'paso'], 0, 0.5, 4, 0.82] } }, simbolo);
+  // Ruido: un brillo suave por celda, solo donde la calle llega al umbral (filtro en actualizarCapas).
+  mapa.addLayer({ id: 'ruido', type: 'circle', source: 'ruido', filter: ['>=', ['get', 'tipico'], 70],
+    paint: { 'circle-color': escalaRuido, 'circle-opacity': 0.42, 'circle-blur': 0.85,
+      'circle-radius': ['interpolate', ['exponential', 2], ['zoom'], 12, 9, 16, 150] } }, simbolo);
+  // Delitos: el mismo brillo, en gris azulado, sobre las zonas del barrio con más hechos registrados.
+  mapa.addLayer({ id: 'delitos', type: 'circle', source: 'delitos',
+    paint: { 'circle-color': DELITOS[4], 'circle-opacity': 0.34, 'circle-blur': 0.9,
+      'circle-radius': ['interpolate', ['exponential', 2], ['zoom'], 12, 15, 16, 260] } }, simbolo);
   mapa.addLayer({ id: 'riesgo', type: 'fill', source: 'riesgo',
     paint: { 'fill-color': COLOR.riesgo, 'fill-opacity': 0.26 } }, simbolo);
   mapa.addLayer({ id: 'riesgo-borde', type: 'line', source: 'riesgo',
@@ -1240,6 +1243,7 @@ async function actualizarCapas() {
   }
   if (barrio !== estado.seleccionado) return;
   for (const c of fijas) mapa.getSource(c)?.setData(estado.capas.has(c) ? estado.capasDatos[claveCapa(c)] || VACIO : VACIO);
+  if (mapa.getLayer('ruido')) mapa.setFilter('ruido', ['>=', ['get', 'tipico'], estado.ruido === 'diurno' ? 70 : 65]);
   const delitos = estado.capas.has('delitos') && estado.delitosDatos?.disponible ? estado.delitosDatos.celdas : VACIO;
   mapa.getSource('delitos')?.setData(delitos);
   const d = estado.capas.has('delitos') && estado.delitosDatos?.disponible ? estado.delitosDatos : null;
@@ -1267,9 +1271,47 @@ async function cargarDelitos() {
       p.paso = persistencia ? Math.min(4, p.hechos) : [5, 10, 20, 50].filter((n) => p.hechos >= n).length;
     }
     datos.celdas.features = datos.celdas.features.filter((f) => persistencia ? f.properties.persistente : f.properties.hechos > 0);
+    zonasAltas(datos.celdas, estado.seleccionado, !persistencia);
   }
   estado.delitosDatos = datos;
   return true;
+}
+
+// ¿El punto cae dentro del barrio? Ray casting sobre su polígono oficial, con agujeros.
+function dentroDelBarrio(nombre) {
+  const forma = estado.formas?.features.find((f) => f.properties.barrio === nombre)?.geometry;
+  if (!forma) return () => true;
+  const poligonos = forma.type === 'Polygon' ? [forma.coordinates] : forma.coordinates;
+  const enAnillo = ([x, y], anillo) => {
+    let dentro = false;
+    for (let a = 0, b = anillo.length - 1; a < anillo.length; b = a++) {
+      const [xa, ya] = anillo[a];
+      const [xb, yb] = anillo[b];
+      if ((ya > y) !== (yb > y) && x < ((xb - xa) * (y - ya)) / (yb - ya) + xa) dentro = !dentro;
+    }
+    return dentro;
+  };
+  return (punto) => poligonos.some(([exterior, ...agujeros]) => enAnillo(punto, exterior) && !agujeros.some((h) => enAnillo(punto, h)));
+}
+
+/* Celdas de delitos → punto en su centro, solo dentro del barrio. Con `soloAltas`, se queda con el 20 % de las celdas
+   con más hechos; en la vista de persistencia ya vienen solo las que se repiten entre años. */
+function zonasAltas(celdas, barrio, soloAltas) {
+  const dentro = dentroDelBarrio(barrio);
+  const puntos = celdas.features.map((f) => {
+    if (f.geometry?.type !== 'Polygon') return f;
+    const anillo = f.geometry.coordinates[0];
+    const centro = [(anillo[0][0] + anillo[2][0]) / 2, (anillo[0][1] + anillo[2][1]) / 2];
+    return { ...f, geometry: { type: 'Point', coordinates: centro } };
+  }).filter((f) => !f.geometry || dentro(f.geometry.coordinates));
+  if (soloAltas && puntos.length) {
+    const valores = puntos.map((f) => f.properties.hechos).sort((a, b) => a - b);
+    const corte = valores[Math.floor(0.8 * (valores.length - 1))];
+    celdas.corte = corte;
+    celdas.features = puntos.filter((f) => f.properties.hechos >= corte);
+  } else {
+    celdas.features = puntos;
+  }
 }
 
 function mostrarAvisoMapa(texto) {
@@ -1409,13 +1451,16 @@ function renderLeyenda() {
     }
     else if (c.clave === 'riesgo') items = [muestra(COLOR.riesgo, 'Área de prevención')];
     else if (c.clave === 'ruido') {
-      items = RUIDO.map(([v, color]) => muestra(color, v === 50 ? 'Menos de 55 dBA' : v === 80 ? '80 dBA o más' : `${v} a ${v + 5} dBA`));
+      const umbral = estado.ruido === 'diurno' ? 70 : 65;
+      items = RUIDO.filter(([v]) => v >= umbral).map(([v, color]) => muestra(color, v === 80 ? '80 dBA o más' : `${v} a ${v + 5} dBA`));
+      items.push(`<li class="leyenda-nota">Solo se marcan las calles del barrio con ${umbral} dBA o más.</li>`);
     } else if (c.clave === 'delitos') {
       const d = estado.delitosDatos;
       if (!d?.disponible) continue;
       items = estado.delitos.anio === 'persistencia'
-        ? [...new Set(d.celdas.features.map((f) => f.properties.hechos))].sort((a, b) => a - b).map((n) => muestra(DELITOS[Math.min(4, n)], `Concentración alta en ${n} años`))
-        : ['1–4', '5–9', '10–19', '20–49', '50 o más'].map((r, i) => muestra(DELITOS[i], `${r} hechos / celda · ${estado.delitos.anio}`));
+        ? [muestra(DELITOS[4], 'Zonas del barrio con concentración alta en más de un año')]
+        : [muestra(DELITOS[4], `Zonas del barrio con más hechos registrados en ${estado.delitos.anio}`
+          + (d.celdas.corte ? ` (${d.celdas.corte} o más por celda)` : ''))];
       if (d.inmueble) items.push(muestra('#6A4FB3', `Pin del aviso · círculos 250, 500 y 1.000 m`));
     }
     const titulo = c.clave === 'ruido' ? `Ruido ${estado.ruido === 'diurno' ? 'de día' : 'de noche'}` : c.nombre;

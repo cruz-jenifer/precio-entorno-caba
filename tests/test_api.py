@@ -135,8 +135,13 @@ class ApiTests(unittest.TestCase):
         elevators = {f['properties']['name']: f['properties']['elevators'] for f in layers['subte']['features']}
         self.assertEqual(elevators['Primera Junta'], 2)
         cell = layers['ruido']['features'][0]
-        self.assertEqual(cell['geometry']['type'], 'Polygon')
+        self.assertEqual(cell['geometry']['type'], 'Point')        # el mapa dibuja un brillo por celda
         self.assertEqual(cell['properties']['tipico'], 70)
+        self.assertEqual(layers['ruido']['umbral_dba'], 70)
+        # Solo celdas del barrio pedido, aunque las de Almagro caigan dentro del rectángulo de Caballito.
+        almagro = self.client.get('/api/mapa/capas', params={'barrio': 'Almagro', 'capas': 'ruido'}).json()['ruido']
+        self.assertTrue({f['properties']['tipico'] for f in almagro['features']} <= {55})
+        self.assertTrue(all(f['properties']['tipico'] == 70 for f in layers['ruido']['features']))
         kinds = {f['properties']['kind'] for f in layers['salud']['features']}
         self.assertEqual(kinds, {'cesac', 'hospital'})
         bad = self.client.get('/api/mapa/capas', params={'barrio': 'Caballito', 'capas': 'bares'})

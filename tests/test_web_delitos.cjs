@@ -94,3 +94,19 @@ test('la demo informa indisponibilidad sin pintar celdas reales', async () => {
   assert.match(run('renderAnalisisDelitos()'), /ficticios/);
   assert.equal(run('estado.delitosDatos.disponible'), false);
 });
+
+test('delitos: solo celdas dentro del barrio y, por año, el 20 % con más hechos', () => {
+  const { run } = runtime();
+  const cuadrado = (x, y, d) => [[[x, y], [x + d, y], [x + d, y + d], [x, y + d], [x, y]]];
+  run(`estado.formas = { features: [{ properties: { barrio: 'X' }, geometry: { type: 'Polygon', coordinates: ${JSON.stringify(cuadrado(0, 0, 10))} } }] };`);
+  const celdas = Array.from({ length: 10 }, (_, i) => ({ geometry: { type: 'Polygon', coordinates: cuadrado(i, 1, 0.5) },
+    properties: { hechos: i + 1 } }));
+  celdas.push({ geometry: { type: 'Polygon', coordinates: cuadrado(20, 20, 0.5) }, properties: { hechos: 100 } });
+  const datos = JSON.stringify({ features: celdas });
+  const altas = JSON.parse(JSON.stringify(run(`(() => { const c = ${datos}; zonasAltas(c, 'X', true); return c; })()`)));
+  assert.deepEqual(altas.features.map((f) => f.properties.hechos), [8, 9, 10]);   // la de 100 queda afuera del barrio
+  assert.equal(altas.features.length && JSON.parse(run(`(() => { const c = ${datos}; zonasAltas(c, 'X', true); return JSON.stringify(c.corte); })()`)), 8);
+  assert.equal(altas.features[0].geometry.type, 'Point');
+  const todas = run(`(() => { const c = ${datos}; zonasAltas(c, 'X', false); return c; })()`);
+  assert.equal(todas.features.length, 10);
+});

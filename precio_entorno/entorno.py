@@ -96,6 +96,14 @@ POLIDEPORTIVOS_FUENTE = 'https://data.buenosaires.gob.ar/dataset/polideportivos'
 # Sedes sin actividad deportiva: no se muestran en la capa de clubes.
 SEDES_ADMINISTRATIVAS = {'sede administrativa', 'anexo administrativo'}
 GARAJES_PERIODO = 'Publicado en 2021 · fecha de relevamiento no informada'
+# Rampas de accesibilidad: registros de obras por relevamiento, no un inventario de la ciudad. Que una esquina no
+# figure no significa que no tenga rampa. Por eso no se cuentan por barrio ni se miden distancias.
+RAMPAS_CDN = 'ministerio-de-espacio-publico-e-higiene-urbana/rampas-accesibilidad/'
+RAMPAS = {
+    '2011': 'rampas-de-accesibilidad-relevamiento-2011.csv',
+    '2012-2014': 'rampas-de-accesibilidad-relevamiento-2012-2014.csv',
+    '2016': 'rampas-de-accesibilidad-relevamiento-2016.csv',
+}
 # Capas opcionales del explorador de necesidades (etapa B): archivo, ruta en el CDN, título y período.
 MOVILIDAD = {
     'ciclovias': ('ciclovias.geojson', 'transporte-y-obras-publicas/ciclovias/ciclovias.geojson',
@@ -398,6 +406,40 @@ def libraries(collection):
     return out
 
 
+def ramps(files):
+    """Rampas de los relevamientos de obras (`{relevamiento: ruta}`), agrupadas por punto (ubicadas por dirección).
+    Un punto repetido entre relevamientos queda con el más reciente. No se guardan empresas ni números de nota."""
+    out = {}
+    for survey in sorted(files):
+        raw = files[survey].read_bytes()
+        try:
+            text = raw.decode('utf-8-sig')
+        except UnicodeDecodeError:
+            text = raw.decode('latin-1')
+        for row in csv.DictReader(text.splitlines(), delimiter=';'):
+            row = {key(k): (v or '').strip() for k, v in row.items() if k}
+            try:
+                lon, lat = round(float(row['x']), DECIMALS), round(float(row['y']), DECIMALS)
+            except (KeyError, ValueError):
+                continue
+            if not (-58.6 < lon < -58.2 and -34.75 < lat < -34.5):
+                continue
+            address = row.get('dom_norma') or ' '.join(p for p in (row.get('calle'), row.get('altura')) if p)
+            when = f"obra de {row['anio']}" if row.get('anio') else f'relevamiento {survey}'
+            previous = out.get((lon, lat))
+            # Un mismo punto puede reunir varias rampas (las esquinas se ubicaron por dirección).
+            same = previous is not None and previous['survey'] == survey
+            out[lon, lat] = {'name': 'Rampa', 'lon': lon, 'lat': lat, 'survey': survey,
+                             'count': previous['count'] + 1 if same else 1, 'address': address.title(), 'when': when,
+                             'building': (same and previous['building']) or row.get('estado', '').lower().startswith('en ejec')}
+    for ramp in out.values():
+        label = 'Rampa registrada' if ramp['count'] == 1 else f"{ramp['count']} rampas registradas"
+        when = ramp.pop('when') + (('' if ramp['count'] == 1 else ', alguna') + ' en ejecución al relevar'
+                                   if ramp.pop('building') else '')
+        ramp['tooltip'] = ' · '.join(p for p in (label, ramp.pop('address'), when) if p)
+    return list(out.values())
+
+
 def wkt_point(text):
     """`POINT (lon lat)` → (lon, lat), o None."""
     match = re.fullmatch(r'\s*POINT\s*\(\s*(-?[\d.]+)\s+(-?[\d.]+)\s*\)\s*', text or '', re.I)
@@ -576,6 +618,9 @@ def convert(poi_dir, entorno_dir, target, downloaded=None, osm_dir=None, gyms_pa
     gyms_path = Path(gyms_path) if gyms_path else None
     if gyms_path and gyms_path.is_file():
         points['gimnasios'] = gyms(read(gyms_path))
+    ramp_files = {survey: entorno_dir / file for survey, file in RAMPAS.items() if (entorno_dir / file).is_file()}
+    if ramp_files:
+        points['rampas'] = ramps(ramp_files)
     mobility = {name: entorno_dir / file for name, (file, *_) in MOVILIDAD.items()}
     mobility = {name: path_ for name, path_ in mobility.items() if path_.is_file()}
     if 'ecobici' in mobility:
@@ -702,6 +747,11 @@ def convert(poi_dir, entorno_dir, target, downloaded=None, osm_dir=None, gyms_pa
         sources.append({'capa': 'colectivos', 'titulo': 'Recorridos de colectivos (GTFS)', 'archivo': gtfs_zip.name,
                         'periodo': colectivos_gtfs.PERIODO, 'url': colectivos_gtfs.FUENTE,
                         'sha256': digest(gtfs_zip), 'licencia': 'CC-BY 2.5 AR · Buenos Aires Data'})
+    for survey, path_ in ramp_files.items():
+        sources.append({'capa': 'rampas', 'titulo': f'Rampas de accesibilidad · relevamiento {survey}',
+                        'archivo': path_.name, 'url': CDN + RAMPAS_CDN + path_.name,
+                        'periodo': f'Registro de obras {survey}; no es un inventario de la ciudad',
+                        'sha256': digest(path_), 'licencia': 'CC-BY 2.5 AR · Buenos Aires Data'})
     for layer, path_ in mobility.items():
         file, url, title, period = MOVILIDAD[layer]
         sources.append({'capa': layer, 'titulo': title, 'archivo': file, 'periodo': period, 'url': CDN + url,

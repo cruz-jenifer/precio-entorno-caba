@@ -106,3 +106,39 @@ class MovilidadTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class RampasTests(unittest.TestCase):
+    def test_ramps_are_grouped_by_point_and_labeled_as_works_registry(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            poi, raw = build_sources(root)
+            files = entorno.RAMPAS
+            (raw / files['2011']).write_text(
+                'X;Y;ALTURA;CALLE;TIPO;SUPERFICIE;FECHA;NRO_NOTA;EMPRESA;TAMAÑO\n'
+                '-58.445;-34.615;100;RIVADAVIA, AV.;HORMIGON;4;20061121;968;EMPRESA SA;VADO SIMPLE\n'
+                ';;;SIN COORDENADAS;;;;;;\n', encoding='utf-8')
+            (raw / files['2016']).write_text(
+                'X;Y;ID;MES;SEMANA;ZONA;CALLE;ALTURA;ESTADO;DOM_NORMA;DOM_GEO\n'
+                '-58.436;-34.612;1;AGOSTO;1 AL 6;2;MEDRANO;300;FINALIZADO;MEDRANO 300;300 MEDRANO\n'
+                '-58.436;-34.612;2;AGOSTO;1 AL 6;2;MEDRANO;300;EN EJECUCIÓN;MEDRANO 300;300 MEDRANO\n'
+                '-58.445;-34.615;3;AGOSTO;1 AL 6;2;RIVADAVIA;100;FINALIZADO;RIVADAVIA 100;100 RIVADAVIA\n',
+                encoding='utf-8')
+            target = root / 'processed'
+            summary = entorno.convert(poi, raw, target)
+            self.assertNotIn('rampas', summary['Caballito'])           # sin conteos por barrio
+            points = json.loads((target / 'puntos.json').read_text(encoding='utf-8'))['rampas']
+            by_place = {(p['lon'], p['lat']): p for p in points}
+            self.assertEqual(len(points), 2)
+            self.assertEqual(by_place[-58.436, -34.612]['count'], 2)
+            self.assertIn('2 rampas registradas · Medrano 300', by_place[-58.436, -34.612]['tooltip'])
+            self.assertEqual(by_place[-58.445, -34.615]['survey'], '2016')   # el relevamiento más reciente
+            self.assertNotIn('EMPRESA', json.dumps(points))
+            sources = json.loads((target / 'fuentes.json').read_text(encoding='utf-8'))['fuentes']
+            self.assertTrue(all('no es un inventario' in s['periodo'] for s in sources if s['capa'] == 'rampas'))
+            client = TestClient(create_app(entorno_dir=target))
+            layer = client.get('/api/mapa/capas', params={'barrio': 'Almagro', 'capas': 'rampas'}).json()['rampas']
+            self.assertTrue(layer['disponible'])
+            # El recorte suma 800 m alrededor del barrio: entra también el punto de Caballito, a 500 m del límite.
+            self.assertIn('2 rampas registradas · Medrano 300 · relevamiento 2016, alguna en ejecución al relevar',
+                          [f['properties']['tooltip'] for f in layer['features']])

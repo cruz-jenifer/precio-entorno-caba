@@ -13,14 +13,15 @@ const PREFERENCIAS = [
 const CAPAS_MAPA = [...PREFERENCIAS, { clave: 'estacionamiento', nombre: 'Estacionamiento' },
   { clave: 'clubes', nombre: 'Clubes' }, { clave: 'gimnasios', nombre: 'Gimnasios' },
   { clave: 'colectivos', nombre: 'Colectivos' }, { clave: 'ciclovias', nombre: 'Ciclovías' },
-  { clave: 'ecobici', nombre: 'Ecobici' }, { clave: 'bibliotecas', nombre: 'Bibliotecas' }];
+  { clave: 'ecobici', nombre: 'Ecobici' }, { clave: 'bibliotecas', nombre: 'Bibliotecas' },
+  { clave: 'rampas', nombre: 'Rampas' }];
 // Capas de puntos de toda la ciudad: se piden una vez, sin importar el barrio.
 const CAPAS_CIUDAD = new Set(['estacionamiento', 'clubes', 'gimnasios']);
 const CAPAS = [...CAPAS_MAPA, { clave: 'delitos', nombre: 'Delitos registrados' }];
 const SUBTE = { A: '#18CCCC', B: '#EB0909', C: '#233AA8', D: '#02A17A', E: '#AE3D97', H: '#FFD600' };
 const COLOR = { verdes: '#5E7D4F', riesgo: '#1E88E5', escuela: '#1E2A32', cesac: '#00897B', hospital: '#795548',
   aviso: '#6A4FB3', estacionamiento: '#1671A3', clubes: '#C2410C', gimnasios: '#0F766E', colectivo: '#D81B60',
-  ascensor: '#1E2A32', ciclovias: '#00838F', ecobici: '#004F56', bibliotecas: '#AD1457' };
+  ascensor: '#1E2A32', ciclovias: '#00838F', ecobici: '#004F56', bibliotecas: '#AD1457', rampas: '#B26B00' };
 const RUIDO = [[50, '#FFFFCC'], [55, '#FFEDA0'], [60, '#FED976'], [65, '#FEB24C'], [70, '#FD8D3C'], [75, '#F03B20'], [80, '#BD0026']];
 const DELITOS = ['#D3DBE3', '#A9B8C8', '#7E93AB', '#55708E', '#2E4560'];
 const ESTILO = 'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json';
@@ -41,6 +42,8 @@ const NOTAS = {
   ciclovias: 'Tramos de ciclovía publicados por la Ciudad (recurso de marzo de 2025). Que haya una cerca no garantiza un recorrido continuo ni protegido.',
   ecobici: 'Estaciones del listado oficial de abril de 2025. No informa si cada estación está operativa ni cuántas bicis tiene: consultalo en la app de Ecobici.',
   bibliotecas: 'Bibliotecas de la Red de la Ciudad, incluidas las populares (listado de marzo de 2025). Confirmá horarios y servicios con cada una.',
+  rampas: 'Rampas registradas en obras de 2011 a 2016 (BA Data), ubicadas por dirección. No es un inventario: que una esquina no tenga punto no '
+    + 'significa que no tenga rampa, y una rampa registrada pudo haber cambiado. No certifica recorridos accesibles.',
   delitos: 'Hechos registrados por celda de 200 m. Más circulación puede concentrar más eventos y existe subregistro. No equivalen a la probabilidad individual de victimización.',
 };
 /* Explorador de necesidades (docs/plan-explorador-necesidades.md). Apagado por defecto: se prueba con
@@ -982,9 +985,9 @@ async function prepararMapa() {
   mapa.addLayer({ id: 'ciclovias', type: 'line', source: 'ciclovias', layout: { 'line-cap': 'round' },
     paint: { 'line-color': COLOR.ciclovias, 'line-width': ['interpolate', ['linear'], ['zoom'], 12, 1.5, 16, 4] } },
   'escuelas'); // debajo de las capas de puntos
-  for (const id of ['ecobici', 'bibliotecas']) {
+  for (const id of ['rampas', 'ecobici', 'bibliotecas']) {
     mapa.addLayer({ id, type: 'circle', source: id,
-      paint: { 'circle-radius': id === 'bibliotecas' ? 6 : 4.5, 'circle-color': COLOR[id],
+      paint: { 'circle-radius': { bibliotecas: 6, ecobici: 4.5, rampas: 3 }[id], 'circle-color': COLOR[id],
         'circle-stroke-color': '#FFFFFF', 'circle-stroke-width': 1.5 } });
   }
   for (const id of ['clubes', 'gimnasios']) {
@@ -1006,7 +1009,7 @@ async function prepararMapa() {
   mapa.addLayer({ id: 'inmueble', type: 'circle', source: 'inmueble',
     paint: { 'circle-radius': 7, 'circle-color': '#6A4FB3', 'circle-stroke-color': '#FFFFFF', 'circle-stroke-width': 2 } });
 
-  const puntos = ['subte', 'salud', 'escuelas', 'estacionamiento', 'clubes', 'gimnasios', 'ecobici', 'bibliotecas'];
+  const puntos = ['subte', 'salud', 'escuelas', 'estacionamiento', 'clubes', 'gimnasios', 'ecobici', 'bibliotecas', 'rampas'];
   const conTexto = [...puntos, 'colectivo', 'colectivos', 'ciclovias', 'verdes', 'riesgo', 'ruido', 'delitos'];
 
   mapa.on('mousemove', (evento) => {
@@ -1366,9 +1369,10 @@ function renderLeyenda() {
       if (capa?.features.length) items = [muestra(COLOR[c.clave], `${nombre} · ${numero.format(capa.features.length)} en toda la ciudad`)];
       else if (capa) items = [esc(capa.disponible ? 'Sin lugares registrados.' : 'Capa sin cargar.')];
     }
-    else if (['ciclovias', 'ecobici', 'bibliotecas'].includes(c.clave)) {
+    else if (['ciclovias', 'ecobici', 'bibliotecas', 'rampas'].includes(c.clave)) {
       const capa = estado.capasDatos[claveCapa(c.clave)];
-      const nombre = { ciclovias: 'Tramo de ciclovía', ecobici: 'Estación de Ecobici', bibliotecas: 'Biblioteca' }[c.clave];
+      const nombre = { ciclovias: 'Tramo de ciclovía', ecobici: 'Estación de Ecobici', bibliotecas: 'Biblioteca',
+        rampas: 'Rampa registrada en obras 2011–2016 (no es un inventario)' }[c.clave];
       if (capa?.features.length) items = [muestra(COLOR[c.clave], nombre)];
       else if (capa) items = [esc(capa.disponible === false ? 'Capa sin cargar.' : 'Ninguna en esta zona.')];
     }

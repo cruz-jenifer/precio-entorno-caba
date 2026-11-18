@@ -24,7 +24,7 @@ const COLOR = { verdes: '#5E7D4F', riesgo: '#1E88E5', escuela: '#1E2A32', cesac:
   ascensor: '#1E2A32', ciclovias: '#00838F', ecobici: '#004F56', bibliotecas: '#AD1457', rampas: '#B26B00' };
 const RUIDO = [[50, '#FFFFCC'], [55, '#FFEDA0'], [60, '#FED976'], [65, '#FEB24C'], [70, '#FD8D3C'], [75, '#F03B20'], [80, '#BD0026']];
 const DELITOS = ['#D3DBE3', '#A9B8C8', '#7E93AB', '#55708E', '#2E4560'];
-const ESTILO = 'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json';
+const ESTILO = 'https://basemaps.cartocdn.com/gl/voyager-gl-style/style.json';
 const NOTA_AVISOS = 'Punto que publica la fuente, sin precisión declarada: puede marcar el edificio o una referencia cercana. '
   + 'Hueco si cae a entre 150 y 500 m del barrio del aviso. Más lejos, no se dibuja. Un punto más grande reúne varios avisos.';
 const NOTAS = {
@@ -225,6 +225,7 @@ const estado = {
   colectivo: null, // { linea, datos } de la línea de colectivo dibujada en el mapa
   avisos: [],
   cercaniaInfo: null,
+  pestana: 'entorno',
   capas: new Set(),
   capasDatos: {},
   delitosDatos: null,
@@ -289,13 +290,19 @@ function lineaEntorno(e) {
 
 /* Panel: lista de barrios */
 
+// Insignias redondas de las líneas de subte, con sus colores oficiales.
+function insignias(lineas, clase = 'insignia') {
+  return lineas.map((l) => `<span class="${clase}${l === 'H' ? ' insignia-clara' : ''}" style="background:${SUBTE[l] || '#55626B'}"
+    title="Línea ${esc(l)}">${esc(l)}</span>`).join('');
+}
+
 function renderLista() {
   const con = estado.barrios.filter((b) => b.coincidencias > 0);
   const sin = estado.barrios.filter((b) => !b.coincidencias);
   const total = estado.barrios.reduce((s, b) => s + b.avisos, 0);
   const encajan = con.reduce((s, b) => s + b.coincidencias, 0);
   const titulo = con.length
-    ? `${con.length} ${plural(con.length, 'barrio tiene', 'barrios tienen')} avisos que encajan`
+    ? `${con.length} ${plural(con.length, 'barrio tiene', 'barrios tienen')} avisos para vos`
     : 'Ningún aviso encaja con estos filtros';
   const nota = con.length
     ? `${numero.format(encajan)} de ${numero.format(total)} avisos en ${estado.moneda} encajan con tu búsqueda. Precios publicados, no tasaciones. Elegí un barrio para ver su entorno en el mapa.`
@@ -303,10 +310,10 @@ function renderLista() {
   const filas = con.map((b) => `
     <li><button class="fila" type="button" data-barrio="${esc(b.barrio)}">
       <span class="fila-nombre">${esc(b.barrio)}</span>
-      <span class="fila-cuenta">${b.coincidencias} de ${b.avisos} ${plural(b.avisos, 'aviso', 'avisos')}</span>
+      <span class="fila-cuenta">${b.coincidencias} ${plural(b.coincidencias, 'aviso', 'avisos')}<small>de ${b.avisos}</small></span>
       <span class="fila-mediana">Mediana ${dinero(b.mediana, estado.moneda)}</span>
       <span></span>
-      ${b.entorno ? `<span class="fila-entorno">${esc(lineaEntorno(b.entorno))}</span>` : ''}
+      ${b.entorno ? `<span class="fila-entorno">${insignias(b.entorno.subte_lineas, 'insignia insignia-chica')}<span>${esc(lineaEntorno(b.entorno))}</span></span>` : ''}
       ${prensaFila(b.barrio)}
     </button></li>`).join('');
   const compactos = sin.map((b) => `<li><button type="button" data-barrio="${esc(b.barrio)}">${esc(b.barrio)} · ${b.avisos}</button></li>`).join('');
@@ -338,39 +345,47 @@ function textoGastronomia(e) {
     + (mediana == null ? '' : ` (barrio mediano: ${numero.format(Math.round(mediana))})`);
 }
 
+const PESTANAS = [['entorno', 'Entorno'], ['avisos', 'Avisos'], ['alerta', 'Crear alerta']];
+
+// Entorno del barrio en piezas: una cifra grande y una frase. Son datos por barrio, nunca un puntaje.
+function renderPiezas(e) {
+  if (!e) return '<p class="nota">Este barrio todavía no tiene datos de entorno.</p>';
+  const pieza = (cifra, texto, clase = '') => `<div class="pieza${clase ? ` ${clase}` : ''}"><p class="cifra">${cifra}</p><p>${texto}</p></div>`;
+  const escuelas = e.escuelas[estado.nivel] || {};
+  const total = (escuelas.Estatal || 0) + (escuelas.Privada || 0);
+  const dia = porcentaje(e.ruido.diurno.alto);
+  const noche = porcentaje(e.ruido.nocturno.alto);
+  const piezas = [
+    e.verdes_cantidad
+      ? pieza(`${decimal.format(e.verdes_ha)} ha`, `de plazas y parques, en ${e.verdes_cantidad} ${plural(e.verdes_cantidad, 'espacio', 'espacios')}`, 'pieza-verde')
+      : pieza('0', 'plazas y parques en el inventario oficial', 'pieza-verde'),
+    e.ciclovias_km != null
+      ? pieza(`${decimal.format(e.ciclovias_km)} km`, `de ciclovías${e.ecobici != null ? ` y ${e.ecobici} ${plural(e.ecobici, 'estación', 'estaciones')} de Ecobici` : ''}`)
+      : '',
+    `<div class="pieza pieza-ancha"><h3>Ruido de día</h3>${dia == null ? '<p>Sin cobertura suficiente en el mapa de ruido.</p>'
+      : `<div class="ruido-barra" role="img" aria-label="${dia} % de las celdas con 70 dBA o más"
+          style="background:linear-gradient(90deg, #FED976 0 ${100 - dia}%, #F03B20 ${100 - dia}% 100%)"></div>
+        <p><strong>${dia} %</strong> de las celdas relevadas tiene 70 dBA o más en la calle${noche == null ? '' : `; de noche, el ${noche} % supera 65 dBA`}.
+          No describe el interior de un departamento.</p>`}</div>`,
+    pieza(numero.format(total), `escuelas de nivel ${estado.nivel}, ${escuelas.Estatal || 0} de gestión estatal`),
+    e.colectivos ? pieza(numero.format(e.colectivos.length), `${plural(e.colectivos.length, 'línea', 'líneas')} de colectivo, según recorridos de 2019`) : '',
+    pieza(numero.format(e.cesac + e.hospitales), `centros de salud: ${e.cesac} CeSAC y ${e.hospitales} ${plural(e.hospitales, 'hospital', 'hospitales')}`),
+    e.clubes != null ? pieza(numero.format(e.clubes), `clubes de barrio y polideportivos${e.gimnasios != null ? `, y ${e.gimnasios} gimnasios en OpenStreetMap` : ''}`) : '',
+    e.bibliotecas != null ? pieza(numero.format(e.bibliotecas), `${plural(e.bibliotecas, 'biblioteca', 'bibliotecas')} de la Red de la Ciudad`) : '',
+    pieza(`${porcentaje(e.riesgo_hidrico)} %`, 'de la superficie en área de prevención por riesgo hídrico, según la capa de 2020'),
+    e.gastronomia ? `<div class="pieza pieza-ancha"><h3>${numero.format(lugaresOsm(e.gastronomia))} cafés, bares y restaurantes</h3>
+      <p>${esc(textoGastronomia(e))}</p></div>` : '',
+  ].filter(Boolean);
+  return `<div class="piezas">${piezas.join('')}</div>
+    <p class="fuente">Datos abiertos de Buenos Aires Data, por barrio oficial. Describen el barrio, no un departamento.
+      ${e.gastronomia ? `Cafés, bares y restaurantes: © colaboradores de OpenStreetMap${e.gastronomia.captura ? `, captura del ${fechaCorta(e.gastronomia.captura)}` : ''}. La cobertura depende de quién mapea cada zona.` : ''}
+      <button class="boton-texto" type="button" data-fuentes>Ver fuentes</button></p>`;
+}
+
 function renderFicha() {
   const b = estado.barrios.find((x) => x.barrio === estado.seleccionado);
   if (!b) return;
   const e = b.entorno;
-  const ficha = [];
-  if (e) {
-    const escuelas = e.escuelas[estado.nivel] || {};
-    const total = (escuelas.Estatal || 0) + (escuelas.Privada || 0);
-    const dia = porcentaje(e.ruido.diurno.alto);
-    const noche = porcentaje(e.ruido.nocturno.alto);
-    ficha.push(
-      ['Subte', e.subte_lineas.length
-        ? `${plural(e.subte_lineas.length, 'Línea', 'Líneas')} ${enumerar(e.subte_lineas)}, ${e.subte_estaciones} ${plural(e.subte_estaciones, 'estación', 'estaciones')}`
-        : 'Sin estaciones de subte'],
-      ['Plazas y parques', e.verdes_cantidad
-        ? `${e.verdes_cantidad} ${plural(e.verdes_cantidad, 'plaza o parque', 'plazas y parques')}, ${decimal.format(e.verdes_ha)} ha`
-        : 'Ninguno en el inventario'],
-      ...(e.colectivos ? [['Colectivos', e.colectivos.length
-        ? `${e.colectivos.length} ${plural(e.colectivos.length, 'línea pasa', 'líneas pasan')} por el barrio`
-        : 'Ninguna línea en el recorrido cargado']] : []),
-      ...(e.clubes != null ? [['Clubes', `${e.clubes} ${plural(e.clubes, 'club de barrio o polideportivo', 'clubes de barrio y polideportivos')}`]] : []),
-      ...(e.gimnasios != null ? [['Gimnasios', `${e.gimnasios} en OpenStreetMap`]] : []),
-      ...(e.ciclovias_km != null ? [['Ciclovías', e.ciclovias_km ? `${decimal.format(e.ciclovias_km)} km de tramos` : 'Ningún tramo registrado']] : []),
-      ...(e.ecobici != null ? [['Ecobici', `${e.ecobici} ${plural(e.ecobici, 'estación', 'estaciones')} en el listado de 2025`]] : []),
-      ...(e.bibliotecas != null ? [['Bibliotecas', `${e.bibliotecas} de la Red de la Ciudad`]] : []),
-      ...(e.gastronomia ? [['Cafés, bares y restaurantes', textoGastronomia(e)]] : []),
-      [`Escuelas de nivel ${estado.nivel}`, `${total}, de las que ${escuelas.Estatal || 0} son de gestión estatal`],
-      ['Salud', `${e.cesac} CeSAC y ${e.hospitales} ${plural(e.hospitales, 'hospital', 'hospitales')}`],
-      ['Ruido de día', dia == null ? 'Sin cobertura suficiente' : `70 dBA o más en el ${dia} % de las celdas relevadas`],
-      ['Ruido de noche', noche == null ? 'Sin cobertura suficiente' : `65 dBA o más en el ${noche} % de las celdas relevadas`],
-      ['Riesgo hídrico', `${porcentaje(e.riesgo_hidrico)} % de la superficie en área de prevención`],
-    );
-  }
   const alquiler = estado.operacion === 'alquiler';
   const visibles = estado.verTodos ? estado.avisos : estado.avisos.slice(0, 25);
   const extra = columnasExplorador();
@@ -390,33 +405,49 @@ function renderFicha() {
   const resumen = b.coincidencias
     ? `${b.coincidencias} de ${b.avisos} ${plural(b.avisos, 'aviso', 'avisos')} en ${estado.moneda} ${plural(b.coincidencias, 'encaja', 'encajan')} con tu búsqueda. Mediana ${dinero(b.mediana, estado.moneda)}.`
     : 'Ningún aviso encaja con tu búsqueda por ahora. Podés crear la alerta igual.';
+  const alerta = estado.ambientesOMas
+    ? '<p class="nota">Para crear una alerta, elegí una cantidad exacta de ambientes.</p>'
+    : `<p class="nota">Te avisamos cuando aparezcan avisos nuevos en ${esc(b.barrio)} que encajen con tu búsqueda.</p>
+      ${estado.modo === 'real' ? `<div class="alerta-mail">
+        <label class="campo campo-mail"><span class="campo-etiqueta">Mail</span>
+          <input type="email" id="mail-alerta" autocomplete="email" inputmode="email" maxlength="254"
+            placeholder="Opcional, para recibir avisos nuevos"></label>
+        <p class="fuente">Si dejás tu mail, lo usamos solo para mandarte los avisos nuevos de esta búsqueda.
+          Cada correo trae un enlace para darte de baja.</p>
+      </div>` : ''}
+      <button class="boton-primario" type="button" id="crear-alerta">Crear alerta para ${esc(b.barrio)}</button>`;
+  const panel = (clave, contenido) => `<div class="pestana-panel" role="tabpanel" id="panel-${clave}"
+    aria-labelledby="pestana-${clave}"${estado.pestana === clave ? '' : ' hidden'}>${contenido}</div>`;
+  const pestanas = PESTANAS.map(([clave, nombre]) => `<button type="button" role="tab" id="pestana-${clave}"
+    data-pestana="${clave}" aria-controls="panel-${clave}" aria-selected="${estado.pestana === clave}"
+    tabindex="${estado.pestana === clave ? 0 : -1}">${clave === 'avisos' ? `${nombre} (${b.coincidencias})` : nombre}</button>`).join('');
   $('#contenido').innerHTML = `
     <article class="ficha">
-      <button class="boton-texto volver" type="button" id="volver">Todos los barrios</button>
-      <h1 class="titulo-barrio">${esc(b.barrio)}</h1>
-      ${e ? `<p class="ficha-sub">Comuna ${e.comuna}, ${numero.format(Math.round(e.area_ha))} ha</p>` : ''}
-      <p class="ficha-resumen">${resumen}</p>
-      ${estado.ambientesOMas
-        ? '<p class="nota">Para crear una alerta, elegí una cantidad exacta de ambientes.</p>'
-        : `${estado.modo === 'real' ? `<div class="alerta-mail">
-            <label class="campo campo-mail"><span class="campo-etiqueta">Mail</span>
-              <input type="email" id="mail-alerta" autocomplete="email" inputmode="email" maxlength="254"
-                placeholder="Opcional, para recibir avisos nuevos"></label>
-            <p class="fuente">Si dejás tu mail, lo usamos solo para mandarte los avisos nuevos de esta búsqueda.
-              Cada correo trae un enlace para darte de baja.</p>
-          </div>` : ''}
-          <button class="boton-primario" type="button" id="crear-alerta">Crear alerta para ${esc(b.barrio)}</button>`}
-      <p class="estado" id="estado-alerta" role="status"></p>
-      ${ficha.length ? `<h2>Entorno</h2>
-        <dl class="hechos">${ficha.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join('')}</dl>
-        <p class="fuente">Datos abiertos de Buenos Aires Data, por barrio oficial. Describen el barrio, no un departamento.
-          ${e?.gastronomia ? `Cafés, bares y restaurantes: © colaboradores de OpenStreetMap${e.gastronomia.captura ? `, captura del ${fechaCorta(e.gastronomia.captura)}` : ''}. La cobertura depende de quién mapea cada zona.` : ''}
-          <button class="boton-texto" type="button" data-fuentes>Ver fuentes</button></p>` : ''}
-      ${renderColectivos(e)}
-      ${renderSegunNecesidades()}
-      ${renderParecidos(b.barrio)}
-      ${renderLugares(b.barrio)}
-      ${estado.modo === 'real' ? `<h2>Localizar estacionamientos</h2>
+      <header class="ficha-cabeza">
+        <button class="boton-texto volver" type="button" id="volver">Todos los barrios</button>
+        <h1 class="titulo-barrio">${esc(b.barrio)}</h1>
+        ${e ? `<p class="ficha-sub">${e.subte_lineas.length ? `<span class="insignias">${insignias(e.subte_lineas)}</span>` : ''}
+          <span>${e.subte_lineas.length ? `${e.subte_estaciones} ${plural(e.subte_estaciones, 'estación', 'estaciones')} de subte, ` : 'Sin subte, '}comuna ${e.comuna},
+          ${numero.format(Math.round(e.area_ha))} ha</span></p>` : ''}
+        ${b.coincidencias ? `<p class="ficha-precio"><strong>${dinero(b.mediana, estado.moneda)}</strong>
+          <span>Mediana de ${b.coincidencias} ${plural(b.coincidencias, 'aviso que encaja', 'avisos que encajan')}, de ${b.avisos}
+          ${plural(b.avisos, 'publicado', 'publicados')} en el barrio. Precios publicados, no tasaciones.</span></p>`
+          : '<p class="ficha-resumen">Ningún aviso encaja con tu búsqueda por ahora. Podés crear la alerta igual.</p>'}
+        <nav class="pestanas" role="tablist" aria-label="Secciones del barrio">${pestanas}</nav>
+      </header>
+      ${panel('entorno', `${renderAnalisisDelitos()}${renderPiezas(e)}${renderColectivos(e)}${renderSegunNecesidades()}
+        ${renderParecidos(b.barrio)}${renderLugares(b.barrio)}${renderRadarFicha(b.barrio)}`)}
+      ${panel('avisos', `${b.coincidencias ? `
+        ${extra.length ? `<p class="fuente">Deslizá la tabla hacia la derecha para ver ${enumerar(extra.map((c) => `«${c.titulo}»`))}.</p>` : ''}
+        <table class="avisos">
+          <thead><tr><th>Precio publicado</th><th>Cubierta</th><th>Amb.</th><th>Cocheras</th>${alquiler ? '<th>Expensas</th>' : ''}${extra.map((c) => `<th>${esc(c.titulo)}</th>`).join('')}<th><span hidden>Enlace</span></th><th>Mapa</th></tr></thead>
+          <tbody>${filas}</tbody>
+        </table>
+        ${estado.avisos.length > visibles.length ? `<p class="fuente">Se muestran los ${visibles.length} más baratos de ${estado.avisos.length}. <button class="boton-texto" type="button" id="ver-todos">Ver todos</button></p>` : ''}
+        <p class="fuente">${estado.modo === 'demo' ? 'Avisos ficticios de ejemplo.' : 'Precios de publicación del catálogo autorizado, no tasaciones ni precios de cierre.'}
+          ${estado.modo === 'real' ? `${ubicados} de ${estado.avisos.length} ${plural(estado.avisos.length, 'aviso tiene', 'avisos tienen')} un punto en el mapa, publicado por la fuente sin precisión declarada.` : ''}</p>`
+        : '<p class="nota">Ningún aviso encaja con tu búsqueda en este barrio. Probá cambiar los filtros o creá una alerta.</p>'}
+        ${estado.modo === 'real' ? `<h2>Localizar estacionamientos</h2>
         <p class="fuente">Inventario oficial publicado en 2021, sin fecha de relevamiento informada. Confirmá funcionamiento, horarios, cupos y tarifas con el lugar.</p>
         <form id="buscar-estacionamientos">
           ${camposOrigen()}
@@ -429,18 +460,8 @@ function renderFicha() {
           ${camposOrigen()}
           <button type="submit" class="boton-texto">Buscar cocheras</button>
         </form><div id="resultado-cocheras" role="status"></div>
-        <p class="fuente">Con «Mi ubicación actual», el navegador pide permiso al buscar. La ubicación se usa solo para esa consulta y no se guarda.</p>` : ''}
-      ${b.coincidencias ? `<h2>Avisos que encajan</h2>
-        ${extra.length ? `<p class="fuente">Deslizá la tabla hacia la derecha para ver ${enumerar(extra.map((c) => `«${c.titulo}»`))}.</p>` : ''}
-        <table class="avisos">
-          <thead><tr><th>Precio publicado</th><th>Cubierta</th><th>Amb.</th><th>Cocheras</th>${alquiler ? '<th>Expensas</th>' : ''}${extra.map((c) => `<th>${esc(c.titulo)}</th>`).join('')}<th><span hidden>Enlace</span></th><th>Mapa</th></tr></thead>
-          <tbody>${filas}</tbody>
-        </table>
-        ${estado.avisos.length > visibles.length ? `<p class="fuente">Se muestran los ${visibles.length} más baratos de ${estado.avisos.length}. <button class="boton-texto" type="button" id="ver-todos">Ver todos</button></p>` : ''}
-        <p class="fuente">${estado.modo === 'demo' ? 'Avisos ficticios de ejemplo.' : 'Precios de publicación del catálogo autorizado, no tasaciones ni precios de cierre.'}
-          ${estado.modo === 'real' ? `${ubicados} de ${estado.avisos.length} ${plural(estado.avisos.length, 'aviso tiene', 'avisos tienen')} un punto en el mapa, publicado por la fuente sin precisión declarada.` : ''}</p>` : ''}
-      ${renderAnalisisDelitos()}
-      ${renderRadarFicha(b.barrio)}
+        <p class="fuente">Con «Mi ubicación actual», el navegador pide permiso al buscar. La ubicación se usa solo para esa consulta y no se guarda.</p>` : ''}`)}
+      ${panel('alerta', `${alerta}<p class="estado" id="estado-alerta" role="status"></p>`)}
     </article>`;
 }
 
@@ -933,8 +954,8 @@ async function prepararMapa() {
     id: 'barrios-relleno', type: 'fill', source: 'barrios',
     paint: {
       'fill-color': ['interpolate', ['linear'], ['coalesce', ['feature-state', 'r'], 0],
-        0, '#F3F4F1', 0.001, '#D3DAD5', 1, '#33434E'],
-      'fill-opacity': 0.72,
+        0, '#F4F2F8', 0.001, '#E2DAF3', 1, '#7A62C4'],
+      'fill-opacity': 0.62,
     },
   }, simbolo);
   const escalaRuido = ['step', ['get', 'tipico'], RUIDO[0][1], ...RUIDO.slice(1).flat()];
@@ -953,9 +974,9 @@ async function prepararMapa() {
     paint: { 'line-color': COLOR.verdes, 'line-width': 0.8 } }, simbolo);
   mapa.addLayer({ id: 'barrios-borde', type: 'line', source: 'barrios',
     paint: {
-      'line-color': ['case', sel, '#6A4FB3', '#1E2A32'],
-      'line-width': ['case', sel, 3.2, hover, 2.2, 0.7],
-      'line-opacity': ['case', sel, 1, hover, 0.9, 0.45],
+      'line-color': ['case', sel, '#4B3487', hover, '#6A4FB3', '#FFFFFF'],
+      'line-width': ['case', sel, 3.5, hover, 2.4, 1.1],
+      'line-opacity': ['case', sel, 1, hover, 0.95, 0.9],
     } });
   // Todas las líneas del barrio, recortadas a su zona; cada color es una línea.
   mapa.addLayer({ id: 'colectivos', type: 'line', source: 'colectivos',
@@ -1148,7 +1169,7 @@ function pintarCoropletas() {
     mapa.setFeatureState({ source: 'barrios', id: b.barrio }, { r: b.coincidencias ? b.coincidencias / maximo : 0 });
   }
   mapa.setPaintProperty('barrios-relleno', 'fill-opacity',
-    estado.seleccionado ? ['case', ['boolean', ['feature-state', 'sel'], false], 0, 0.3] : 0.72);
+    estado.seleccionado ? ['case', ['boolean', ['feature-state', 'sel'], false], 0, 0.28] : 0.62);
 }
 
 function limites(nombre) {
@@ -1279,6 +1300,11 @@ function alternarCapa(clave) {
   sincronizarControles();
 }
 
+// Punto de color de cada capa en los chips del mapa (el mismo que usa la capa).
+const PUNTO_CAPA = { subte: '#02A17A', verdes: '#5E7D4F', escuelas: '#1E2A32', salud: '#00897B', ruido: '#FD8D3C',
+  riesgo: '#1E88E5', estacionamiento: '#1671A3', clubes: '#C2410C', gimnasios: '#0F766E', colectivos: '#D81B60',
+  ciclovias: '#00838F', ecobici: '#004F56', bibliotecas: '#AD1457', rampas: '#B26B00', delitos: '#55708E' };
+
 function renderChips() {
   const contenedor = $('#capas');
   contenedor.hidden = !estado.seleccionado;
@@ -1288,7 +1314,7 @@ function renderChips() {
     return;
   }
   contenedor.innerHTML = CAPAS.map((c) => `<button class="chip" type="button" data-capa="${c.clave}"
-    aria-pressed="${estado.capas.has(c.clave)}">${esc(c.nombre)}</button>`).join('');
+    aria-pressed="${estado.capas.has(c.clave)}"><i class="chip-punto" style="background:${PUNTO_CAPA[c.clave] || '#55626B'}"></i>${esc(c.nombre)}</button>`).join('');
 }
 
 function renderControles() {
@@ -1442,6 +1468,7 @@ async function seleccionar(nombre) {
     mapa.setFeatureState({ source: 'barrios', id: estado.seleccionado }, { sel: false });
   }
   estado.seleccionado = nombre;
+  estado.pestana = 'entorno';
   estado.verTodos = false;
   estado.avisos = [];
   estado.delitosDatos = null;
@@ -1795,6 +1822,31 @@ function conectarEventos() {
     cargarParecidos();
   });
   $('#nivel').addEventListener('change', (e) => { cambiarNivel(e.target.value); });
+  // Pestañas de la ficha: se muestran y ocultan sin volver a dibujar, así no se pierde lo que se escribió.
+  const elegirPestana = (clave, foco = false) => {
+    estado.pestana = clave;
+    document.querySelectorAll('[data-pestana]').forEach((t) => {
+      const activa = t.dataset.pestana === clave;
+      t.setAttribute('aria-selected', activa);
+      t.tabIndex = activa ? 0 : -1;
+      if (activa && foco) t.focus();
+    });
+    document.querySelectorAll('.pestana-panel').forEach((panel) => { panel.hidden = panel.id !== `panel-${clave}`; });
+  };
+  $('#contenido').addEventListener('click', (e) => {
+    const tab = e.target.closest('[data-pestana]');
+    if (tab) elegirPestana(tab.dataset.pestana);
+  });
+  $('#contenido').addEventListener('keydown', (e) => {
+    const tab = e.target.closest('[data-pestana]');
+    if (!tab || !['ArrowRight', 'ArrowLeft', 'Home', 'End'].includes(e.key)) return;
+    e.preventDefault();
+    const claves = PESTANAS.map(([c]) => c);
+    const i = claves.indexOf(tab.dataset.pestana);
+    const j = e.key === 'Home' ? 0 : e.key === 'End' ? claves.length - 1
+      : (i + (e.key === 'ArrowRight' ? 1 : -1) + claves.length) % claves.length;
+    elegirPestana(claves[j], true);
+  });
   $('#necesidades')?.addEventListener('change', (e) => {
     const clave = e.target.value;
     if (e.target.checked) estado.necesidades.add(clave); else estado.necesidades.delete(clave);
@@ -1896,6 +1948,7 @@ function conectarEventos() {
     if (inmueble) {
       estado.delitos.inmueble = inmueble.dataset.inmueble;
       estado.capas.add('delitos');
+      estado.pestana = 'entorno';
       estado.delitosDatos = null;
       renderChips(); renderPanel();
       await actualizarCapas();
@@ -2069,7 +2122,21 @@ async function abrirFuentes() {
   }
 }
 
+// La barra flota sobre el mapa y puede ocupar una o dos filas: la hoja y los controles se ubican debajo.
+function seguirAltoBarra() {
+  const barra = document.querySelector('.barra');
+  if (!barra || typeof ResizeObserver === 'undefined') return;
+  const fijar = () => {
+    const filas = [...barra.querySelectorAll('.marca, .barra-extremo, .filtros')].map((n) => n.getBoundingClientRect());
+    const alto = Math.max(0, ...filas.map((r) => r.bottom)) - barra.getBoundingClientRect().top;
+    if (alto > 0) document.documentElement.style.setProperty('--barra-real', `${Math.round(alto)}px`);
+  };
+  new ResizeObserver(fijar).observe(barra);
+  fijar();
+}
+
 async function iniciar() {
+  seguirAltoBarra();
   renderNecesidades();
   sincronizarControles();
   conectarEventos();

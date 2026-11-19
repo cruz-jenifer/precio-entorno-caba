@@ -29,7 +29,7 @@ def theory(start, end):
 
 
 md(r"""
-# Precio y Entorno CABA
+# Lüga
 ## Del catálogo a una decisión fundamentada
 
 **Capstone integral · Estadística, aprendizaje automático y operación · 18 de noviembre de 2026**

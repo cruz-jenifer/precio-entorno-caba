@@ -1,7 +1,7 @@
 {
   "actorSpecification": 1,
   "name": "precio-entorno-alertas",
-  "title": "Precio y Entorno CABA · Alertas",
+  "title": "Lüga · Alertas",
   "description": "Captura avisos de inmobiliarias autorizadas, descarta los ya vistos y devuelve los nuevos que cumplen cada búsqueda guardada.",
   "version": "0.1",
   "buildTag": "latest",

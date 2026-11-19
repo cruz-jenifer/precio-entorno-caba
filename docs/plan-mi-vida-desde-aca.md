@@ -1,6 +1,6 @@
 # Plan de implementación: «Mi vida desde acá»
 
-**Proyecto:** Precio y Entorno CABA
+**Proyecto:** Lüga
 **Objetivo:** la persona marca hasta 3 lugares habituales (trabajo, facultad, familia) y ve, para cada aviso del barrio, el tiempo estimado **a pie o en bicicleta** por calles, calculado sobre la red de OpenStreetMap.
 **Estado:** plan revisado el 2026-11-17 contra el código de `main` + `tratamiento-nulls` y contra las decisiones del usuario. Reemplaza a la propuesta original («Implementation Plan — Mi vida desde acá»). Se avanza por fases con *gates*, no por fechas.
 

@@ -1,4 +1,4 @@
-# Precio y Entorno CABA
+# Lüga
 
 El [Colab integral](notebooks/capstone_integral_colab.ipynb) reúne teoría, datos, EDA, ANOVA, cinco modelos, evaluación e inferencia en 47 celdas. Ver [archivos, modos de ejecución y guía para abrirlo](docs/colab-integral.md).
 

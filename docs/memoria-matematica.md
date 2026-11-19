@@ -1,4 +1,4 @@
-# Precio y Entorno CABA: memoria matemática y metodológica
+# Lüga: memoria matemática y metodológica
 
 Versión del 18 de noviembre de 2026. La memoria conecta las preguntas del capstone con las ecuaciones y el código que las responde. La comparación principal es el benchmark anidado de **Ridge, KNN, Random Forest, HistGradientBoosting y MLP**. Sus resultados auditados se generan en [`reports/benchmark-auditado/resultados.md`](../reports/benchmark-auditado/resultados.md). El ANOVA responde una pregunta descriptiva diferente.
 

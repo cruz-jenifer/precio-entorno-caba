@@ -128,7 +128,7 @@ def searches_blueprint(hook_id):
             '{{1.email}}', 'si', ''], 600, -150, filter_=condition('Alta', '{{1.tipo}}', 'alta')),
         respond(4, 200, '{"ok": true}', 'application/json', 900, -150),
     ]
-    baja_page = ('<!doctype html><html lang="es"><meta charset="utf-8"><title>Precio y Entorno CABA</title>'
+    baja_page = ('<!doctype html><html lang="es"><meta charset="utf-8"><title>Lüga</title>'
                  '<body style="font-family:sans-serif;max-width:32rem;margin:3rem auto;padding:0 1rem">'
                  '<h1>Listo</h1><p>No vas a recibir más avisos de esta búsqueda.</p></body></html>')
     baja = [
@@ -167,13 +167,13 @@ def alerts_blueprint(unsubscribe_url, team_email, max_listings=100):
     actor_input = ('{"busquedas":[{{2.text}}],"autorizacionConfirmada":true,'
                    f'"maxAvisosPorSitio":{max_listings},"alertarPrimeraCorrida":false}}')
     unsubscribe = f'{unsubscribe_url}?tipo=baja&id={{{{5.busqueda}}}}'
-    email_body = ('{{5.html}}<p style="color:#666;font-size:12px">Precio y Entorno CABA. '
+    email_body = ('{{5.html}}<p style="color:#666;font-size:12px">Lüga. '
                   f'<a href="{unsubscribe}">No quiero recibir más avisos de esta búsqueda</a>.</p>')
     run_log = [
         add_row(4, SHEET_RUNS, [NOW, '{{3.status}}', '{{3.statusMessage}}', '{{3.id}}', '{{3.usageTotalUsd}}'],
                 1200, -150),
         module(9, 'google-email:sendAnEmail', 4, {
-            'to': [team_email], 'subject': 'Precio y Entorno CABA: la corrida de alertas terminó en {{3.status}}',
+            'to': [team_email], 'subject': 'Lüga: la corrida de alertas terminó en {{3.status}}',
             'content': '<p>Corrida {{3.id}}: {{3.status}}.</p><p>{{3.statusMessage}}</p>', 'bodyType': 'rawHtml'},
             1500, -150, {'__IMTCONN__': CONN['gmail']},
             condition('Falló', '{{3.status}}', 'SUCCEEDED', 'text:notequal')),

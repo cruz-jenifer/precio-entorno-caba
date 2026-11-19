@@ -1,6 +1,6 @@
 'use strict';
 
-/* Precio y Entorno CABA: interfaz web. Habla con la API local de precio_entorno.api. */
+/* Lüga: interfaz web. Habla con la API local de precio_entorno.api. */
 
 const PREFERENCIAS = [
   { clave: 'subte', nombre: 'Subte' },
@@ -697,7 +697,7 @@ function renderLugares(barrio) {
       : `<p>Google no devolvió ${nombreTipo} con al menos ${numero.format(l.minResenas)} reseñas en ${esc(barrio)}.</p>
         ${l.minResenas > MIN_RESENAS_BAJO ? `<button class="boton-texto" type="button" id="lugares-menos">Mostrar los que tienen al menos ${MIN_RESENAS_BAJO}</button>` : ''}`;
     cuerpo += `<p class="fuente">Los más valorados entre los ${l.datos.en_barrio} lugares de ${esc(barrio)} que devolvió Google,
-      con al menos ${numero.format(l.minResenas)} reseñas. Calificaciones de usuarios de Google, no de Precio y Entorno.
+      con al menos ${numero.format(l.minResenas)} reseñas. Calificaciones de usuarios de Google, no de Lüga.
       Se consultan al momento y no se guardan.</p>`;
   }
   return `<section class="lugares-google" aria-labelledby="titulo-lugares">

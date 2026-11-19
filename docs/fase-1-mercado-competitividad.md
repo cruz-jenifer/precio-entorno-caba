@@ -1,6 +1,6 @@
 # Fase 1 · Análisis de mercado y competitividad
 
-**Proyecto:** Precio y Entorno CABA · **Fecha de observación:** 9 de noviembre de 2026 · **Segmento:** departamentos en venta en CABA con precio de publicación en USD.
+**Proyecto:** Lüga · **Fecha de observación:** 9 de noviembre de 2026 · **Segmento:** departamentos en venta en CABA con precio de publicación en USD.
 
 Este informe arma el mapa de competidores y el benchmark, y prioriza los problemas detectados con su evidencia. También deja preparada la validación con una inmobiliaria. Se elaboró con las skills `market-landscape-scan`, `competitive-research-snapshot`, `discovery-interview-prep`, `problem-statement`, `jobs-to-be-done`, `proto-persona`, `opportunity-solution-tree` y `positioning-statement`, integradas en un solo documento.
 
@@ -22,7 +22,7 @@ Cada afirmación importante lleva un estado y un código de evidencia (`E1`, `E2
 
 ## 1. Resumen ejecutivo
 
-**Decisión de producto.** No competir como portal ni como alerta aislada. Posicionar Precio y Entorno CABA como una **herramienta de seguimiento de búsquedas de compradores** para quien gestiona varias búsquedas en una inmobiliaria. Antes de ampliar fuentes o sumar funciones, conviene probar con una inmobiliaria si **comparar barrios con los mismos criterios** y **recibir una lista única de avisos nuevos** reduce los minutos que lleva armar una lista de opciones relevantes.
+**Decisión de producto.** No competir como portal ni como alerta aislada. Posicionar Lüga como una **herramienta de seguimiento de búsquedas de compradores** para quien gestiona varias búsquedas en una inmobiliaria. Antes de ampliar fuentes o sumar funciones, conviene probar con una inmobiliaria si **comparar barrios con los mismos criterios** y **recibir una lista única de avisos nuevos** reduce los minutos que lleva armar una lista de opciones relevantes.
 
 **Por qué.**
 
@@ -205,7 +205,7 @@ Estas fuentes sirven para entender el mercado. **No** forman parte de los datase
 
 Los conteos miden **oferta observada en cada plataforma**, no el mercado. Incluyen avisos duplicados y, en algunos casos, emprendimientos.
 
-| Eje | Zonaprop | Argenprop | Roomix | Tokko Broker (CRM) | Método habitual | Precio y Entorno (prototipo) |
+| Eje | Zonaprop | Argenprop | Roomix | Tokko Broker (CRM) | Método habitual | Lüga (prototipo) |
 | --- | --- | --- | --- | --- | --- | --- |
 | **1. Precios y disponibilidad** | Precio publicado y expensas en la tarjeta. Orden por menor precio o «Bajaron de precio». Ficha con antigüedad del aviso **[Obs, E6, E7]** | Precio, expensas y filtro de moneda **[Obs, E12]** | Precio, expensas y **USD/m² por aviso** **[Obs, E17]** | Precios de la cartera y la red **[Doc, E20]** | Depende del portal usado **[Hip]** | Precio publicado y mediana por barrio para el filtro. No da de baja avisos que desaparecen **[Doc, [README](../README.md)]** |
 | **2. Oferta y variedad** | 1.024 avisos (Caballito 556, Almagro 468) **[Obs, E1–E3]** | 894 (Caballito 470, Almagro 424) **[Obs, E10–E12]** | 3.072 departamentos en venta en Caballito, sin filtro **[Obs, E17]**. No medido para el escenario **[NV]** | Cartera propia y red de colegas **[Doc, E19, E20]** | Suma de lo que se revise **[Hip]** | **59** (Almagro 36, Caballito 23) **[Obs, E28]** |
@@ -301,11 +301,11 @@ flowchart TD
 
 > **Para** quienes gestionan varias búsquedas de compradores de departamentos en venta en CABA desde una inmobiliaria,
 > **que necesitan** reunir y priorizar opciones nuevas de distintas fuentes sin repetir la búsqueda en cada portal,
-> **Precio y Entorno CABA**
+> **Lüga**
 > **es una** herramienta de seguimiento de búsquedas
 > **que** compara barrios con los criterios de cada comprador y avisa una sola vez por cada aviso nuevo compatible.
 >
-> **A diferencia de** combinar alertas de portales con una planilla y WhatsApp, **Precio y Entorno CABA** organiza la información por búsqueda del comprador y no por portal.
+> **A diferencia de** combinar alertas de portales con una planilla y WhatsApp, **Lüga** organiza la información por búsqueda del comprador y no por portal.
 
 | Diferenciación | Respaldo |
 | --- | --- |

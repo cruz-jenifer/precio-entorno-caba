@@ -39,8 +39,8 @@ def money(value, currency):
     return f"{currency} {value:,.0f}".replace(',', '.') if value is not None else '—'
 
 
-st.set_page_config(page_title='Precio y Entorno CABA', layout='centered')
-st.title('Precio y Entorno CABA')
+st.set_page_config(page_title='Lüga', layout='centered')
+st.title('Lüga')
 goal = st.radio('¿Qué querés hacer?', ('Comprar', 'Alquilar'), horizontal=True)
 operation = 'venta' if goal == 'Comprar' else 'alquiler'
 mode = st.radio('Datos de trabajo', ('Demo ficticia', 'Datos reales'), horizontal=True)

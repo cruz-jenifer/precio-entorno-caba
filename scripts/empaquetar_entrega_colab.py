@@ -23,7 +23,7 @@ def main():
         'capstone_bundle.zip': BASE / 'capstone_bundle.zip',
         'salidas_capstone.zip': BASE / 'workspace/salidas_capstone.zip',
     }
-    readme = '''# Precio y Entorno CABA · Entrega Colab integral
+    readme = '''# Lüga · Entrega Colab integral
 
 1. Extraer este ZIP en una carpeta.
 2. Abrir https://colab.research.google.com/ y elegir Archivo → Subir notebook.

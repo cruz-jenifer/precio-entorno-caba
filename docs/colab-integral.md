@@ -1,4 +1,4 @@
-# Colab integral · Precio y Entorno CABA
+# Colab integral · Lüga
 
 El cuaderno reúne el trabajo en 47 celdas, con teoría intercalada con resultados ejecutables. Usa el corte real autorizado de noviembre de 2026, cinco familias de modelos y referencias separadas. No necesita clonar el repositorio dentro de Colab ni configurar credenciales.
 

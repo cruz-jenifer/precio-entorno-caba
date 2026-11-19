@@ -1,4 +1,4 @@
-# Trello · Precio y Entorno CABA — Capstone
+# Trello · Lüga — Capstone
 
 Tablero privado. Listas: **Backlog**, **Por hacer**, **En curso**, **Bloqueado**, **Hecho**. Etiquetas propuestas: **DS**, **SE**, **BIZ** y **Equipo**. Los roles indican quién debería tomar cada tarjeta hasta que se confirmen los integrantes. Los vencimientos corresponden a noviembre de 2026, hora de Buenos Aires.
 

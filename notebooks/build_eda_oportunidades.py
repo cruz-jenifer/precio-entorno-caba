@@ -21,7 +21,7 @@ def code(text):
 
 
 md(r"""
-# Precio y Entorno CABA · EDA de oportunidades
+# Lüga · EDA de oportunidades
 
 [![Abrir en Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/montesquieu891/precio-entorno-caba/blob/main/notebooks/eda_oportunidades.ipynb)
 

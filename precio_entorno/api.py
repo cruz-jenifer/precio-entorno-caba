@@ -86,7 +86,7 @@ def create_app(demo_path=None, real_path=None, entorno_dir=None, raw_dir=None, w
     layer_cache = {}  # (versión, capa, barrio, variante) → GeoJSON listo para el mapa
     interprete = interprete if interprete is not None else preferencias.Interprete.from_env(ROOT / 'data/local')
     lugares = lugares if lugares is not None else lugares_google.Lugares.from_env(ROOT / 'data/local')
-    app = FastAPI(title='Precio y Entorno CABA', docs_url='/api/docs', openapi_url='/api/openapi.json')
+    app = FastAPI(title='Lüga', docs_url='/api/docs', openapi_url='/api/openapi.json')
 
     def layers():
         marker = entorno_dir / 'resumen.json'

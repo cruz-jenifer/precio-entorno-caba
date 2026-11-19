@@ -1,4 +1,4 @@
-# Estrategia de pricing · Precio y Entorno CABA
+# Estrategia de pricing · Lüga
 
 Hipótesis comercial para el capstone · 9 de noviembre de 2026. Los importes están expresados en USD de referencia para comparar escenarios. La oferta al cliente debería indicar el importe final, moneda, condiciones y vigencia por escrito.
 

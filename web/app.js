@@ -26,6 +26,13 @@ const CAPAS_MAPA = [...PREFERENCIAS, { clave: 'estacionamiento', nombre: 'Estaci
 // Capas de puntos de toda la ciudad: se piden una vez, sin importar el barrio.
 const CAPAS_CIUDAD = new Set(['estacionamiento', 'clubes', 'gimnasios']);
 const CAPAS = [...CAPAS_MAPA, { clave: 'delitos', nombre: 'Delitos registrados' }];
+// Las capas de «Lo que me importa» van siempre a la vista; el resto, en «Más capas», agrupadas.
+// Una capa de «Más capas» encendida también aparece en la fila, para apagarla sin abrir el cajón.
+const MAS_CAPAS = [
+  ['Movilidad', ['colectivos', 'ciclovias', 'ecobici', 'estacionamiento']],
+  ['Actividades', ['clubes', 'gimnasios', 'bibliotecas']],
+  ['Registros', ['delitos', 'rampas']],
+];
 const SUBTE = { A: '#18CCCC', B: '#EB0909', C: '#233AA8', D: '#02A17A', E: '#AE3D97', H: '#FFD600' };
 const COLOR = { verdes: '#5E7D4F', riesgo: '#1E88E5', escuela: '#1E2A32', cesac: '#00897B', hospital: '#795548',
   aviso: '#6A4FB3', estacionamiento: '#1671A3', clubes: '#C2410C', gimnasios: '#0F766E', colectivo: '#D81B60',
@@ -1425,16 +1432,39 @@ const PUNTO_CAPA = { subte: '#02A17A', verdes: '#5E7D4F', escuelas: '#1E2A32', s
   riesgo: '#1E88E5', estacionamiento: '#1671A3', clubes: '#C2410C', gimnasios: '#0F766E', colectivos: '#D81B60',
   ciclovias: '#00838F', ecobici: '#004F56', bibliotecas: '#AD1457', rampas: '#B26B00', recreacion: '#BE123C', delitos: '#55708E' };
 
+function chipCapa(c) {
+  return `<button class="chip" type="button" data-capa="${c.clave}" aria-pressed="${estado.capas.has(c.clave)}">`
+    + `<i class="chip-punto" style="background:${PUNTO_CAPA[c.clave] || '#55626B'}"></i>${esc(c.nombre)}</button>`;
+}
+
+function filaCapas() {
+  const extra = MAS_CAPAS.flatMap(([, claves]) => claves).filter((k) => estado.capas.has(k));
+  return [...PREFERENCIAS.map((p) => p.clave), ...extra].map((k) => CAPAS.find((c) => c.clave === k));
+}
+
 function renderChips() {
-  const contenedor = $('#capas');
-  contenedor.hidden = !estado.seleccionado;
+  $('#capas-fila').hidden = !estado.seleccionado;
   $('#mapa-pista').hidden = Boolean(estado.seleccionado);
   if (!estado.seleccionado) {
     $('#mapa-pista').textContent = 'Elegí un barrio para ver subte, plazas, ruido y más en el mapa.';
+    abrirCajonCapas(false);
     return;
   }
-  contenedor.innerHTML = CAPAS.map((c) => `<button class="chip" type="button" data-capa="${c.clave}"
-    aria-pressed="${estado.capas.has(c.clave)}"><i class="chip-punto" style="background:${PUNTO_CAPA[c.clave] || '#55626B'}"></i>${esc(c.nombre)}</button>`).join('');
+  $('#capas').innerHTML = filaCapas().map(chipCapa).join('');
+  const prendidas = MAS_CAPAS.flatMap(([, claves]) => claves).filter((k) => estado.capas.has(k)).length;
+  $('#mas-capas').innerHTML = `<span class="chip-mas-flecha" aria-hidden="true">‹</span>Más capas${
+    prendidas ? ` <span class="chip-mas-cuenta">${prendidas}</span>` : ''}`;
+  $('#cajon-capas').innerHTML = `<div class="cajon-cabeza"><h3>Más capas</h3>
+    <button class="boton-texto" type="button" data-cerrar-cajon>Cerrar</button></div>
+    ${MAS_CAPAS.map(([grupo, claves]) => `<h4>${esc(grupo)}</h4><div class="cajon-chips">${
+      claves.map((k) => chipCapa(CAPAS.find((c) => c.clave === k))).join('')}</div>`).join('')}`;
+}
+
+function abrirCajonCapas(abrir) {
+  const cajon = $('#cajon-capas');
+  cajon.hidden = !abrir;
+  cajon.classList.toggle('abierto', abrir);
+  $('#mas-capas').setAttribute('aria-expanded', String(abrir));
 }
 
 function renderControles() {
@@ -1921,8 +1951,17 @@ function conectarEventos() {
       importa.hidden = true;
       abrirImporta.setAttribute('aria-expanded', 'false');
     }
+    // Un chip del cajón se redibuja al tocarlo: si el elemento ya no está en la página, el clic fue adentro.
+    if (!$('#cajon-capas').hidden && e.target.isConnected && !e.target.closest('#cajon-capas, #mas-capas')) {
+      abrirCajonCapas(false);
+    }
   });
   document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && !$('#cajon-capas').hidden) {
+      abrirCajonCapas(false);
+      $('#mas-capas').focus();
+      return;
+    }
     if (e.key === 'Escape' && estado.colectivo && importa.hidden && !document.querySelector('dialog[open]')) {
       quitarColectivo();
       return;
@@ -2126,14 +2165,23 @@ function conectarEventos() {
   });
   $('#contenido').addEventListener('mouseleave', () => marcarHover(null, 'lista'));
 
-  $('#capas').addEventListener('click', (e) => {
+  const clicCapa = (e) => {
+    if (e.target.closest('[data-cerrar-cajon]')) { abrirCajonCapas(false); $('#mas-capas').focus(); return; }
     const chip = e.target.closest('[data-capa]');
     if (!chip) return;
-    const clave = chip.dataset.capa;
-    alternarCapa(clave);
-    chip.setAttribute('aria-pressed', estado.capas.has(clave));
+    alternarCapa(chip.dataset.capa);
+    renderChips();
     renderPanel();
     actualizarCapas();
+    // El cajón se vuelve a dibujar: el foco sigue en la misma capa para poder seguir con el teclado.
+    if (e.currentTarget.id === 'cajon-capas') $(`#cajon-capas [data-capa="${chip.dataset.capa}"]`)?.focus();
+  };
+  $('#capas').addEventListener('click', clicCapa);
+  $('#cajon-capas').addEventListener('click', clicCapa);
+  $('#mas-capas').addEventListener('click', () => {
+    const abrir = $('#cajon-capas').hidden;
+    abrirCajonCapas(abrir);
+    if (abrir) $('#cajon-capas [data-capa]')?.focus();
   });
   $('#capa-controles').addEventListener('change', (e) => {
     const control = e.target.dataset.control;

@@ -1172,6 +1172,33 @@ button, input, select { font: inherit; color: inherit; }
 }
 .capa-controles { order: -1; }
 .capas { flex-wrap: nowrap; overflow-x: auto; max-width: 100%; padding: 4px; scrollbar-width: none; }
+/* La fila de capas y la pestaña «Más capas», que queda fija a la derecha aunque la fila se desplace. */
+.capas-fila { display: flex; align-items: center; gap: 0.375rem; max-width: 100%; align-self: stretch; }
+.capas-fila[hidden] { display: none; }
+.capas-fila .capas { flex: 1 1 auto; min-width: 0; }
+.chip-mas { flex: none; background: var(--jacaranda-tinte); color: var(--jacaranda-oscuro); font-weight: 650; margin: 4px 0; }
+.chip-mas[aria-expanded='true'] { background: var(--jacaranda); color: var(--papel); }
+.chip-mas[aria-expanded='true'] .chip-mas-cuenta { background: var(--papel); color: var(--jacaranda-oscuro); }
+.chip-mas-flecha { display: inline-block; font-size: 1.1em; line-height: 1; transition: transform 0.2s ease; }
+.chip-mas[aria-expanded='true'] .chip-mas-flecha { transform: rotate(180deg); }
+.chip-mas-cuenta {
+  min-width: 1.25rem; height: 1.25rem; border-radius: 999px; background: var(--jacaranda); color: var(--papel);
+  font-size: 0.75rem; display: inline-grid; place-items: center; padding: 0 0.3rem;
+}
+/* Cajón «Más capas»: se despliega desde la derecha, sobre la leyenda. */
+.cajon-capas {
+  position: absolute; z-index: 4; right: var(--borde); bottom: 5.25rem; width: min(19rem, calc(100% - 2 * var(--borde)));
+  max-height: calc(100% - 12rem); overflow-y: auto; background: var(--papel); border-radius: 16px;
+  box-shadow: var(--sombra-pastilla); padding: 0.75rem 0.875rem 0.875rem;
+}
+.cajon-capas.abierto { animation: cajon-entra 0.22s ease-out; }
+@keyframes cajon-entra { from { transform: translateX(1.5rem); opacity: 0; } to { transform: none; opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .cajon-capas.abierto { animation: none; } .chip-mas-flecha { transition: none; } }
+.cajon-cabeza { display: flex; align-items: baseline; justify-content: space-between; gap: 0.5rem; }
+.cajon-capas h3 { margin: 0; font-size: var(--t-base); font-weight: 650; }
+.cajon-capas h4 { margin: 0.75rem 0 0.375rem; font-size: var(--t-chico); font-weight: 500; color: var(--asfalto-suave); }
+.cajon-chips { display: flex; flex-wrap: wrap; gap: 0.375rem; }
+.cajon-chips .chip { box-shadow: none; border: 1px solid var(--cordon); padding: 0.4375rem 0.75rem; }
 .chip { flex: none; border: 0; box-shadow: var(--sombra-pastilla); padding: 0.5625rem 0.875rem; }
 .chip-punto { width: 0.625rem; height: 0.625rem; border-radius: 50%; display: inline-block; flex: none; }
 .chip[aria-pressed='true'] .chip-punto { box-shadow: 0 0 0 2px var(--papel); }
@@ -1214,5 +1241,12 @@ button, input, select { font: inherit; color: inherit; }
   .titulo-lista { font-size: 1.875rem; }
   .titulo-barrio { font-size: 3rem; }
   .mapa-arriba { left: var(--borde); right: var(--borde); bottom: calc(46% + 0.625rem); }
+  /* Celular: el cajón usa todo el ancho para que las capas entren en pocas filas, sin tapar la barra. */
+  .cajon-capas {
+    left: var(--borde); width: auto; bottom: calc(46% + 3.75rem);
+    max-height: calc(54% - var(--barra-real, 6rem) - 4.5rem); padding: 0.625rem 0.75rem 0.75rem;
+  }
+  .cajon-capas h4 { margin: 0.5rem 0 0.25rem; }
+  .cajon-chips .chip { padding: 0.375rem 0.625rem; font-size: var(--t-chico); }
   .leyenda { top: calc(var(--barra-real, 6rem) + var(--borde) + 0.5rem); bottom: auto; left: var(--borde); right: auto; max-height: 30%; }
 }

@@ -997,8 +997,44 @@ function marcarMiUbicacion({ lat, lon, precision }) {
 const mapaListo = new Promise((resolver) => mapa.on('load', resolver));
 new ResizeObserver(() => mapa.resize()).observe(document.querySelector('.mapa'));
 const popup = new maplibregl.Popup({ closeButton: false, closeOnClick: false, offset: 10, maxWidth: '18rem' });
+// Los pines de avisos se dibujan hacia arriba desde el punto: el globo no tiene que taparlos.
+const OFFSET_PIN = { top: [0, 4], 'top-left': [0, 4], 'top-right': [0, 4], bottom: [0, -34],
+  'bottom-left': [0, -34], 'bottom-right': [0, -34], left: [12, -16], right: [-12, -16] };
+
+// Pin de aviso dibujado en un canvas al doble de resolución: gota con punta, borde y un punto en el centro.
+function imagenPin(relleno, borde) {
+  const r = 2, margen = 3 * r, ancho = 22 * r, alto = 30 * r;
+  const lienzo = document.createElement('canvas');
+  lienzo.width = ancho + 2 * margen;
+  lienzo.height = alto + 2 * margen;
+  const c = lienzo.getContext('2d');
+  const cx = lienzo.width / 2, cy = margen + 10.5 * r, radio = 9.5 * r, punta = margen + alto;
+  const abertura = Math.acos(radio / (punta - cy)); // tangentes desde la punta al círculo
+  const gota = () => {
+    c.beginPath();
+    c.arc(cx, cy, radio, Math.PI / 2 + abertura, Math.PI * 2.5 - abertura);
+    c.lineTo(cx, punta);
+    c.closePath();
+  };
+  c.shadowColor = 'rgba(30, 42, 50, 0.35)';
+  c.shadowBlur = 3 * r;
+  c.shadowOffsetY = r;
+  gota();
+  c.fillStyle = relleno;
+  c.fill();
+  c.shadowColor = 'transparent';
+  c.lineWidth = 2 * r;
+  c.strokeStyle = borde;
+  gota();
+  c.stroke();
+  c.beginPath();
+  c.arc(cx, cy, 3.5 * r, 0, Math.PI * 2);
+  c.fillStyle = borde;
+  c.fill();
+  return c.getImageData(0, 0, lienzo.width, lienzo.height);
+}
 // Lista de avisos de un punto, con enlaces. Se cierra a mano al tocar otro lugar del mapa.
-const popupAviso = new maplibregl.Popup({ closeButton: true, closeOnClick: false, offset: 12, maxWidth: '20rem',
+const popupAviso = new maplibregl.Popup({ closeButton: true, closeOnClick: false, offset: OFFSET_PIN, maxWidth: '20rem',
   className: 'popup-avisos' });
 popupAviso.on('close', () => { estado.pinAbierto = null; });
 
@@ -1092,14 +1128,18 @@ async function prepararMapa() {
       paint: { 'circle-radius': ['interpolate', ['linear'], ['zoom'], 11, 3, 14, 5, 16, 6.5], 'circle-color': COLOR[id],
         'circle-stroke-color': '#FFFFFF', 'circle-stroke-width': ['interpolate', ['linear'], ['zoom'], 11, 0.6, 14, 1.5] } });
   }
-  // Avisos que encajan: relleno si la ubicación publicada es coherente con el barrio, hueco si es aproximada.
-  // Un punto con varios avisos (un mismo edificio) se dibuja más grande.
-  mapa.addLayer({ id: 'avisos', type: 'circle', source: 'avisos',
-    paint: {
-      'circle-radius': ['interpolate', ['linear'], ['get', 'cantidad'], 1, 5, 5, 8, 20, 11],
-      'circle-color': ['case', ['get', 'aproximada'], '#FFFFFF', COLOR.aviso],
-      'circle-stroke-color': ['case', ['get', 'aproximada'], COLOR.aviso, '#FFFFFF'],
-      'circle-stroke-width': ['case', ['get', 'aproximada'], 2, 1.4],
+  // Avisos que encajan: un pin con punta, la única forma del mapa que no es un círculo, para que no se pierda
+  // entre las capas de puntos. Relleno si la ubicación publicada es coherente con el barrio, hueco si es
+  // aproximada. Un punto con varios avisos (un mismo edificio) se dibuja más grande. Va encima de todo.
+  mapa.addImage('pin-aviso', imagenPin(COLOR.aviso, '#FFFFFF'), { pixelRatio: 2 });
+  mapa.addImage('pin-aviso-hueco', imagenPin('#FFFFFF', COLOR.aviso), { pixelRatio: 2 });
+  const porCantidad = ['interpolate', ['linear'], ['get', 'cantidad'], 1, 1, 5, 1.15, 20, 1.3];
+  mapa.addLayer({ id: 'avisos', type: 'symbol', source: 'avisos',
+    layout: {
+      'icon-image': ['case', ['get', 'aproximada'], 'pin-aviso-hueco', 'pin-aviso'],
+      'icon-size': ['interpolate', ['linear'], ['zoom'], 12, ['*', 0.7, porCantidad], 15, porCantidad],
+      'icon-anchor': 'bottom', 'icon-offset': [0, 3], // la imagen tiene 3 px de margen debajo de la punta
+      'icon-allow-overlap': true, 'icon-ignore-placement': true,
     } });
   mapa.addLayer({ id: 'radios', type: 'line', source: 'radios',
     paint: { 'line-color': '#6A4FB3', 'line-width': ['case', ['get', 'seleccionado'], 2.5, 1], 'line-dasharray': [3, 2] } });
@@ -1122,9 +1162,10 @@ async function prepararMapa() {
     if (pin) {
       mapa.getCanvas().style.cursor = 'pointer';
       if (estado.pinAbierto === pin.properties.clave) popup.remove();
-      else popup.setLngLat(pin.geometry.coordinates).setHTML(esc(textoPin(pin.properties.clave))).addTo(mapa);
+      else popup.setOffset(OFFSET_PIN).setLngLat(pin.geometry.coordinates).setHTML(esc(textoPin(pin.properties.clave))).addTo(mapa);
       return;
     }
+    popup.setOffset(10);
     const elemento = mapa.queryRenderedFeatures(evento.point, { layers: conTexto })[0];
     const texto = elemento ? textoElemento(elemento) : (barrio && !estado.seleccionado ? textoBarrio(barrio.id) : null);
     mapa.getCanvas().style.cursor = barrio || elemento ? 'pointer' : '';
@@ -1519,7 +1560,9 @@ function renderLeyenda() {
   const notas = [];
   const conPunto = estado.avisos.filter((a) => a.ubicacion);
   if (conPunto.length) {
-    const pin = (hueco, etiqueta) => `<li><span class="chip-muestra chip-pin${hueco ? ' chip-pin-hueco' : ''}"></span>${esc(etiqueta)}</li>`;
+    const pin = (hueco, etiqueta) => `<li><svg class="muestra-pin" viewBox="0 0 22 30" aria-hidden="true">
+      <path d="M11 29 2.85 15.4A9.5 9.5 0 1 1 19.15 15.4Z" fill="${hueco ? '#FFFFFF' : COLOR.aviso}" stroke="${hueco ? COLOR.aviso : '#FFFFFF'}" stroke-width="2"/>
+      <circle cx="11" cy="10.5" r="3.5" fill="${hueco ? COLOR.aviso : '#FFFFFF'}"/></svg>${esc(etiqueta)}</li>`;
     bloques.push(`<h3>Avisos que encajan</h3><ul class="leyenda-items">${pin(false, 'Punto publicado')}${
       conPunto.some((a) => a.ubicacion === 'aproximada') ? pin(true, 'Aproximado') : ''}</ul>`);
     notas.push(`<li><strong>Avisos.</strong> ${esc(NOTA_AVISOS)}</li>`);

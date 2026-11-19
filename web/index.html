@@ -114,9 +114,13 @@
       <div id="mapa" class="mapa-lienzo"></div>
       <div class="mapa-arriba">
         <p class="mapa-pista" id="mapa-pista">Elegí un barrio para ver subte, plazas, ruido y más en el mapa.</p>
-        <div class="capas" id="capas" role="group" aria-label="Capas del mapa" hidden></div>
+        <div class="capas-fila" id="capas-fila" hidden>
+          <div class="capas" id="capas" role="group" aria-label="Capas del mapa"></div>
+          <button class="chip chip-mas" type="button" id="mas-capas" aria-expanded="false" aria-controls="cajon-capas"></button>
+        </div>
         <div class="capa-controles" id="capa-controles"></div>
       </div>
+      <div class="cajon-capas" id="cajon-capas" role="group" aria-label="Más capas del mapa" hidden></div>
       <div class="leyenda" id="leyenda" aria-live="polite"></div>
     </section>
   </main>

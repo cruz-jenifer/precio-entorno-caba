@@ -164,4 +164,6 @@ test('«Frente a parecidos» no se presenta como tasación y avisa cuando hay po
   assert.match(celda, /USD 1\.622\/m²/);
   assert.match(run("celdaComparacion({ n: 3, posicion: null, motivo: 'Hay 3 avisos parecidos' }, 'USD')"), /Pocos parecidos/);
   assert.match(run('NOTA_COMPARACION'), /no es una tasación/);
+  assert.equal(run("textoComparacion({ n: 9, posicion: 'dentro', diferencia_pct: 0 })"), 'En línea · 0 % vs. mediana de 9 parecidos');
+  assert.match(run("textoComparacion({ n: 2, posicion: null })"), /Pocos avisos parecidos/);
 });

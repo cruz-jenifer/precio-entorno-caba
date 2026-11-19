@@ -596,6 +596,7 @@ button, input, select { font: inherit; color: inherit; }
 
 .chip-pin { border-radius: 50%; background: #6A4FB3; box-shadow: 0 0 0 1.5px #FFFFFF inset; }
 .chip-pin-hueco { background: #FFFFFF; border: 2px solid #6A4FB3; box-shadow: none; box-sizing: border-box; }
+.muestra-pin { width: 0.75rem; height: 1rem; flex: none; filter: drop-shadow(0 1px 1px rgba(30, 42, 50, 0.3)); }
 
 .chip[aria-pressed='true'] {
   background: var(--asfalto);

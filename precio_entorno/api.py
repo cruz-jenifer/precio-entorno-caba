@@ -18,8 +18,8 @@ from fastapi import FastAPI, HTTPException, Query, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from . import (cercania, colectivos, concentracion, descripcion, entorno, lugares as lugares_google, make_webhook,
-               parecidos as barrios_parecidos, preferencias, radar, ubicacion, cocheras)
+from . import (cercania, colectivos, comparables, concentracion, descripcion, entorno, lugares as lugares_google,
+               make_webhook, parecidos as barrios_parecidos, preferencias, radar, ubicacion, cocheras)
 from .bases import REAL_BASE, ROOT, demo_base, open_store
 from .importing import BARRIOS, usable_pin
 from .matching import matches
@@ -182,9 +182,11 @@ def create_app(demo_path=None, real_path=None, entorno_dir=None, raw_dir=None, w
         for name in capas:
             if name not in cercania.CAPAS:
                 raise HTTPException(422, f"Sin distancias para la capa {name}. Opciones: {', '.join(cercania.CAPAS)}.")
-        found = [i for i in store_for(modo, operacion).listings()
-                 if i['neighborhood'] == barrio and matches(i, presupuesto, superficie, ambientes, moneda, ambientes_o_mas)]
+        own = [i for i in store_for(modo, operacion).listings() if i['neighborhood'] == barrio]
+        found = [i for i in own if matches(i, presupuesto, superficie, ambientes, moneda, ambientes_o_mas)]
         found.sort(key=lambda i: (i['price'], -i['covered_area']))
+        # Referencia: todos los avisos vigentes del barrio en la moneda, no solo los que encajan con el filtro.
+        comparacion = comparables.comparar_todos(found, own)
         data = layers()
         shape = next((f['geometry'] for f in (data['barrios']['features'] if data else [])
                       if f['properties'].get('barrio') == barrio), None)
@@ -203,7 +205,8 @@ def create_app(demo_path=None, real_path=None, entorno_dir=None, raw_dir=None, w
                 'enlace': i.get('url') if modo == 'real' else None,
                 # Rasgos leídos del texto del aviso: 1 lo menciona, 0 el texto no lo menciona, None sin texto.
                 'rasgos': {name: i.get(column) for name, column in descripcion.SPANISH_NAMES.items()},
-                'antiguedad': i.get('age_years')})
+                'antiguedad': i.get('age_years'),
+                'comparacion': comparacion[i['id']]})
         index = proximity_index() if capas else None
         if capas:
             # Distancias desde el punto publicado; un aviso sin ubicación usable queda sin distancia.

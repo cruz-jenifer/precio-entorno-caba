@@ -154,3 +154,14 @@ test('«Me muevo en bici» prende ciclovías y Ecobici; «Trabajo desde casa» s
   assert.ok(r.advertencias.some((a) => a.includes('no garantiza un recorrido continuo')));
   assert.ok(r.advertencias.some((a) => a.includes('operativa')));
 });
+
+test('«Frente a parecidos» no se presenta como tasación y avisa cuando hay pocos', () => {
+  const run = runtime();
+  const celda = run(`celdaComparacion({ n: 15, posicion: 'debajo', precio_m2: 1622, mediana_m2: 1897, p25_m2: 1788,
+    p75_m2: 2958, diferencia_pct: -14, criterios: ['mismo barrio y moneda'], sin_antiguedad: false }, 'USD')`);
+  assert.match(celda, /Más bajo que la mayoría/);
+  assert.match(celda, /−14 % vs\. mediana de 15 parecidos/);
+  assert.match(celda, /USD 1\.622\/m²/);
+  assert.match(run("celdaComparacion({ n: 3, posicion: null, motivo: 'Hay 3 avisos parecidos' }, 'USD')"), /Pocos parecidos/);
+  assert.match(run('NOTA_COMPARACION'), /no es una tasación/);
+});

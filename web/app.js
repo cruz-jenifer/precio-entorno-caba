@@ -420,6 +420,7 @@ function renderFicha() {
   const extra = columnasExplorador();
   const filas = visibles.map((a) => `<tr>
       <td>${dinero(a.precio, a.moneda)}</td>
+      <td>${celdaComparacion(a.comparacion, a.moneda)}</td>
       <td>${a.superficie} m²</td>
       <td>${a.ambientes}</td>
       <td>${a.cocheras == null ? 'No informada' : a.cocheras === 0 ? 'Sin cochera' : a.cocheras}</td>
@@ -469,12 +470,13 @@ function renderFicha() {
       ${panel('avisos', `${b.coincidencias ? `
         ${extra.length ? `<p class="fuente">Deslizá la tabla hacia la derecha para ver ${enumerar(extra.map((c) => `«${c.titulo}»`))}.</p>` : ''}
         <table class="avisos">
-          <thead><tr><th>Precio publicado</th><th>Cubierta</th><th>Amb.</th><th>Cocheras</th>${alquiler ? '<th>Expensas</th>' : ''}${extra.map((c) => `<th>${esc(c.titulo)}</th>`).join('')}<th><span hidden>Enlace</span></th><th>Mapa</th></tr></thead>
+          <thead><tr><th>Precio publicado</th><th>Frente a parecidos</th><th>Cubierta</th><th>Amb.</th><th>Cocheras</th>${alquiler ? '<th>Expensas</th>' : ''}${extra.map((c) => `<th>${esc(c.titulo)}</th>`).join('')}<th><span hidden>Enlace</span></th><th>Mapa</th></tr></thead>
           <tbody>${filas}</tbody>
         </table>
         ${estado.avisos.length > visibles.length ? `<p class="fuente">Se muestran los ${visibles.length} más baratos de ${estado.avisos.length}. <button class="boton-texto" type="button" id="ver-todos">Ver todos</button></p>` : ''}
         <p class="fuente">${estado.modo === 'demo' ? 'Avisos ficticios de ejemplo.' : 'Precios de publicación del catálogo autorizado, no tasaciones ni precios de cierre.'}
-          ${estado.modo === 'real' ? `${ubicados} de ${estado.avisos.length} ${plural(estado.avisos.length, 'aviso tiene', 'avisos tienen')} un punto en el mapa, publicado por la fuente sin precisión declarada.` : ''}</p>`
+          ${estado.modo === 'real' ? `${ubicados} de ${estado.avisos.length} ${plural(estado.avisos.length, 'aviso tiene', 'avisos tienen')} un punto en el mapa, publicado por la fuente sin precisión declarada.` : ''}</p>
+        <p class="fuente">${NOTA_COMPARACION}</p>`
         : '<p class="nota">Ningún aviso encaja con tu búsqueda en este barrio. Probá cambiar los filtros o creá una alerta.</p>'}
         ${estado.modo === 'real' ? `<h2>Localizar estacionamientos</h2>
         <p class="fuente">Inventario oficial publicado en 2021, sin fecha de relevamiento informada. Confirmá funcionamiento, horarios, cupos y tarifas con el lugar.</p>
@@ -599,6 +601,24 @@ function notaPrecision(punto, radio) {
   if (punto?.precision == null) return '';
   return `<p class="fuente">Precisión informada por el dispositivo: aproximadamente ${punto.precision} m.${
     punto.precision > radio ? ' Supera el radio elegido; usá el centro del mapa para precisar la búsqueda.' : ''}</p>`;
+}
+
+const NOTA_COMPARACION = '«Frente a parecidos» compara el precio publicado por m² cubierto con el de avisos vigentes '
+  + 'del mismo barrio y moneda, con ±1 ambiente y superficie cubierta ±25 %. Si el aviso declara antigüedad, '
+  + 'se usan los que declaran ±10 años, cuando alcanzan. «Más bajo» o «más alto que la mayoría» significa '
+  + 'fuera de la mitad central de esos avisos. Compara precios de publicación: no es una tasación ni dice si conviene.';
+
+const POSICIONES = { debajo: 'Más bajo que la mayoría', dentro: 'En línea', arriba: 'Más alto que la mayoría' };
+
+function celdaComparacion(c, moneda) {
+  if (!c) return '—';
+  if (!c.posicion) return `<span class="fuente" title="${esc(c.motivo || '')}">Pocos parecidos</span>`;
+  const signo = c.diferencia_pct > 0 ? '+' : c.diferencia_pct < 0 ? '−' : '';
+  const detalle = `${dinero(c.precio_m2, moneda)}/m² · mediana ${dinero(c.mediana_m2, moneda)}/m² · `
+    + `mitad central entre ${numero.format(c.p25_m2)} y ${numero.format(c.p75_m2)} · ${enumerar(c.criterios)}`
+    + (c.sin_antiguedad ? ' · sin antigüedad: no alcanzaban los parecidos con antigüedad declarada' : '');
+  return `<span class="comparacion comparacion-${c.posicion}" title="${esc(detalle)}">${POSICIONES[c.posicion]}</span>
+    <span class="fuente comparacion-detalle">${signo}${Math.abs(c.diferencia_pct)} % vs. mediana de ${c.n} ${plural(c.n, 'parecido', 'parecidos')}</span>`;
 }
 
 function costoMensual(vivienda, cochera) {

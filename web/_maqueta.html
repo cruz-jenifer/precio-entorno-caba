@@ -1,0 +1,324 @@
+<!doctype html>
+<html lang="es-AR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Maqueta · Precio y Entorno CABA</title>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,100..900&display=swap" rel="stylesheet">
+<link href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet">
+<style>
+:root {
+  --jacaranda: #6A4FB3; --jacaranda-hondo: #4B3487; --flor: #D9CFF3;
+  --adoquin: #23272B; --gris: #5E646A; --vereda: #E7E5E0; --papel: #FFFFFF; --tilo: #3E6B4F;
+  --linea: #DCD9D2;
+  --A: #18CCCC; --B: #EB0909; --C: #233AA8; --D: #02A17A; --E: #AE3D97; --H: #FFD600;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { margin: 0; height: 100%; }
+body { font-family: 'Archivo', system-ui, sans-serif; color: var(--adoquin); background: var(--vereda); overflow: hidden; }
+#mapa { position: fixed; inset: 0; }
+
+/* Barra: una sola línea, flotando sobre el mapa */
+.barra { position: fixed; top: 16px; left: 16px; right: 16px; display: flex; align-items: center; gap: 10px; z-index: 3; }
+.marca { font-weight: 800; font-variation-settings: 'wdth' 125; font-size: 18px; letter-spacing: -.02em; padding: 0 14px 0 4px; color: var(--jacaranda-hondo); }
+.pastilla { background: var(--papel); border-radius: 999px; height: 44px; display: flex; align-items: center; padding: 0 16px; gap: 8px;
+  box-shadow: 0 2px 10px rgba(35, 39, 43, .14); font-size: 15px; white-space: nowrap; }
+.pastilla small { color: var(--gris); font-size: 13px; }
+.segm { padding: 4px; gap: 2px; }
+.segm span { padding: 8px 14px; border-radius: 999px; }
+.segm .on { background: var(--adoquin); color: #fff; }
+.importa { background: var(--jacaranda); color: #fff; font-weight: 600; }
+.extremo { margin-left: auto; }
+
+/* Hoja del barrio */
+.hoja { position: fixed; top: 76px; left: 16px; bottom: 16px; width: 440px; background: var(--papel); border-radius: 22px; z-index: 2;
+  box-shadow: 0 6px 30px rgba(35, 39, 43, .18); display: flex; flex-direction: column; overflow: hidden; }
+.cabeza { padding: 22px 26px 0; position: relative; }
+.volver { font-size: 14px; color: var(--gris); text-decoration: underline; text-underline-offset: 3px; }
+.nombre { margin: 14px 0 0; font-size: 64px; line-height: .86; font-weight: 850; font-variation-settings: 'wdth' 125; letter-spacing: -.045em; color: var(--jacaranda-hondo); }
+.lineas { display: flex; gap: 6px; margin-top: 14px; align-items: center; }
+.linea { width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; color: #fff; font-weight: 800; font-size: 15px; }
+.lineas small { color: var(--gris); font-size: 14px; margin-left: 6px; }
+.precio { display: grid; gap: 2px; margin: 22px 0 6px; }
+.precio strong { white-space: nowrap; font-size: 34px; font-weight: 750; font-variation-settings: 'wdth' 90; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+.precio span { color: var(--gris); font-size: 15px; line-height: 1.3; }
+.tabs { display: flex; gap: 22px; margin-top: 18px; border-bottom: 1px solid var(--linea); }
+.tabs span { padding: 12px 0; font-weight: 600; color: var(--gris); }
+.tabs .on { color: var(--adoquin); box-shadow: inset 0 -3px var(--jacaranda); }
+.cuerpo { padding: 20px 26px 26px; overflow: auto; display: grid; gap: 14px; }
+.pieza { background: #F6F5F2; border-radius: 16px; padding: 16px 18px; }
+.pieza h3 { margin: 0 0 4px; font-size: 15px; font-weight: 650; }
+.pieza p { margin: 0; color: var(--gris); font-size: 14px; line-height: 1.4; }
+.cifra { font-size: 30px; font-weight: 780; font-variation-settings: 'wdth' 85; letter-spacing: -.01em; color: var(--adoquin); }
+.dos { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.verde .cifra { color: var(--tilo); }
+.ruido-barra { height: 12px; border-radius: 6px; margin: 10px 0 8px; background: linear-gradient(90deg, #FED976 0 48%, #F03B20 48% 100%); }
+.ruido-barra + p strong { color: var(--adoquin); }
+/* Ruido nuevo: la barra es un porcentaje, no una escala de decibeles. */
+:root[data-ruido='nuevo'] .ruido-barra { background: linear-gradient(90deg, var(--jacaranda) 0 52%, var(--flor) 52% 100%); }
+.nota { font-size: 13px; color: var(--gris); }
+
+/* Capas: un muelle abajo, sin tapar el mapa */
+.muelle { position: fixed; left: 476px; right: 16px; bottom: 34px; display: flex; gap: 8px; z-index: 2; overflow: auto; padding: 4px; }
+.capa { background: var(--papel); border-radius: 999px; padding: 9px 14px; font-size: 14px; display: flex; align-items: center; gap: 8px;
+  box-shadow: 0 2px 8px rgba(35, 39, 43, .14); white-space: nowrap; }
+.capa i { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+.capa.on { background: var(--adoquin); color: #fff; }
+
+
+/* Paletas alternativas: ?paleta=celeste|taxi|mayolica */
+:root[data-paleta='celeste'] { --jacaranda: #2F6FAE; --jacaranda-hondo: #173E66; --flor: #CFE3F5; --vereda: #E6EAEE; }
+:root[data-paleta='celeste'] .precio strong { color: #173E66; }
+:root[data-paleta='taxi'] { --jacaranda: #1D1D1B; --jacaranda-hondo: #1D1D1B; --flor: #F7E3A1; --vereda: #E9E7E1; }
+:root[data-paleta='taxi'] .importa { background: #F2B705; color: #1D1D1B; }
+:root[data-paleta='taxi'] .tabs .on { box-shadow: inset 0 -4px #F2B705; }
+:root[data-paleta='taxi'] .nombre { text-decoration: underline; text-decoration-color: #F2B705; text-decoration-thickness: 10px; text-underline-offset: 6px; }
+:root[data-paleta='mayolica'] { --jacaranda: #2547A0; --jacaranda-hondo: #1C3478; --flor: #D6DEF2; --vereda: #E8E6E1; }
+:root[data-paleta='mayolica'] .precio strong { color: #A8741A; }
+:root[data-paleta='mayolica'] .importa { background: #2547A0; }
+
+/* Vista de inicio: lista de barrios */
+.titular { margin: 6px 0 0; font-size: 40px; line-height: .95; font-weight: 820; font-variation-settings: 'wdth' 125;
+  letter-spacing: -.035em; color: var(--jacaranda-hondo); }
+.bajada { margin: 12px 0 0; color: var(--gris); font-size: 15px; line-height: 1.4; }
+.barrios { list-style: none; margin: 0; padding: 0 14px 20px; overflow: auto; }
+.barrio { display: grid; grid-template-columns: 1fr auto; gap: 4px 12px; padding: 14px 12px; border-radius: 14px; }
+.barrio + .barrio { border-top: 1px solid var(--linea); }
+.barrio:first-child { background: #F3F0FA; }
+.barrio h2 { margin: 0; font-size: 24px; font-weight: 780; font-variation-settings: 'wdth' 118; letter-spacing: -.02em; }
+.barrio .cuantos { text-align: right; font-weight: 650; font-variant-numeric: tabular-nums; }
+.barrio .cuantos small { display: block; font-weight: 400; color: var(--gris); font-size: 13px; }
+.barrio .mediana { color: var(--adoquin); font-variant-numeric: tabular-nums; }
+.barrio .entorno { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; color: var(--gris); font-size: 13.5px; }
+.mini { width: 20px; height: 20px; border-radius: 50%; display: inline-grid; place-items: center; color: #fff; font-weight: 800; font-size: 11px; }
+.mini.H { color: #23272B; }
+
+/* Variantes del color de los títulos: ?titulo=adoquin|tinta|detalle */
+:root[data-titulo='adoquin'] .nombre, :root[data-titulo='adoquin'] .titular,
+:root[data-titulo='detalle'] .nombre, :root[data-titulo='detalle'] .titular { color: var(--adoquin); }
+:root[data-titulo='adoquin'] .marca, :root[data-titulo='detalle'] .marca { color: var(--adoquin); }
+:root[data-titulo='tinta'] .nombre, :root[data-titulo='tinta'] .titular, :root[data-titulo='tinta'] .marca { color: #2B2140; }
+:root[data-titulo='detalle'] .nombre::after, :root[data-titulo='detalle'] .titular::after { content: ''; display: block;
+  width: 56px; height: 6px; border-radius: 3px; background: var(--jacaranda); margin-top: 14px; }
+
+@media (max-width: 700px) {
+  .barra { top: 10px; left: 10px; right: 10px; flex-wrap: wrap; gap: 6px; }
+  .marca, .extremo, .ocultable { display: none; }
+  .pastilla { height: 40px; font-size: 14px; }
+  .hoja { top: auto; left: 0; right: 0; bottom: 0; width: auto; height: 62%; border-radius: 22px 22px 0 0; }
+  .hoja::before { content: ''; width: 44px; height: 5px; border-radius: 3px; background: var(--linea); position: absolute; top: 8px; left: calc(50% - 22px); }
+  .nombre { font-size: 50px; }
+  .titular { font-size: 30px; }
+  .muelle { left: 10px; right: 10px; bottom: calc(62% + 10px); }
+}
+</style>
+</head>
+<body>
+<div id="mapa"></div>
+<header class="barra">
+  <span class="marca">Precio y Entorno</span>
+  <span class="pastilla segm"><span class="on">Comprar</span><span>Alquilar</span></span>
+  <span class="pastilla"><small>Hasta</small> USD 110.000</span>
+  <span class="pastilla ocultable"><small>Desde</small> 35 m²</span>
+  <span class="pastilla ocultable">2 ambientes</span>
+  <span class="pastilla importa">Lo que me importa</span>
+  <span class="pastilla extremo">Mis alertas</span>
+</header>
+
+<section class="hoja" id="hoja-lista" hidden>
+  <div class="cabeza" style="padding-bottom:14px">
+    <h1 class="titular" id="titular">Barrios</h1>
+    <p class="bajada" id="bajada"></p>
+  </div>
+  <ol class="barrios" id="lista"></ol>
+</section>
+<section class="hoja" id="hoja-ficha">
+  <div class="cabeza">
+    <span class="volver">Todos los barrios</span>
+    <h1 class="nombre">Palermo</h1>
+    <div class="lineas"><span class="linea" style="background:var(--D)">D</span><small>6 estaciones en el barrio, comuna 14</small></div>
+    <div class="precio"><strong>USD 95.000</strong><span>Mediana de los 10 avisos que encajan, de 359 publicados en el barrio</span></div>
+    <nav class="tabs"><span class="on">Entorno</span><span>Avisos (10)</span><span>Crear alerta</span></nav>
+  </div>
+  <div class="cuerpo">
+    <div class="dos">
+      <div class="pieza verde"><div class="cifra">198 ha</div><p>de plazas y parques, en 54 espacios</p></div>
+      <div class="pieza"><div class="cifra">36,5 km</div><p>de ciclovías y 45 estaciones de Ecobici</p></div>
+    </div>
+    <div class="pieza">
+      <h3>Ruido de día</h3>
+      <div class="ruido-barra" aria-hidden="true"></div>
+      <p><strong>52 %</strong> de las celdas relevadas tiene 70 dBA o más en la calle. No describe el interior de un departamento.</p>
+    </div>
+    <div class="dos">
+      <div class="pieza"><div class="cifra">59</div><p>escuelas primarias, 22 de gestión estatal</p></div>
+      <div class="pieza"><div class="cifra">44</div><p>líneas de colectivo, según recorridos de 2019</p></div>
+    </div>
+    <div class="pieza"><h3>897 cafés, bares y restaurantes</h3><p>Registrados en OpenStreetMap. La cobertura depende de quién mapea la zona.</p></div>
+    <p class="nota">Datos abiertos de Buenos Aires Data y OpenStreetMap, por barrio oficial. Describen el barrio, no un departamento.</p>
+  </div>
+</section>
+
+<nav class="muelle">
+  <span class="capa on"><i style="background:var(--D)"></i>Subte</span>
+  <span class="capa on"><i style="background:#5E7D4F"></i>Plazas y parques</span>
+  <span class="capa"><i style="background:#1E2A32"></i>Escuelas</span>
+  <span class="capa"><i style="background:#00897B"></i>Salud</span>
+  <span class="capa"><i style="background:#FD8D3C"></i>Ruido</span>
+  <span class="capa"><i style="background:#00838F"></i>Ciclovías</span>
+  <span class="capa"><i style="background:#004F56"></i>Ecobici</span>
+  <span class="capa"><i style="background:#D81B60"></i>Colectivos</span>
+  <span class="capa"><i style="background:#B26B00"></i>Rampas</span>
+  <span class="capa">Más capas</span>
+</nav>
+
+<script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+<script>
+const QS0 = new URLSearchParams(location.search);
+const paleta = QS0.get('paleta') || 'jacaranda';
+document.documentElement.dataset.paleta = paleta;
+document.documentElement.dataset.titulo = QS0.get('titulo') || 'adoquin';  // decisión del 18/11
+const QS = new URLSearchParams(location.search);
+const RUIDO = QS.get('ruido');
+const VIS = QS.get('vis') || 'celdas';     // celdas | calles | suave
+const DELITOS = QS.get('delitos');         // celdas | suave
+if (RUIDO) document.documentElement.dataset.ruido = RUIDO;
+// Niveles de 50 a 80 dBA cada 5. «actual» es la escala de la app; «nuevo» va de crema a ciruela.
+const ESCALAS = { actual: ['#FFFFCC', '#FFEDA0', '#FED976', '#FEB24C', '#FD8D3C', '#F03B20', '#BD0026'],
+  nuevo: ['#FCF4D9', '#FDD49E', '#FB9A6A', '#EE5D6C', '#C3306F', '#86206F', '#4A1A5C'] };
+const TINTES = { jacaranda: ['#F1EEF8', '#D9CFF3', '#9B86D8', '#4B3487'], celeste: ['#EEF5FB', '#CFE3F5', '#7FB2E0', '#173E66'],
+  taxi: ['#FBF5E3', '#F7E3A1', '#E9B93A', '#1D1D1B'], mayolica: ['#EEF1F9', '#D6DEF2', '#8A9FD6', '#1C3478'] }[paleta];
+const VISTA = new URLSearchParams(location.search).get('vista') || 'ficha';
+if (VISTA === 'lista') {
+  document.getElementById('hoja-ficha').hidden = true;
+  document.getElementById('hoja-lista').hidden = false;
+  document.querySelector('.muelle').hidden = true;  // las capas aparecen al elegir un barrio
+}
+const movil = innerWidth < 700;
+const mapa = new maplibregl.Map({ container: 'mapa', style: 'https://basemaps.cartocdn.com/gl/voyager-gl-style/style.json',
+  center: VISTA === 'lista' ? (movil ? [-58.445, -34.665] : [-58.535, -34.615]) : movil ? [-58.425, -34.595] : [-58.455, -34.585],
+  zoom: VISTA === 'lista' ? (movil ? 10.3 : 11.5) : movil ? 12.1 : 12.9, attributionControl: { compact: true } });
+mapa.on('load', async () => {
+  const q = 'modo=real&operacion=venta&presupuesto=110000&superficie=35&ambientes=2&moneda=USD';
+  const [formas, barrios, capas] = await Promise.all([
+    fetch('/api/mapa/barrios').then((r) => r.json()),
+    fetch('/api/barrios?' + q).then((r) => r.json()),
+    fetch('/api/mapa/capas?barrio=Palermo&capas=subte&capas=verdes' + (RUIDO ? '&capas=ruido' : '')).then((r) => r.json())]);
+  const cuenta = Object.fromEntries(barrios.barrios.map((b) => [b.barrio, b.coincidencias]));
+  formas.features.forEach((f) => { f.properties.n = cuenta[f.properties.barrio] || 0; });
+  const primero = mapa.getStyle().layers.find((l) => l.type === 'symbol').id;
+  mapa.addSource('barrios', { type: 'geojson', data: formas });
+  mapa.addLayer({ id: 'relleno', type: 'fill', source: 'barrios', paint: {
+    'fill-color': ['interpolate', ['linear'], ['get', 'n'], 0, TINTES[0], 10, TINTES[1], 40, TINTES[2]],
+    'fill-opacity': VISTA === 'lista' ? 0.78 : ['case', ['==', ['get', 'barrio'], 'Palermo'], 0.25, 0.62] } }, primero);
+  mapa.addLayer({ id: 'bordes', type: 'line', source: 'barrios', paint: { 'line-color': '#FFFFFF', 'line-width': 1.2 } }, primero);
+  mapa.addLayer({ id: 'sel', type: 'line', source: 'barrios', filter: ['==', ['get', 'barrio'], VISTA === 'lista' ? '' : 'Palermo'],
+    paint: { 'line-color': TINTES[3], 'line-width': 3.5 } });
+  if (VISTA === 'lista') {
+    const fmt = new Intl.NumberFormat('es-AR');
+    const con = barrios.barrios.filter((b) => b.coincidencias).sort((a, b) => b.coincidencias - a.coincidencias);
+    const total = con.reduce((n, b) => n + b.coincidencias, 0);
+    document.getElementById('titular').textContent = `${con.length} barrios tienen avisos para vos`;
+    document.getElementById('bajada').textContent = `${fmt.format(total)} avisos de hasta USD 110.000, desde 35 m² y con 2 ambientes. Precios publicados, no tasaciones.`;
+    document.getElementById('lista').innerHTML = con.slice(0, 12).map((b) => {
+      const e = b.entorno || {};
+      const lineas = (e.subte_lineas || []).map((l) => `<span class="mini ${l}" style="background:var(--${l})">${l}</span>`).join('');
+      const plazas = e.verdes_ha ? `${String(e.verdes_ha).replace('.', ',')} ha de plazas` : 'sin plazas en el inventario';
+      return `<li class="barrio"><h2>${b.barrio}</h2>
+        <span class="cuantos">${b.coincidencias} avisos<small>de ${b.avisos}</small></span>
+        <span class="mediana">Mediana USD ${fmt.format(b.mediana)}</span><span></span>
+        <span class="entorno">${lineas || 'Sin subte'}${lineas ? '' : ''}<span>${plazas}</span></span></li>`;
+    }).join('');
+    document.querySelectorAll('.capa').forEach((c) => c.classList.remove('on'));
+    document.body.dataset.listo = '1';
+    return;
+  }
+  mapa.addSource('verdes', { type: 'geojson', data: capas.verdes });
+  mapa.addLayer({ id: 'verdes', type: 'fill', source: 'verdes', paint: { 'fill-color': '#5E7D4F', 'fill-opacity': 0.5 } }, primero);
+  mapa.addSource('subte', { type: 'geojson', data: capas.subte });
+  mapa.addLayer({ id: 'subte', type: 'circle', source: 'subte', paint: { 'circle-radius': 7,
+    'circle-color': ['match', ['get', 'line'], 'A', '#18CCCC', 'B', '#EB0909', 'C', '#233AA8', 'D', '#02A17A', 'E', '#AE3D97', 'H', '#FFD600', '#555'],
+    'circle-stroke-color': '#fff', 'circle-stroke-width': 2.5 } });
+  const forma = formas.features.find((f) => f.properties.barrio === 'Palermo').geometry;
+  const anillos = forma.type === 'Polygon' ? [forma.coordinates] : forma.coordinates;
+  const adentro = ([x, y]) => anillos.some((pol) => pol.reduce((dentro, anillo, i) => {
+    let c = false;
+    for (let a = 0, b = anillo.length - 1; a < anillo.length; b = a++) {
+      const [xa, ya] = anillo[a], [xb, yb] = anillo[b];
+      if ((ya > y) !== (yb > y) && x < (xb - xa) * (y - ya) / (yb - ya) + xa) c = !c;
+    }
+    return i === 0 ? c : dentro && !c;
+  }, false));
+  const centros = (fc) => ({ type: 'FeatureCollection', features: fc.features.map((f) => {
+    const r = f.geometry.coordinates[0];
+    return { type: 'Feature', properties: f.properties,
+      geometry: { type: 'Point', coordinates: [(r[0][0] + r[2][0]) / 2, (r[0][1] + r[2][1]) / 2] } };
+  }) });
+  if (RUIDO) {
+    const e = ESCALAS[RUIDO];
+    if (VIS === 'celdas') {
+      mapa.addSource('ruido', { type: 'geojson', data: capas.ruido });
+      mapa.addLayer({ id: 'ruido', type: 'fill', source: 'ruido', paint: { 'fill-opacity': 0.78,
+        'fill-color': ['step', ['get', 'tipico'], e[0], 55, e[1], 60, e[2], 65, e[3], 70, e[4], 75, e[5], 80, e[6]] } }, 'sel');
+    } else if (VIS === 'calles') {
+      // Solo donde la calle llega a 70 dBA o más: un brillo suave, más fuerte en 75 y 80.
+      const altos = centros(capas.ruido); altos.features = altos.features.filter((f) => f.properties.tipico >= 70 && adentro(f.geometry.coordinates));
+      mapa.addSource('ruido', { type: 'geojson', data: altos });
+      mapa.addLayer({ id: 'ruido', type: 'circle', source: 'ruido', paint: {
+        'circle-radius': ['interpolate', ['exponential', 2], ['zoom'], 12, 9, 16, 150],
+        'circle-color': ['step', ['get', 'tipico'], '#FD8D3C', 75, '#F03B20', 80, '#BD0026'],
+        'circle-opacity': 0.42, 'circle-blur': 0.85 } }, 'sel');
+    } else {
+      // Superficie suavizada del nivel típico, con la escala actual.
+      mapa.addSource('ruido', { type: 'geojson', data: centros(capas.ruido) });
+      mapa.addLayer({ id: 'ruido', type: 'heatmap', source: 'ruido', paint: {
+        'heatmap-weight': ['interpolate', ['linear'], ['get', 'tipico'], 50, 0.05, 80, 1],
+        'heatmap-radius': ['interpolate', ['exponential', 2], ['zoom'], 12, 12, 16, 170],
+        'heatmap-intensity': 0.35, 'heatmap-opacity': 0.8,
+        'heatmap-color': ['interpolate', ['linear'], ['heatmap-density'], 0, 'rgba(255,255,204,0)', 0.15, '#FFEDA0',
+          0.35, '#FED976', 0.55, '#FD8D3C', 0.75, '#F03B20', 1, '#BD0026'] } }, 'sel');
+    }
+    ['verdes'].forEach((id) => mapa.setLayoutProperty(id, 'visibility', 'none'));
+    document.querySelectorAll('.capa')[1].classList.remove('on');
+    document.querySelectorAll('.capa')[4].classList.add('on');
+  }
+  if (DELITOS) {
+    const d = await fetch('/api/delitos/concentracion?barrio=Palermo&modo=real&operacion=venta').then((r) => r.json());
+    const anio = String(d.anios.at(-1));
+    d.celdas.features.forEach((f) => { f.properties.hechos = f.properties.por_anio[anio] || 0; });
+    d.celdas.features = d.celdas.features.filter((f) => f.properties.hechos > 0);
+    mapa.setLayoutProperty('verdes', 'visibility', 'none');
+    if (DELITOS === 'brillo') {
+      // Solo el 20 % de celdas del barrio con más hechos registrados, como un brillo gris azulado.
+      const pts = centros(d.celdas); pts.features = pts.features.filter((f) => adentro(f.geometry.coordinates));
+      const v = pts.features.map((f) => f.properties.hechos).sort((a, b) => a - b);
+      const corte = v[Math.floor(0.8 * (v.length - 1))];
+      pts.features = pts.features.filter((f) => f.properties.hechos >= corte);
+      mapa.addSource('delitos', { type: 'geojson', data: pts });
+      mapa.addLayer({ id: 'delitos', type: 'circle', source: 'delitos', paint: {
+        'circle-radius': ['interpolate', ['exponential', 2], ['zoom'], 12, 15, 16, 260],
+        'circle-color': '#2E4560', 'circle-opacity': 0.34, 'circle-blur': 0.9 } }, 'sel');
+    } else if (DELITOS === 'celdas') {
+      const v = d.celdas.features.map((f) => f.properties.hechos).sort((a, b) => a - b);
+      const q = [0.2, 0.4, 0.6, 0.8].map((x) => v[Math.floor(x * (v.length - 1))]);
+      mapa.addSource('delitos', { type: 'geojson', data: d.celdas });
+      mapa.addLayer({ id: 'delitos', type: 'fill', source: 'delitos', paint: { 'fill-opacity': 0.8,
+        'fill-color': ['step', ['get', 'hechos'], '#D3DBE3', q[0] + 0.5, '#A9B8C8', q[1] + 0.5, '#7E93AB', q[2] + 0.5, '#55708E', q[3] + 0.5, '#2E4560'] } }, 'sel');
+    } else {
+      const max = Math.max(...d.celdas.features.map((f) => f.properties.hechos));
+      mapa.addSource('delitos', { type: 'geojson', data: centros(d.celdas) });
+      mapa.addLayer({ id: 'delitos', type: 'heatmap', source: 'delitos', paint: {
+        'heatmap-weight': ['interpolate', ['linear'], ['get', 'hechos'], 0, 0, max, 1],
+        'heatmap-radius': ['interpolate', ['exponential', 2], ['zoom'], 12, 22, 16, 300],
+        'heatmap-intensity': 0.6, 'heatmap-opacity': 0.8,
+        'heatmap-color': ['interpolate', ['linear'], ['heatmap-density'], 0, 'rgba(211,219,227,0)', 0.2, '#C6D0DB',
+          0.45, '#8FA2B8', 0.7, '#55708E', 1, '#22344A'] } }, 'sel');
+    }
+    document.querySelectorAll('.capa')[1].classList.remove('on');
+  }
+  document.body.dataset.listo = '1';
+});
+</script>
+</body>
+</html>

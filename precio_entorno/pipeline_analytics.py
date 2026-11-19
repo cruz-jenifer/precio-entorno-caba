@@ -255,14 +255,26 @@ def clear_body():
     return {'ranges': list(SHEETS)}
 
 
+def inference(clean, model_folder):
+    """CSV limpio → referencias versionadas; no entrena ni usa delitos como variables."""
+    from precio_entorno.inferencia import load, predict
+    frame = clean.rename(columns={
+        'barrio': 'neighborhood', 'ambientes': 'rooms', 'moneda': 'currency',
+        'superficie_cubierta_m2': 'covered_area', 'superficie_total_m2': 'total_area_m2',
+        'latitud': 'latitude', 'longitud': 'longitude', 'fuente': 'agency',
+    })
+    return predict(load(model_folder), frame)
+
+
 # ---------------------------------------------------------------- CLI
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument('operacion', choices=('etl', 'eda'))
+    parser.add_argument('operacion', choices=('etl', 'eda', 'inferencia'))
     parser.add_argument('archivo', type=Path, help='etl: avisos crudos (JSON o CSV); eda: CSV limpio')
     parser.add_argument('--delitos', type=Path, default=ROOT / 'data/raw/delitos_2025.csv')
     parser.add_argument('--salida', type=Path, default=ROOT / 'data/processed/pipeline')
+    parser.add_argument('--modelo', type=Path, default=ROOT / 'data/processed/inferencia')
     args = parser.parse_args()
     args.salida.mkdir(parents=True, exist_ok=True)
     try:
@@ -272,6 +284,14 @@ def main():
             (args.salida / 'reporte_etl.json').write_text(json.dumps(report, ensure_ascii=False, indent=2),
                                                           encoding='utf-8')
             print(json.dumps(report, ensure_ascii=False, indent=2))
+        elif args.operacion == 'inferencia':
+            predictions = inference(read_clean(args.archivo.read_bytes()), args.modelo)
+            predictions.to_csv(args.salida / 'predicciones.csv', index=False)
+            values = [list(predictions.columns)] + predictions.values.tolist()
+            body = {'valueInputOption': 'RAW', 'data': [{'range': 'predicciones!A1', 'values': values}]}
+            (args.salida / 'sheets_predicciones_body.json').write_text(
+                json.dumps(body, ensure_ascii=False), encoding='utf-8')
+            print(f'{len(predictions)} referencias generadas con el modelo guardado.')
         else:
             report_path = args.salida / 'reporte_etl.json'
             report = json.loads(report_path.read_text(encoding='utf-8')) if report_path.exists() else None

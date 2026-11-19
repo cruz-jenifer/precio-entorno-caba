@@ -1,0 +1,56 @@
+fold,scope,model,seconds,params,mae_train,mae_test,n_iter,max_iter,limite_iteraciones_alcanzado,avisos_convergencia_busqueda
+1,base,HGB fijo EDA,1.8338310999970417,{},,,,,,
+1,base,Ridge,0.23528890000307,{'ridge__alpha': 100},615.7382845930891,594.4386519683715,,,,0.0
+1,base,KNN,0.45570170000428334,{'kneighborsregressor__n_neighbors': 8},7.496174235292826,508.7719703779503,,,,0.0
+1,base,Random Forest,12.054411999997683,{'randomforestregressor__min_samples_leaf': 2},223.77179563246676,439.29328300575787,,,,0.0
+1,base,HistGradientBoosting,6.732646200005547,{'histgradientboostingregressor__min_samples_leaf': 20},189.56041889143302,433.2429282177926,,,,0.0
+1,base,MLP,11.746762599999784,{'regressor__mlpregressor__alpha': 0.1},344.2689816078052,492.842939002217,130.0,250.0,False,0.0
+1,edificio,Ridge,0.30202030000509694,{'ridge__alpha': 100},548.4848283386162,529.2039408506072,,,,0.0
+1,edificio,KNN,0.48910029999387916,{'kneighborsregressor__n_neighbors': 8},4.484741424395493,448.8984112844564,,,,0.0
+1,edificio,Random Forest,12.922772599995369,{'randomforestregressor__min_samples_leaf': 2},201.30343945477543,395.8008725861825,,,,0.0
+1,edificio,HistGradientBoosting,7.344171999997343,{'histgradientboostingregressor__min_samples_leaf': 20},157.4087427259108,395.15881813490324,,,,0.0
+1,edificio,MLP,9.21121980001044,{'regressor__mlpregressor__alpha': 0.1},298.54751647693666,442.8434615328218,104.0,250.0,False,0.0
+2,base,HGB fijo EDA,1.520969499993953,{},,,,,,
+2,base,Ridge,0.19187959999544546,{'ridge__alpha': 1},561.0136631333462,558.7496951161803,,,,0.0
+2,base,KNN,0.43287940000300296,{'kneighborsregressor__n_neighbors': 8},5.639711363937844,503.6401269056023,,,,0.0
+2,base,Random Forest,11.839769900005194,{'randomforestregressor__min_samples_leaf': 2},219.88443759984057,463.04552716602683,,,,0.0
+2,base,HistGradientBoosting,6.748803800001042,{'histgradientboostingregressor__min_samples_leaf': 10},172.87835038017445,451.9677808757581,,,,0.0
+2,base,MLP,11.782718699992984,{'regressor__mlpregressor__alpha': 0.1},343.4821575256383,514.0001260553881,137.0,250.0,False,0.0
+2,edificio,Ridge,0.22076930000912398,{'ridge__alpha': 1},498.47624612486936,497.5638856007176,,,,0.0
+2,edificio,KNN,0.4814963000098942,{'kneighborsregressor__n_neighbors': 8},3.532188647862802,453.74803423297226,,,,0.0
+2,edificio,Random Forest,12.515601199993398,{'randomforestregressor__min_samples_leaf': 2},199.63967249785696,414.5213036659587,,,,0.0
+2,edificio,HistGradientBoosting,7.372831500004395,{'histgradientboostingregressor__min_samples_leaf': 20},157.76589844284322,397.6696044975193,,,,0.0
+2,edificio,MLP,9.827001899990137,{'regressor__mlpregressor__alpha': 0.1},306.74867006818926,446.46433235034755,105.0,250.0,False,0.0
+3,base,HGB fijo EDA,1.5463404999900376,{},,,,,,
+3,base,Ridge,0.23023339999781456,{'ridge__alpha': 1},556.1760334556063,574.2591669756072,,,,0.0
+3,base,KNN,0.48248410000815056,{'kneighborsregressor__n_neighbors': 8},6.135062912316968,513.6616332957854,,,,0.0
+3,base,Random Forest,12.18201790000603,{'randomforestregressor__min_samples_leaf': 2},221.072666527269,469.14447288424185,,,,0.0
+3,base,HistGradientBoosting,6.830858799992711,{'histgradientboostingregressor__min_samples_leaf': 20},185.31180606878192,461.8157377631841,,,,0.0
+3,base,MLP,11.699630700008129,{'regressor__mlpregressor__alpha': 0.1},338.6693958910136,514.205687291773,134.0,250.0,False,0.0
+3,edificio,Ridge,0.2320315999968443,{'ridge__alpha': 1},490.44156362353925,524.141928564229,,,,0.0
+3,edificio,KNN,0.4948442999884719,{'kneighborsregressor__n_neighbors': 8},4.049246153993877,484.78785307079835,,,,0.0
+3,edificio,Random Forest,12.807885300004273,{'randomforestregressor__min_samples_leaf': 2},198.74449701199782,437.31351908437256,,,,0.0
+3,edificio,HistGradientBoosting,7.537480900005903,{'histgradientboostingregressor__min_samples_leaf': 20},157.01887552269028,420.31695614647765,,,,0.0
+3,edificio,MLP,9.60525590000907,{'regressor__mlpregressor__alpha': 0.1},287.51789113186203,462.4815975707907,133.0,250.0,False,0.0
+4,base,HGB fijo EDA,1.63555130000168,{},,,,,,
+4,base,Ridge,0.20978560000366997,{'ridge__alpha': 1},557.0113610208388,572.6567006193866,,,,0.0
+4,base,KNN,0.44519230000150856,{'kneighborsregressor__n_neighbors': 8},4.6214894065947085,535.1651795676231,,,,0.0
+4,base,Random Forest,12.209144399996148,{'randomforestregressor__min_samples_leaf': 2},216.84679302479188,472.48886142228315,,,,0.0
+4,base,HistGradientBoosting,6.788657600001898,{'histgradientboostingregressor__min_samples_leaf': 10},169.1815295359122,455.9948204104092,,,,0.0
+4,base,MLP,12.502795099993818,{'regressor__mlpregressor__alpha': 0.1},340.35699597263925,513.3780957607132,129.0,250.0,False,0.0
+4,edificio,Ridge,0.23678849999851082,{'ridge__alpha': 1},494.65652304812335,510.6357830023694,,,,0.0
+4,edificio,KNN,0.4857322999887401,{'kneighborsregressor__n_neighbors': 8},2.460097384799372,481.4002448849298,,,,0.0
+4,edificio,Random Forest,12.931745200010482,{'randomforestregressor__min_samples_leaf': 2},194.861487790423,435.16414459392246,,,,0.0
+4,edificio,HistGradientBoosting,7.265199100002064,{'histgradientboostingregressor__min_samples_leaf': 10},140.32303306011457,412.79172634473974,,,,0.0
+4,edificio,MLP,10.139668200004962,{'regressor__mlpregressor__alpha': 0.1},291.71261434008807,442.4087812640548,100.0,250.0,False,0.0
+5,base,HGB fijo EDA,1.571983799993177,{},,,,,,
+5,base,Ridge,0.2058035999943968,{'ridge__alpha': 100},605.0256238515443,641.4062483135195,,,,0.0
+5,base,KNN,0.4681076999986544,{'kneighborsregressor__n_neighbors': 8},5.668732413902395,514.4621590793379,,,,0.0
+5,base,Random Forest,12.090287300001364,{'randomforestregressor__min_samples_leaf': 2},217.7454041777072,458.57673310885883,,,,0.0
+5,base,HistGradientBoosting,7.348708999998053,{'histgradientboostingregressor__min_samples_leaf': 10},177.09161738091865,452.20861450862543,,,,0.0
+5,base,MLP,12.225883499995689,{'regressor__mlpregressor__alpha': 0.1},347.7367726124629,492.36692327862704,134.0,250.0,False,0.0
+5,edificio,Ridge,0.25389480000012554,{'ridge__alpha': 100},540.4330052869263,561.1714074693075,,,,0.0
+5,edificio,KNN,0.5195499000110431,{'kneighborsregressor__n_neighbors': 8},3.41595855041028,469.81880618550275,,,,0.0
+5,edificio,Random Forest,12.723722299997462,{'randomforestregressor__min_samples_leaf': 2},198.61487212162007,408.82686395936884,,,,0.0
+5,edificio,HistGradientBoosting,7.488609399995767,{'histgradientboostingregressor__min_samples_leaf': 20},158.09635368781178,387.22678064639217,,,,0.0
+5,edificio,MLP,9.20685030000459,{'regressor__mlpregressor__alpha': 0.1},309.086432235158,425.17299020758423,110.0,250.0,False,0.0

@@ -71,6 +71,10 @@ Zonaprop autorizó por escrito la consulta automatizada. Sus avisos se obtienen 
   - **Descartes:** sobre todo por superficie faltante o por expensas y precios fuera de rango.
   - **Nombres de búsqueda:** el buscador de Zonaprop reconoce «Monserrat», «Nuñez» y «Pompeya» en lugar de los nombres oficiales. «Pompeya» aparece así en la jerarquía de ubicación y se asigna a Nueva Pompeya.
   - **Costo:** unos USD 8,70 en total. El comando revisa el gasto de cada cuenta antes de cada barrio y pasa a la siguiente cuando una corrida completa más USD 0,25 de margen superaría los USD 5.
+- **Actualización de alquiler del 18 y 19 de noviembre de 2026:** 48 barrios, los 25 departamentos en alquiler más recientes por barrio, con ficha, en la cuenta 5 de Apify, con un tope de USD 0,08 por corrida.
+  - **Carpetas:** `data/raw/zonaprop-alquiler-20261118-2309/` (17 barrios hasta Mataderos; la conexión se cortó), `-montecastro/` (relectura sin cobro de una corrida que terminó durante el corte), `-reintento/` (los 30 barrios restantes, más Boedo y Colegiales) y `-villaluro/`. Boedo, Colegiales y Villa Luro fallaron primero con un 401 de Zonaprop dentro del actor y salieron bien al reintentarlos.
+  - **Resultado:** se adaptaron 1.128 avisos y entraron 827 nuevos a `real-alquiler.sqlite3` (727 en pesos y 100 en dólares), que pasó de 3.359 a 4.186. Ya había 226 avisos en la base, y 30 de ellos cambiaron de precio. Barrios con poca oferta, como Villa Real (4), Villa Riachuelo (9) y Villa Soldati (9), no llegaron a 25.
+  - **Costo:** unos USD 2,32 en la cuenta 5. El total del proyecto queda en unos USD 21 de USD 25.
 
 ### Catálogo de alquileres
 

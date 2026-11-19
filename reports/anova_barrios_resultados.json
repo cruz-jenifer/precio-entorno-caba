@@ -1,0 +1,48 @@
+{
+  "hipotesis_nula": "Las medias de precio publicado en USD/m² cubierto son iguales en todos los barrios incluidos.",
+  "alpha": 0.05,
+  "filas_entrada": 3806,
+  "grupos_antes_filtro": 3582,
+  "unidades_analizadas": 3582,
+  "barrios_incluidos": 48,
+  "minimo_grupos_por_barrio": 5,
+  "barrios_excluidos": [],
+  "welch": {
+    "F": 59.136352127635504,
+    "gl1": 47,
+    "gl2": 970.2481900427343,
+    "p": 1.5705981112947163e-249,
+    "rechaza_h0": true
+  },
+  "clasico": {
+    "F": 62.476648939580244,
+    "gl1": 47,
+    "gl2": 3534,
+    "p": 0.0,
+    "eta_cuadrado_descriptivo": 0.4538206858209417
+  },
+  "brown_forsythe": {
+    "W": 9.993446869424876,
+    "p": 5.510308655790206e-66
+  },
+  "normalidad_residuos": {
+    "K2": 1893.2594096399218,
+    "p": 0.0
+  },
+  "kruskal_sensibilidad": {
+    "H": 1727.3853940848983,
+    "p": 0.0
+  },
+  "pares": 1128,
+  "pares_significativos_holm": 696,
+  "scipy": "1.16.3",
+  "notas": [
+    "Análisis exploratorio de una muestra no probabilística de avisos; no implica causalidad.",
+    "Una mediana por grupo aproximado; no garantiza independencia espacial o entre edificios.",
+    "Los intervalos por par son puntuales, no simultáneos; las decisiones usan p de Holm.",
+    "Kruskal contrasta distribuciones/rangos, no igualdad de medias ni necesariamente de medianas.",
+    "Un p guardado como 0 corresponde a subdesbordamiento numérico; no a probabilidad literalmente nula."
+  ],
+  "dataset": "dataset_modelo.csv",
+  "dataset_sha256": "173bde3becfacd67178825d6175824f3e752fdc00f90014d3310f2584131e59c"
+}

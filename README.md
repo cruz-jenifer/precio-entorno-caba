@@ -1,8 +1,16 @@
 # Precio y Entorno CABA
 
+El [Colab integral](notebooks/capstone_integral_colab.ipynb) reúne teoría, datos, EDA, ANOVA, cinco modelos, evaluación e inferencia en 47 celdas. Ver [archivos, modos de ejecución y guía para abrirlo](docs/colab-integral.md).
+
 Prototipo local de búsqueda inmobiliaria. Una persona ingresa sus preferencias, compara barrios, guarda una búsqueda y recibe una alerta cuando aparece un aviso que coincide. Los delitos registrados se muestran como contexto y se analizan por separado para el capstone.
 
 El [plan de entrega del capstone](docs/plan-capstone.md) reúne el cronograma de la profesora, las evidencias del repositorio y los pendientes para Analytics, Inference y la defensa comercial.
+
+La [entrega de entrenamiento e inferencia del 18/11](docs/entrega-inferencia.md) documenta el ajuste de HistGradientBoosting, la comparación contra baseline, las métricas técnicas y de negocio, las predicciones en Streamlit y la estimación de costos. Incluye comandos para reproducir sin extracciones nuevas.
+
+El [ANOVA de precios por barrio](docs/anova-barrios.md) compara medias de publicación con Welch y documenta supuestos, tamaño de efecto y comparaciones por pares con ajuste de Holm.
+
+La [memoria matemática](docs/memoria-matematica.md) fundamenta los cinco modelos, sus transformaciones, la validación y el ANOVA. La [auditoría estadística](docs/auditoria-estadistica.md) identifica la comparación principal y sus diferencias con el prototipo operativo. La skill del proyecto está en `.agents/skills/auditoria-estadistica-capstone/`.
 
 La [entrega de Producto 1 del 12/11](docs/entrega-12-11.md) incluye la auditoría de cumplimiento, muestras analíticas, diccionario, guion de demo y acciones de cierre por rol.
 

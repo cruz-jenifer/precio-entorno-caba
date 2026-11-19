@@ -6,7 +6,7 @@ from sklearn.model_selection import GroupKFold
 from threadpoolctl import threadpool_limits
 
 from precio_entorno.benchmark_inmobiliario import (
-    CATEGORICAL, EXTRA, NUMERIC, bootstrap_mae_delta, model_specs, scores, training_comparables,
+    CATEGORICAL, EXTRA, NUMERIC, bootstrap_mae_delta, model_specs, scores, simple_baselines, training_comparables,
 )
 
 
@@ -76,6 +76,21 @@ class BenchmarkIntegrityTests(unittest.TestCase):
         self.assertEqual(scores(base).mdape_pct, 10)
         improved = base.assign(error=[0, -100])
         np.testing.assert_allclose(bootstrap_mae_delta(improved, base), [-100, -100])
+
+    def test_simple_baselines_ignore_test_price_and_duplicate_copies(self):
+        train, test = self.data.iloc[:100], self.data.iloc[100:].copy()
+        original = simple_baselines(train, test)
+        mutated = simple_baselines(pd.concat([train, train]), test.assign(precio_m2=1))
+        for name in original:
+            np.testing.assert_allclose(original[name], mutated[name])
+        self.assertTrue(np.all(original['Mediana comparables'] == train.groupby('grupo').precio_m2.median().median()))
+
+    def test_bootstrap_rejects_unpaired_predictions(self):
+        base = pd.DataFrame({'row': [0, 1], 'grupo': ['a', 'b'], 'precio_m2': [100, 200], 'error': [10, 20]})
+        for bad in [base.iloc[:1], base.assign(grupo=['a', 'otra']), base.assign(precio_m2=[100, 201]),
+                    pd.concat([base, base])]:
+            with self.assertRaises(ValueError):
+                bootstrap_mae_delta(bad, base)
 
 
 if __name__ == '__main__':

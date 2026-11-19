@@ -11,13 +11,14 @@ fuente, sin precisión declarada; la API solo lo usa si `ubicacion.quality` lo c
 - Ciclovías: distancia al tramo más cercano, muestreado como los bordes de las plazas. No dice si el recorrido
   sigue ni si el tramo es protegido.
 - Subte con ascensor: la estación más cercana con al menos un ascensor informado por SBASE. No dice si funciona.
+- Recreación: el cine, teatro, museo o centro cultural más cercano de OpenStreetMap, con su nombre y tipo.
 """
 
 import math
 
 import numpy as np
 
-CAPAS = ('subte', 'escuelas', 'salud', 'verdes', 'ruido', 'ciclovias', 'ecobici', 'bibliotecas')
+CAPAS = ('subte', 'escuelas', 'salud', 'verdes', 'ruido', 'ciclovias', 'ecobici', 'bibliotecas', 'recreacion')
 NIVELES = ('inicial', 'primario', 'secundario')
 M_LAT = 111_320
 KX = M_LAT * math.cos(math.radians(-34.62))
@@ -151,9 +152,10 @@ class Cercania:
         self.ciclovias = Puntos(bordes(capas.get('ciclovias') or {}))
         self.ecobici = de(puntos.get('ecobici', []))[1]
         self.bibliotecas = de(puntos.get('bibliotecas', []))[1]
+        self.recreacion, self.recreacion_xy = de(puntos.get('recreacion', []))
         # Sin la capa cargada no se informa distancia (None), en lugar de «ninguna cerca».
         self.disponibles = {'ciclovias': bool(capas.get('ciclovias')), 'ecobici': 'ecobici' in puntos,
-                            'bibliotecas': 'bibliotecas' in puntos}
+                            'bibliotecas': 'bibliotecas' in puntos, 'recreacion': 'recreacion' in puntos}
         ruido = capas.get('ruido') or {}
         celdas = ruido.get('diurno', [])
         self.celda_m = ruido.get('celda_m', 100)
@@ -192,6 +194,13 @@ class Cercania:
                                     ('bibliotecas', 'biblioteca', self.bibliotecas)):
             if capa in capas:
                 poner(clave, cercanos(origen, indice)[0] if self.disponibles[capa] else [math.inf] * len(origen))
+        if 'recreacion' in capas:
+            if self.disponibles['recreacion']:
+                d, idx = cercanos(origen, self.recreacion_xy)
+                poner('recreacion', d, lambda i: {'nombre': self.recreacion[idx[i]]['name'],
+                                                  'tipo': self.recreacion[idx[i]]['kind']})
+            else:
+                poner('recreacion', [math.inf] * len(origen))
         if 'ruido' in capas:
             # La celda que contiene el punto: el centro más cercano a no más de media celda en cada eje.
             _, idx = cercanos(origen, self.ruido)

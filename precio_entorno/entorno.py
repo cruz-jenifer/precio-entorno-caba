@@ -20,6 +20,10 @@ Gastronomía (opcional): restaurantes, cafés y bares de OpenStreetMap (licencia
 de OpenStreetMap»), de la captura más reciente en `data/raw/osm-AAAAMMDD/`. Solo se cuentan por barrio.
 Si alguna categoría llegó al tope de puntos de su corrida, la captura está incompleta y no se usa.
 
+Recreación (opcional): cines, teatros, museos, centros culturales y galerías de OpenStreetMap (ODbL), de la captura
+más reciente en `data/raw/osm-recreacion-AAAAMMDD/recreacion.json`. Se cuentan por barrio y se dibujan en el mapa.
+Se descartan los lugares sin nombre y los salones de eventos (en CABA, casi todos salones de fiestas).
+
 Movilidad en bici y bibliotecas (opcionales, CC-BY 2.5 AR, en `data/raw/badata-entorno/`): tramos de ciclovía,
 estaciones de Ecobici (listado del nuevo sistema; no informa si cada una está operativa) y bibliotecas de la Red de
 la Ciudad. Se cuentan por barrio y se dibujan en el mapa. De las bibliotecas no se guardan teléfonos ni correos.
@@ -86,6 +90,9 @@ SOURCES = {
 }
 SUBTE_COLORS = {'A': '#18CCCC', 'B': '#EB0909', 'C': '#233AA8', 'D': '#02A17A', 'E': '#AE3D97', 'H': '#FFD600'}
 GASTRONOMIA = ('restaurantes', 'cafes', 'bares')
+# Recreación: tipo de la app → nombre para el mapa. El orden es el de la ficha y la leyenda.
+RECREACION = {'cine': 'Cine', 'teatro': 'Teatro', 'museo': 'Museo', 'cultural': 'Centro cultural o galería'}
+DUPLICADO_M = 150
 GARAJES_ARCHIVO = 'garajes-comerciales.geojson'
 GARAJES_FUENTE = 'https://data.buenosaires.gob.ar/dataset/garajes-comerciales'
 # El portal muestra la publicación (10/05/2021) pero no la fecha del relevamiento.
@@ -487,6 +494,51 @@ def gyms(overpass):
     return list(out.values())
 
 
+def recreation_kind(tags):
+    """Tipo de recreación de un elemento de OSM, o None si no corresponde."""
+    amenity, tourism = tags.get('amenity'), tags.get('tourism')
+    if amenity == 'cinema':
+        return 'cine'
+    if amenity == 'theatre':
+        return 'teatro'
+    if tourism == 'museum' or amenity == 'planetarium':
+        return 'museo'
+    if amenity in ('arts_centre', 'music_venue') or tourism == 'gallery':
+        return 'cultural'
+    return None
+
+
+def recreation(overpass):
+    """Cines, teatros, museos, centros culturales y galerías de OSM. Sin nombre no se pueden identificar: se descartan."""
+    out, seen = [], defaultdict(list)
+    for element in overpass.get('elements', []):
+        tags = element.get('tags') or {}
+        kind = recreation_kind(tags)
+        name = ' '.join(str(tags.get('name') or '').split())
+        center = element.get('center') or element
+        lon, lat = center.get('lon'), center.get('lat')
+        if not kind or not name or not isinstance(lon, (int, float)) or not isinstance(lat, (int, float)):
+            continue
+        # Un mismo lugar a veces está como punto y como edificio: con el mismo nombre y tipo a menos de
+        # DUPLICADO_M metros se queda el primero.
+        twins = seen[name.casefold(), kind]
+        if any(math.hypot((lon - x) * 111_320 * math.cos(math.radians(lat)), (lat - y) * 111_320) < DUPLICADO_M
+               for x, y in twins):
+            continue
+        twins.append((lon, lat))
+        street = ' '.join(v for v in (tags.get('addr:street'), tags.get('addr:housenumber')) if v)
+        lon, lat = round(lon, DECIMALS), round(lat, DECIMALS)
+        out.append({'name': name, 'kind': kind, 'lon': lon, 'lat': lat,
+                    'tooltip': ' · '.join(p for p in (name, RECREACION[kind], street) if p)})
+    return out
+
+
+def latest_recreation(raw_dir):
+    """`osm-recreacion-AAAAMMDD/recreacion.json` más reciente, o None."""
+    found = sorted(Path(raw_dir).glob('osm-recreacion-*/recreacion.json'))
+    return found[-1] if found else None
+
+
 def latest_gyms(raw_dir):
     """`osm-gimnasios-AAAAMMDD/gimnasios.json` más reciente, o None."""
     found = sorted(Path(raw_dir).glob('osm-gimnasios-*/gimnasios.json'))
@@ -627,7 +679,8 @@ def gastronomy(osm_dir, barrios):
     return counts
 
 
-def convert(poi_dir, entorno_dir, target, downloaded=None, osm_dir=None, gyms_path=None, gtfs_zip=None):
+def convert(poi_dir, entorno_dir, target, downloaded=None, osm_dir=None, gyms_path=None, gtfs_zip=None,
+            recreation_path=None):
     from pyproj import Transformer
 
     target.mkdir(parents=True, exist_ok=True)
@@ -662,6 +715,9 @@ def convert(poi_dir, entorno_dir, target, downloaded=None, osm_dir=None, gyms_pa
     gyms_path = Path(gyms_path) if gyms_path else None
     if gyms_path and gyms_path.is_file():
         points['gimnasios'] = gyms(read(gyms_path))
+    recreation_path = Path(recreation_path) if recreation_path else None
+    if recreation_path and recreation_path.is_file():
+        points['recreacion'] = recreation(read(recreation_path))
     ramp_files = {survey: entorno_dir / file for survey, file in RAMPAS.items() if (entorno_dir / file).is_file()}
     if ramp_files:
         points['rampas'] = ramps(ramp_files)
@@ -749,6 +805,9 @@ def convert(poi_dir, entorno_dir, target, downloaded=None, osm_dir=None, gyms_pa
         for layer in ('clubes', 'gimnasios', 'ecobici', 'bibliotecas'):
             if layer in points:
                 summary[name][layer] = len(mine[layer])
+        if 'recreacion' in points:
+            kinds = Counter(item['kind'] for item in mine['recreacion'])
+            summary[name]['recreacion'] = {kind: kinds[kind] for kind in RECREACION}
         if lanes is not None:
             summary[name]['ciclovias_km'] = round(
                 sum(f['properties']['length_m'] for f in lanes if f['properties']['barrio'] == name) / 1000, 1)
@@ -786,6 +845,14 @@ def convert(poi_dir, entorno_dir, target, downloaded=None, osm_dir=None, gyms_pa
         sources.append({'capa': 'gimnasios', 'titulo': 'Gimnasios', 'archivo': gyms_path.name,
                         'periodo': f'Captura del {stamp}' if stamp else 'Captura de OpenStreetMap',
                         'url': 'https://www.openstreetmap.org/copyright', 'sha256': digest(gyms_path),
+                        'licencia': 'ODbL · © colaboradores de OpenStreetMap'})
+    if 'recreacion' in points:
+        stamp = osm_capture_date(recreation_path.parent.with_name(
+            recreation_path.parent.name.replace('osm-recreacion-', 'osm-')))
+        sources.append({'capa': 'recreacion', 'titulo': 'Cines, teatros, museos y centros culturales',
+                        'archivo': recreation_path.name,
+                        'periodo': f'Captura del {stamp}' if stamp else 'Captura de OpenStreetMap',
+                        'url': 'https://www.openstreetmap.org/copyright', 'sha256': digest(recreation_path),
                         'licencia': 'ODbL · © colaboradores de OpenStreetMap'})
     if lines is not None:
         sources.append({'capa': 'colectivos', 'titulo': 'Recorridos de colectivos (GTFS)', 'archivo': gtfs_zip.name,
@@ -941,7 +1008,8 @@ def main():
     osm_dir = None if args.sin_osm else (args.osm or latest_osm(raw))
     gtfs_dir = colectivos_gtfs.latest(raw)
     summary = convert(args.poi, args.entorno, args.destino, osm_dir=osm_dir, gyms_path=latest_gyms(raw),
-                      gtfs_zip=gtfs_dir / colectivos_gtfs.ARCHIVO if gtfs_dir else None)
+                      gtfs_zip=gtfs_dir / colectivos_gtfs.ARCHIVO if gtfs_dir else None,
+                      recreation_path=latest_recreation(raw))
     with_food = any('gastronomia' in s for s in summary.values())
     print(json.dumps({'barrios': len(summary), 'destino': str(args.destino),
                       'gastronomia': str(osm_dir) if with_food else None}, ensure_ascii=False))

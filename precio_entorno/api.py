@@ -27,7 +27,7 @@ from .matching import matches
 Mode = Literal['demo', 'real']
 Operation = Literal['venta', 'alquiler']
 LAYER_KEYS = ('subte', 'verdes', 'escuelas', 'salud', 'ruido', 'riesgo', 'estacionamiento', 'clubes', 'gimnasios',
-              'colectivos', 'ciclovias', 'ecobici', 'bibliotecas', 'rampas')
+              'colectivos', 'ciclovias', 'ecobici', 'bibliotecas', 'rampas', 'recreacion')
 # Capas de puntos que cubren toda la ciudad, no solo el recuadro del barrio elegido.
 CITYWIDE = {'estacionamiento': 'garaje', 'clubes': 'club', 'gimnasios': 'gimnasio'}
 CURRENCIES = {'venta': ('USD',), 'alquiler': ('ARS', 'USD')}
@@ -67,7 +67,7 @@ def collection(features):
 
 def point_features(items, kind, bbox):
     return [{'type': 'Feature', 'geometry': {'type': 'Point', 'coordinates': [i['lon'], i['lat']]},
-             'properties': {'kind': kind, 'name': i['name'], 'tooltip': i['tooltip'],
+             'properties': {'kind': kind or i.get('kind'), 'name': i['name'], 'tooltip': i['tooltip'],
                             'line': i.get('line'), 'web': i.get('web'), 'elevators': i.get('elevators')}}
             for i in items if bbox is None or entorno.in_bbox(i['lon'], i['lat'], bbox)]
 
@@ -328,6 +328,9 @@ def create_app(demo_path=None, real_path=None, entorno_dir=None, raw_dir=None, w
             if name in ('ecobici', 'bibliotecas', 'rampas'):
                 kind = {'ecobici': 'ecobici', 'bibliotecas': 'biblioteca', 'rampas': 'rampa'}[name]
                 out[name] = {**collection(point_features(points.get(name, []), kind, bbox)), 'disponible': name in points}
+            if name == 'recreacion':
+                # Cada punto lleva su tipo (cine, teatro, museo, cultural) para el color y la leyenda.
+                out[name] = {**collection(point_features(points.get(name, []), None, bbox)), 'disponible': name in points}
             if name == 'ciclovias':
                 lanes = data.get('ciclovias')
                 out['ciclovias'] = {**(entorno.features_in(lanes, bbox) if lanes else collection([])),

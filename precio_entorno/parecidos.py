@@ -21,6 +21,7 @@ CAPAS = {
     'ruido': ('Ruido de día', 'más ruido', 'menos ruido'),
     'riesgo': ('Riesgo hídrico', 'más superficie en riesgo hídrico', 'menos superficie en riesgo hídrico'),
     'gastronomia': ('Gastronomía', 'más cafés, bares y restaurantes', 'menos cafés, bares y restaurantes'),
+    'recreacion': ('Recreación', 'más cines, teatros y museos', 'menos cines, teatros y museos'),
 }
 PESO_ELEGIDO = 2
 CERCA = 0.15       # Diferencia en la escala 0–1 que se considera «parecido».
@@ -40,6 +41,7 @@ def valores(entorno, nivel='primario'):
     km2 = entorno['area_ha'] / 100
     escuelas = entorno.get('escuelas', {}).get(nivel, {})
     gastronomia = entorno.get('gastronomia')
+    recreacion = entorno.get('recreacion')
     return {
         'subte': entorno['subte_estaciones'] / km2,
         'verdes': entorno['verdes_ha'] / entorno['area_ha'] * 100,
@@ -49,13 +51,15 @@ def valores(entorno, nivel='primario'):
         'riesgo': entorno['riesgo_hidrico'],
         'gastronomia': (sum(gastronomia[k] for k in ('restaurantes', 'cafes', 'bares')) / entorno['area_ha'] * 100
                         if gastronomia else None),
+        'recreacion': sum(recreacion.values()) / entorno['area_ha'] * 100 if recreacion else None,
     }
 
 
 def unidad(clave, nivel):
     return {'subte': 'estaciones por km²', 'verdes': 'ha cada 100 ha', 'escuelas': f'escuelas de nivel {nivel} por km²',
             'salud': 'centros de salud públicos por km²', 'ruido': 'de las celdas con 70 dBA o más',
-            'riesgo': 'de la superficie', 'gastronomia': 'cafés, bares y restaurantes cada 100 ha'}[clave]
+            'riesgo': 'de la superficie', 'gastronomia': 'cafés, bares y restaurantes cada 100 ha',
+            'recreacion': 'cines, teatros, museos y centros culturales cada 100 ha'}[clave]
 
 
 def mostrar(clave, valor):

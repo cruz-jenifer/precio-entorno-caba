@@ -1,5 +1,6 @@
 import json
 import re
+from http.client import IncompleteRead
 from time import monotonic, sleep
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
@@ -18,13 +19,18 @@ class ApifyClient:
             headers['Content-Type'] = 'application/json'
             data = json.dumps(payload).encode()
         request = Request(f'https://api.apify.com/v2/{path}{query}', headers=headers, data=data)
-        try:
-            with urlopen(request, timeout=40) as response:
-                return json.load(response)
-        except HTTPError as error:
-            raise RuntimeError(f'Apify respondió HTTP {error.code}.') from None
-        except (URLError, TimeoutError):
-            raise RuntimeError('No se pudo completar la solicitud a Apify.') from None
+        # Las lecturas se reintentan ante un corte de conexión; un POST no, para no lanzar dos corridas.
+        attempts = 3 if data is None else 1
+        for attempt in range(attempts):
+            try:
+                with urlopen(request, timeout=40) as response:
+                    return json.load(response)
+            except HTTPError as error:
+                raise RuntimeError(f'Apify respondió HTTP {error.code}.') from None
+            except (URLError, TimeoutError, IncompleteRead, ConnectionError):
+                if attempt == attempts - 1:
+                    raise RuntimeError('No se pudo completar la solicitud a Apify.') from None
+                sleep(5)
 
     def wait(self, run_id, max_seconds=360):
         if not re.fullmatch(r'[A-Za-z0-9]+', run_id):

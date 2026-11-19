@@ -63,3 +63,12 @@ class UpdateTests(unittest.TestCase):
         # Las conocidas ocupan la ventana de recientes: con tope 1, no se baja a la ficha siguiente.
         window, skipped = scrape_migliorisi(client, '2026-11-09', 1, known=frozenset({'migliorisi:a1'}))
         self.assertEqual((window, skipped['ya_conocido']), ([], 1))
+
+    def test_inference_failure_does_not_undo_import_or_alerts(self):
+        with patch.dict(inmobiliarias.SITES, {'ficticia': fake_site(['1'])}, clear=True):
+            result = update(self.store, self.dir / 'con-modelo', ['ficticia'], 10,
+                            client=self.client, echo=lambda line: None, model_folder=self.dir / 'ausente')
+        self.assertEqual(result['inferencia']['estado'], 'error')
+        self.assertNotEqual(result['estado'], 'error')
+        self.assertEqual(result['alertas_nuevas'], 1)
+        self.assertEqual(len(self.store.listings()), 1)

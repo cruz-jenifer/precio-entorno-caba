@@ -87,7 +87,7 @@ def upload(api):
     actor = find_actor(api)
     if actor is None:
         actor = api.json('POST', 'acts', body={
-            'name': NAME, 'title': 'Precio y Entorno CABA · Analytics', 'isPublic': False, 'versions': [version],
+            'name': NAME, 'title': 'Lüga · Analytics', 'isPublic': False, 'versions': [version],
             'defaultRunOptions': {'build': 'latest', 'timeoutSecs': 300, 'memoryMbytes': 1024}})
         print(f'Actor creado: {actor["id"]}')
     else:

@@ -1,4 +1,4 @@
-# Flujo de trabajo de Precio y Entorno CABA
+# Flujo de trabajo de Lüga
 
 Guía operativa del proyecto y de la entrega del capstone. Los detalles de implementación están en [Arquitectura](arquitectura.md) y los responsables, hitos y evidencias en el [plan de entrega](plan-capstone.md).
 

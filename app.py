@@ -39,8 +39,8 @@ def money(value, currency):
     return f"{currency} {value:,.0f}".replace(',', '.') if value is not None else '—'
 
 
-st.set_page_config(page_title='Precio y Entorno CABA', layout='centered')
-st.title('Precio y Entorno CABA')
+st.set_page_config(page_title='Lüga', layout='centered')
+st.title('Lüga')
 goal = st.radio('¿Qué querés hacer?', ('Comprar', 'Alquilar'), horizontal=True)
 operation = 'venta' if goal == 'Comprar' else 'alquiler'
 mode = st.radio('Datos de trabajo', ('Demo ficticia', 'Datos reales'), horizontal=True)
@@ -348,3 +348,38 @@ if alerts:
     st.dataframe(rows, hide_index=True, column_config={'Enlace': st.column_config.LinkColumn()})
 else:
     st.caption('Aún no hay alertas.')
+
+if not demo and operation == 'venta':
+    from precio_entorno.inferencia import DEFAULT_OUT, load as load_model, predict
+    import pandas as pd
+
+    st.subheader('Referencia de precio publicado')
+    if (DEFAULT_OUT / 'evaluacion.json').exists():
+        try:
+            bundle = load_model(DEFAULT_OUT)
+            evaluation = bundle['report']
+            c1, c2, c3 = st.columns(3)
+            c1.metric('MAE de prueba (USD/m²)', f"{evaluation['modelo_prueba']['mae']:,.0f}")
+            c2.metric('MAE baseline (USD/m²)', f"{evaluation['baseline_prueba']['mae']:,.0f}")
+            c3.metric('Prueba dentro de ±20 %', f"{evaluation['dentro_20_pct_prueba']:.1%}")
+            st.caption(f"Modelo {bundle['version']} · {evaluation['prueba']} observaciones de prueba · "
+                       f"Entrenado {evaluation['fecha_utc'][:10]}. Prueba histórica, sin validación temporal.")
+            if 'prueba_solo_campos_importador' in evaluation:
+                st.caption('Con los campos básicos del importador, sin enriquecimiento, el MAE de prueba es '
+                           f"{evaluation['prueba_solo_campos_importador']['mae']:,.0f} USD/m².")
+            candidates = [r for r in listings if r['neighborhood'] == neighborhood and r.get('currency') == 'USD']
+            if candidates:
+                frame = pd.DataFrame(candidates)
+                frame['agency'] = frame['id'].str.split(':').str[0]
+                prediction = predict(bundle, frame)
+                st.dataframe(prediction, hide_index=True)
+                st.download_button('Descargar referencias', prediction.to_csv(index=False),
+                                   'referencias_publicacion.csv', 'text/csv')
+            st.caption('Referencia de publicación de venta en USD, no tasación ni precio de cierre. '
+                       'El modelo operativo fue reajustado con todo el corte histórico. '
+                       'Las variables faltantes se indican por aviso; su error puede superar al de prueba. '
+                       'Los delitos registrados se mantienen como contexto separado.')
+        except (OSError, ValueError, KeyError) as error:
+            st.error(f'No se pudo generar la referencia: {error}')
+    else:
+        st.info('Todavía no se generó el modelo de referencia de publicación.')

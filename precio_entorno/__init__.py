@@ -1,1 +1,1 @@
-"""Aplicación local de Precio y Entorno CABA."""
+"""Aplicación local de Lüga."""

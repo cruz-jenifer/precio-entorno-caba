@@ -1,5 +1,7 @@
 # Comparativa de modelos para precios publicados de venta
 
+Esta ficha conserva la corrida histórica. La [reproducción auditada](benchmark-auditado/resultados.md) agrega baselines simples, métricas por grupo y diagnóstico de convergencia, manteniendo las cinco familias y su búsqueda. Ver [matriz de protocolos](../docs/auditoria-estadistica.md) y [memoria matemática](../docs/memoria-matematica.md).
+
 Ejecutado sobre 3.806 avisos, 3.582 grupos y 48 barrios de CABA, con scikit-learn 1.7.2. El escenario base usa 12 variables y el ampliado suma antigüedad y estado. Las once comparaciones usan las mismas filas y los mismos cinco folds externos. El HGB fijo conserva la configuración del EDA con el vocabulario ajustado por fold y reproduce su MAE redondeado de USD 448/m².
 
 | Modelo | MAE base | MAE ampliado | RMSE ampliado | MdAPE ampliado | Desvío de MAE ampliado entre folds |

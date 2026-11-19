@@ -1,0 +1,373 @@
+{
+  "fecha_utc": "2026-11-18T22:33:41.983314+00:00",
+  "sklearn": "1.7.2",
+  "semilla": 42,
+  "entrenamiento": 3048,
+  "prueba": 758,
+  "pliegues": 5,
+  "grupos_compartidos": 0,
+  "parametros": {
+    "modelo__l2_regularization": 0.0,
+    "modelo__max_leaf_nodes": 31,
+    "modelo__min_samples_leaf": 10
+  },
+  "variables_numericas": [
+    "covered_area",
+    "total_area_m2",
+    "rooms",
+    "latitude",
+    "longitude",
+    "dist_transporte_m",
+    "dist_parque_m",
+    "dist_hospital_m",
+    "gastronomia_500m",
+    "escuelas_500m",
+    "age_years",
+    "garages",
+    "new_build",
+    "needs_renovation",
+    "mortgage_eligible",
+    "balcony",
+    "terrace",
+    "patio",
+    "amenities",
+    "bright",
+    "rear_facing"
+  ],
+  "variables_categoricas": [
+    "neighborhood",
+    "agency"
+  ],
+  "modelo_prueba": {
+    "mae": 442.7307479647944,
+    "rmse": 737.9369276205447,
+    "r2": 0.6888314040785748
+  },
+  "baseline_prueba": {
+    "mae": 627.3256187671536,
+    "rmse": 1010.5450306774342,
+    "r2": 0.41646270975308664
+  },
+  "prueba_solo_campos_importador": {
+    "mae": 616.0013224375646,
+    "rmse": 1004.5910290290292,
+    "r2": 0.423318706421126
+  },
+  "configuracion_fija": {
+    "loss": "absolute_error",
+    "learning_rate": 0.05,
+    "max_iter": 300,
+    "early_stopping": false,
+    "random_state": 42
+  },
+  "mae_entrenamiento": 237.20136968470675,
+  "mae_cv": 406.72867254892594,
+  "baseline_mae_cv": 582.0643837865948,
+  "candidatos": [
+    {
+      "parametros": {
+        "modelo__l2_regularization": 0.0,
+        "modelo__max_leaf_nodes": 31,
+        "modelo__min_samples_leaf": 10
+      },
+      "mae_cv": 406.72867254892594,
+      "desvio_cv": 19.681280822063272
+    },
+    {
+      "parametros": {
+        "modelo__l2_regularization": 1.0,
+        "modelo__max_leaf_nodes": 15,
+        "modelo__min_samples_leaf": 20
+      },
+      "mae_cv": 420.86084732177386,
+      "desvio_cv": 23.18495734922412
+    },
+    {
+      "parametros": {
+        "modelo__l2_regularization": 5.0,
+        "modelo__max_leaf_nodes": 31,
+        "modelo__min_samples_leaf": 30
+      },
+      "mae_cv": 410.08022181733133,
+      "desvio_cv": 22.990722879913704
+    }
+  ],
+  "mejora_mae_prueba_pct": 29.42568664183247,
+  "dentro_20_pct_prueba": 0.7018469656992085,
+  "baseline_dentro_20_pct_prueba": 0.5303430079155673,
+  "errores_por_barrio": [
+    {
+      "neighborhood": "Agronomía",
+      "size": 8,
+      "mean": 371.8725336605237
+    },
+    {
+      "neighborhood": "Almagro",
+      "size": 51,
+      "mean": 321.8263671604212
+    },
+    {
+      "neighborhood": "Balvanera",
+      "size": 27,
+      "mean": 343.88720069185285
+    },
+    {
+      "neighborhood": "Barracas",
+      "size": 16,
+      "mean": 332.01497129339344
+    },
+    {
+      "neighborhood": "Belgrano",
+      "size": 30,
+      "mean": 1026.9544516184437
+    },
+    {
+      "neighborhood": "Boedo",
+      "size": 19,
+      "mean": 200.27306833036246
+    },
+    {
+      "neighborhood": "Caballito",
+      "size": 30,
+      "mean": 453.9876781869194
+    },
+    {
+      "neighborhood": "Chacarita",
+      "size": 9,
+      "mean": 550.3935824283358
+    },
+    {
+      "neighborhood": "Coghlan",
+      "size": 18,
+      "mean": 338.99745147045905
+    },
+    {
+      "neighborhood": "Colegiales",
+      "size": 11,
+      "mean": 945.9926581041251
+    },
+    {
+      "neighborhood": "Constitución",
+      "size": 10,
+      "mean": 240.63967625836978
+    },
+    {
+      "neighborhood": "Flores",
+      "size": 23,
+      "mean": 253.32368187042994
+    },
+    {
+      "neighborhood": "Floresta",
+      "size": 13,
+      "mean": 364.33991667571996
+    },
+    {
+      "neighborhood": "La Boca",
+      "size": 9,
+      "mean": 760.5442581494254
+    },
+    {
+      "neighborhood": "La Paternal",
+      "size": 6,
+      "mean": 406.2736622647994
+    },
+    {
+      "neighborhood": "Liniers",
+      "size": 16,
+      "mean": 384.4156024012555
+    },
+    {
+      "neighborhood": "Mataderos",
+      "size": 11,
+      "mean": 393.8164019006397
+    },
+    {
+      "neighborhood": "Monte Castro",
+      "size": 11,
+      "mean": 240.56474769169824
+    },
+    {
+      "neighborhood": "Montserrat",
+      "size": 11,
+      "mean": 609.7673352798035
+    },
+    {
+      "neighborhood": "Nueva Pompeya",
+      "size": 13,
+      "mean": 251.79065634056172
+    },
+    {
+      "neighborhood": "Núñez",
+      "size": 17,
+      "mean": 694.2976712412587
+    },
+    {
+      "neighborhood": "Palermo",
+      "size": 59,
+      "mean": 512.1395083412323
+    },
+    {
+      "neighborhood": "Parque Avellaneda",
+      "size": 10,
+      "mean": 303.1914197910802
+    },
+    {
+      "neighborhood": "Parque Chacabuco",
+      "size": 8,
+      "mean": 523.3338183129945
+    },
+    {
+      "neighborhood": "Parque Chas",
+      "size": 10,
+      "mean": 203.46436588051057
+    },
+    {
+      "neighborhood": "Parque Patricios",
+      "size": 6,
+      "mean": 325.7014753444481
+    },
+    {
+      "neighborhood": "Puerto Madero",
+      "size": 14,
+      "mean": 1903.5088787404784
+    },
+    {
+      "neighborhood": "Recoleta",
+      "size": 24,
+      "mean": 623.1354407301284
+    },
+    {
+      "neighborhood": "Retiro",
+      "size": 14,
+      "mean": 229.75722584774275
+    },
+    {
+      "neighborhood": "Saavedra",
+      "size": 22,
+      "mean": 387.4058406091142
+    },
+    {
+      "neighborhood": "San Cristóbal",
+      "size": 19,
+      "mean": 251.51406249602377
+    },
+    {
+      "neighborhood": "San Nicolás",
+      "size": 19,
+      "mean": 213.49149696203241
+    },
+    {
+      "neighborhood": "San Telmo",
+      "size": 8,
+      "mean": 534.6079100009583
+    },
+    {
+      "neighborhood": "Versalles",
+      "size": 11,
+      "mean": 355.37388977896353
+    },
+    {
+      "neighborhood": "Villa Crespo",
+      "size": 33,
+      "mean": 385.9829558912965
+    },
+    {
+      "neighborhood": "Villa Devoto",
+      "size": 14,
+      "mean": 600.858757199257
+    },
+    {
+      "neighborhood": "Villa General Mitre",
+      "size": 7,
+      "mean": 212.00532960438343
+    },
+    {
+      "neighborhood": "Villa Lugano",
+      "size": 11,
+      "mean": 232.3531801625806
+    },
+    {
+      "neighborhood": "Villa Luro",
+      "size": 13,
+      "mean": 386.31077128451705
+    },
+    {
+      "neighborhood": "Villa Ortúzar",
+      "size": 7,
+      "mean": 342.3023760418834
+    },
+    {
+      "neighborhood": "Villa Pueyrredón",
+      "size": 15,
+      "mean": 321.061165323841
+    },
+    {
+      "neighborhood": "Villa Real",
+      "size": 10,
+      "mean": 206.6598452892935
+    },
+    {
+      "neighborhood": "Villa Riachuelo",
+      "size": 4,
+      "mean": 324.8062869053304
+    },
+    {
+      "neighborhood": "Villa Santa Rita",
+      "size": 1,
+      "mean": 170.7478073710554
+    },
+    {
+      "neighborhood": "Villa Soldati",
+      "size": 12,
+      "mean": 296.84042786957616
+    },
+    {
+      "neighborhood": "Villa Urquiza",
+      "size": 19,
+      "mean": 387.4026047769061
+    },
+    {
+      "neighborhood": "Villa del Parque",
+      "size": 20,
+      "mean": 445.7962653444665
+    },
+    {
+      "neighborhood": "Vélez Sarsfield",
+      "size": 9,
+      "mean": 239.77280397831044
+    }
+  ],
+  "nota": "Prueba histórica ya explorada; no mide generalización temporal. Requiere captura futura independiente.",
+  "segundos_entrenamiento_total": 28.60416570000234,
+  "fuentes": [
+    {
+      "archivo": "data/processed/ampliado/modelo-pines-aproximados-poi-control/dataset_modelo.csv",
+      "sha256": "173bde3becfacd67178825d6175824f3e752fdc00f90014d3310f2584131e59c"
+    },
+    {
+      "archivo": "data/raw/zonaprop-venta-20261108-edificio/avisos.json",
+      "sha256": "6dd6a325951bfc5710641d00cc1c78cf506afa136f72232b6568622b755e5193"
+    },
+    {
+      "archivo": "data/raw/inmobiliarias-20261109-edificio/avisos.json",
+      "sha256": "fc92885a1c62dfe95218a3b656abe541a7c7e888ab8a61b14fb91ee129b0cca4"
+    },
+    {
+      "archivo": "data/raw/zonaprop-venta-20261108-descripcion-completa/avisos.json",
+      "sha256": "6e761967bd1a53d81b9e80bdc3faf2035a280f0ae4948f36d42e1e5b0f98b7d1"
+    },
+    {
+      "archivo": "data/raw/rasgos-inmobiliarias-20261115/avisos.json",
+      "sha256": "0bae95895645a3174db02fc937615e01add94fa6434ba1c8face6589b6ca969c"
+    }
+  ],
+  "capturas": [
+    "2026-11-07 20:59:28",
+    "2026-11-08 15:40:00",
+    "2026-11-08 21:23:10",
+    "2026-11-09 00:10:33",
+    "2026-11-09 00:32:24"
+  ],
+  "version": "1d4013afcf906e8c",
+  "artefacto_sha256": "b799e47549e3adc51b1121c194d5ef6fe9f20146a3c594fc749c16e2ac982779"
+}

@@ -1,8 +1,16 @@
-# Precio y Entorno CABA
+# Lüga
+
+El [Colab integral](notebooks/capstone_integral_colab.ipynb) reúne teoría, datos, EDA, ANOVA, cinco modelos, evaluación e inferencia en 47 celdas. Ver [archivos, modos de ejecución y guía para abrirlo](docs/colab-integral.md).
 
 Prototipo local de búsqueda inmobiliaria. Una persona ingresa sus preferencias, compara barrios, guarda una búsqueda y recibe una alerta cuando aparece un aviso que coincide. Los delitos registrados se muestran como contexto y se analizan por separado para el capstone.
 
 El [plan de entrega del capstone](docs/plan-capstone.md) reúne el cronograma de la profesora, las evidencias del repositorio y los pendientes para Analytics, Inference y la defensa comercial.
+
+La [entrega de entrenamiento e inferencia del 18/11](docs/entrega-inferencia.md) documenta el ajuste de HistGradientBoosting, la comparación contra baseline, las métricas técnicas y de negocio, las predicciones en Streamlit y la estimación de costos. Incluye comandos para reproducir sin extracciones nuevas.
+
+El [ANOVA de precios por barrio](docs/anova-barrios.md) compara medias de publicación con Welch y documenta supuestos, tamaño de efecto y comparaciones por pares con ajuste de Holm.
+
+La [memoria matemática](docs/memoria-matematica.md) fundamenta los cinco modelos, sus transformaciones, la validación y el ANOVA. La [auditoría estadística](docs/auditoria-estadistica.md) identifica la comparación principal y sus diferencias con el prototipo operativo. La skill del proyecto está en `.agents/skills/auditoria-estadistica-capstone/`.
 
 La [entrega de Producto 1 del 12/11](docs/entrega-12-11.md) incluye la auditoría de cumplimiento, muestras analíticas, diccionario, guion de demo y acciones de cierre por rol.
 
@@ -175,7 +183,7 @@ Después de elegir un barrio, el mapa abre centrado en él con las mismas capas 
 
 Para activar los puntos de **Estacionamiento**, descargá el GeoJSON de [Garajes Comerciales de Buenos Aires Data](https://data.buenosaires.gob.ar/dataset/garajes-comerciales), guardalo como `data/raw/badata-entorno/garajes-comerciales.geojson` y ejecutá `python -m precio_entorno.entorno`. Después elegí un barrio y activá la capa en el mapa: muestra los garajes de toda la ciudad, así que al desplazar el mapa aparecen los de otros barrios. El inventario indica ubicaciones registradas. Los cupos y abonos se consultan con el operador. La columna **Cocheras** usa la cantidad que informa cada aviso y distingue un cero explícito de un dato faltante.
 
-Las capas **Clubes** (clubes de barrio y polideportivos de la Ciudad) y **Gimnasios** (OpenStreetMap) muestran toda la ciudad. La ficha de cada barrio cuenta cuántos hay y lista las **líneas de colectivo** que pasan por él. La capa **Colectivos** las dibuja en el mapa, cada una con su color. Al tocar una línea, en la ficha o en el mapa, se dibuja su recorrido completo. Los recorridos salen del GTFS oficial, cuyo calendario es de 2019, así que conviene confirmarlos. Para regenerarlos, guardá el GTFS en `data/raw/colectivos-gtfs-AAAAMMDD/colectivos-gtfs.zip`, los clubes en `data/raw/badata-entorno/` y los gimnasios en `data/raw/osm-gimnasios-AAAAMMDD/gimnasios.json`, y corré `python -m precio_entorno.entorno`. Detalle en [docs/datos.md](docs/datos.md#capas-del-entorno-buenos-aires-data).
+El filtro **Recreación** de «Lo que me importa» suma la capa de cines, teatros, museos y centros culturales de OpenStreetMap, cada tipo con su color. La ficha y la lista de barrios cuentan cuántos hay de cada tipo, y la recreación también pesa en los barrios parecidos. La captura va en `data/raw/osm-recreacion-AAAAMMDD/recreacion.json`. Las capas **Clubes** (clubes de barrio y polideportivos de la Ciudad) y **Gimnasios** (OpenStreetMap) muestran toda la ciudad. La ficha de cada barrio cuenta cuántos hay y lista las **líneas de colectivo** que pasan por él. La capa **Colectivos** las dibuja en el mapa, cada una con su color. Al tocar una línea, en la ficha o en el mapa, se dibuja su recorrido completo. Los recorridos salen del GTFS oficial, cuyo calendario es de 2019, así que conviene confirmarlos. Para regenerarlos, guardá el GTFS en `data/raw/colectivos-gtfs-AAAAMMDD/colectivos-gtfs.zip`, los clubes en `data/raw/badata-entorno/` y los gimnasios en `data/raw/osm-gimnasios-AAAAMMDD/gimnasios.json`, y corré `python -m precio_entorno.entorno`. Detalle en [docs/datos.md](docs/datos.md#capas-del-entorno-buenos-aires-data).
 
 En datos reales, la ficha del barrio suma **Localizar estacionamientos** y **Cocheras en alquiler mensual**. Las dos buscan en todo el barrio o en un radio de 300, 500 o 1.000 m desde la ubicación del navegador, el centro del mapa o un aviso. El mapa suma un botón para centrarlo en tu ubicación. Las cocheras salen de un catálogo autorizado importado en `data/local/cocheras.json`; para un alquiler, la búsqueda desde un aviso suma vivienda y cochera por mes. Importación, verificación de periodicidad y límites: [docs/cocheras.md](docs/cocheras.md).
 

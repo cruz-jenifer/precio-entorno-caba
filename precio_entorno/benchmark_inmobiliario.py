@@ -1,6 +1,7 @@
 """Benchmark agrupado del catálogo de venta incluido en el bundle del EDA."""
 
 import time
+import warnings
 from pathlib import Path
 from zipfile import ZipFile
 
@@ -8,6 +9,7 @@ import numpy as np
 import pandas as pd
 from sklearn.compose import ColumnTransformer, TransformedTargetRegressor
 from sklearn.ensemble import HistGradientBoostingRegressor, RandomForestRegressor
+from sklearn.exceptions import ConvergenceWarning
 from sklearn.impute import SimpleImputer
 from sklearn.inspection import permutation_importance
 from sklearn.linear_model import Ridge
@@ -27,6 +29,7 @@ CATEGORICAL = ['neighborhood', 'agency']
 EXTRA = ['age_years', 'cond_code']
 KEYS = ['neighborhood', 'rooms']
 BASELINE = 'HGB fijo EDA'
+SIMPLE_BASELINES = ('Mediana global', 'Mediana comparables')
 
 
 def load_sales(bundle=BUNDLE):
@@ -123,13 +126,37 @@ def usd_mae(estimator, features, log_prices):
     return -np.mean(np.abs(np.exp(log_prices) - np.exp(estimator.predict(features))))
 
 
-def benchmark(data):
+def simple_baselines(train, test, minimum=5):
+    """Referencias sin aprendizaje: una propiedad aproximada por grupo y segmento."""
+    units = train.groupby([*KEYS, 'grupo'], dropna=False)['precio_m2'].median().reset_index()
+    local = units.groupby(KEYS)['precio_m2'].agg(['median', 'size'])
+    neighborhoods = train.groupby(['neighborhood', 'grupo'])['precio_m2'].median().reset_index()
+    neighborhood_stats = neighborhoods.groupby('neighborhood')['precio_m2'].agg(['median', 'size'])
+    global_median = train.groupby('grupo')['precio_m2'].median().median()
+    estimates = []
+    for neighborhood, rooms in zip(test['neighborhood'], test['rooms']):
+        if (neighborhood, rooms) in local.index and local.at[(neighborhood, rooms), 'size'] >= minimum:
+            estimates.append(local.at[(neighborhood, rooms), 'median'])
+        elif neighborhood in neighborhood_stats.index and neighborhood_stats.at[neighborhood, 'size'] >= minimum:
+            estimates.append(neighborhood_stats.at[neighborhood, 'median'])
+        else:
+            estimates.append(global_median)
+    return {SIMPLE_BASELINES[0]: np.full(len(test), global_median),
+            SIMPLE_BASELINES[1]: np.asarray(estimates)}
+
+
+def benchmark(data, include_references=False, explain=True, progress=None):
     predictions, fits, explanations = [], [], []
     splits = list(GroupKFold(n_splits=5).split(data, groups=data['grupo']))
     with threadpool_limits(limits=1):
         for fold, (train_index, test_index) in enumerate(splits, 1):
             train, test = data.iloc[train_index], data.iloc[test_index]
+            if progress:
+                progress(f'Fold {fold}/5: {len(train)} entrenamiento, {len(test)} prueba')
             refs = training_comparables(train, test)
+            if include_references:
+                for name, prediction in simple_baselines(train, test).items():
+                    predictions.append(refs.assign(model=name, scope='referencia', fold=fold, estimate=prediction))
             start = time.perf_counter()
             predictions.append(refs.assign(model=BASELINE, scope='base', fold=fold,
                                            estimate=historical_baseline(train, test)))
@@ -143,11 +170,25 @@ def benchmark(data):
                 for name, (estimator, grid) in model_specs(extended).items():
                     start = time.perf_counter()
                     search = GridSearchCV(estimator, grid, cv=inner, scoring=usd_mae, n_jobs=1, error_score='raise')
-                    search.fit(train[features], np.log(train['precio_m2']))
+                    with warnings.catch_warnings(record=True) as recorded:
+                        warnings.simplefilter('always', ConvergenceWarning)
+                        search.fit(train[features], np.log(train['precio_m2']))
                     price = np.exp(search.predict(test[features]))
+                    fit_seconds = time.perf_counter() - start
+                    train_mae = float(np.abs(np.exp(search.predict(train[features])) - train['precio_m2']).mean())
+                    iterations, limit = None, None
+                    if name == 'MLP':
+                        fitted_mlp = search.best_estimator_.regressor_.steps[-1][1]
+                        iterations, limit = int(fitted_mlp.n_iter_), int(fitted_mlp.max_iter)
                     predictions.append(refs.assign(model=name, scope=scope, fold=fold, estimate=price))
-                    fits.append({'fold': fold, 'scope': scope, 'model': name, 'seconds': time.perf_counter() - start,
-                                 'params': search.best_params_})
+                    fits.append({'fold': fold, 'scope': scope, 'model': name,
+                                 'params': search.best_params_, 'mae_train': train_mae,
+                                 'mae_test': float(np.abs(price - test['precio_m2']).mean()),
+                                 'seconds': fit_seconds, 'n_iter': iterations, 'max_iter': limit,
+                                 'limite_iteraciones_alcanzado': iterations >= limit if iterations is not None else None,
+                                 'avisos_convergencia_busqueda': sum(issubclass(w.category, ConvergenceWarning) for w in recorded)})
+                    if progress:
+                        progress(f'  {scope} / {name}: MAE {np.abs(price - test.precio_m2).mean():.2f}')
                     if name == 'Ridge':
                         pipe = search.best_estimator_
                         prep, ridge = pipe.steps[0][1], pipe.steps[1][1]
@@ -158,7 +199,7 @@ def benchmark(data):
                     if name in {'Random Forest', 'HistGradientBoosting'}:
                         fold_ensembles[name] = search.best_estimator_
                 # Ambas explicaciones se calculan sobre el fold externo y permiten elegir qué mostrar después.
-                for name, estimator in fold_ensembles.items():
+                for name, estimator in (fold_ensembles.items() if explain else []):
                     importance = permutation_importance(estimator, test[features], np.log(test['precio_m2']),
                                                         scoring=usd_mae, n_repeats=4, random_state=SEED, n_jobs=1)
                     explanations.extend({'fold': fold, 'scope': scope, 'model': name, 'feature': feature,
@@ -185,6 +226,14 @@ def scores(rows):
 
 
 def bootstrap_mae_delta(rows, baseline, draws=600):
+    if draws < 2 or rows.empty or baseline.empty or rows['row'].duplicated().any() or baseline['row'].duplicated().any():
+        raise ValueError('Se requieren predicciones emparejadas únicas y al menos dos remuestreos.')
+    if set(rows['row']) != set(baseline['row']):
+        raise ValueError('Los modelos deben evaluarse sobre las mismas filas.')
+    left = rows.set_index('row')
+    right = baseline.set_index('row').reindex(left.index)
+    if not left['grupo'].equals(right['grupo']) or not np.allclose(left['precio_m2'], right['precio_m2']):
+        raise ValueError('Grupos y precios observados deben coincidir entre modelos.')
     paired = rows.set_index('row')['error'].abs().sub(baseline.set_index('row')['error'].abs())
     summary = pd.DataFrame({'delta': paired, 'grupo': rows.set_index('row')['grupo']}).groupby('grupo')['delta'].agg(['sum', 'size'])
     rng = np.random.default_rng(SEED)

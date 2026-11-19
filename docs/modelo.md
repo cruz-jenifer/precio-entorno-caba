@@ -1,5 +1,7 @@
 # Evaluación del modelo · Metodología
 
+Para la entrega actual, consultar la [comparación principal de cinco familias auditada](../reports/benchmark-auditado/resultados.md), su [fundamentación matemática](memoria-matematica.md) y la [matriz de experimentos](auditoria-estadistica.md). Este documento conserva las evaluaciones históricas de seis familias y de aporte del entorno; no mezclar sus cifras con otros protocolos.
+
 Este documento responde la pregunta analítica del capstone: ¿la información sobre delitos registrados mejora la predicción del **precio publicado por m² cubierto**, frente a un modelo que solo usa características inmobiliarias y ubicación?
 
 ## Comparación de seis modelos · 14 de noviembre de 2026

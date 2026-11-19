@@ -197,7 +197,7 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(len(self.get('/api/fuentes')['fuentes']), len(entorno.SOURCES))
         page = self.client.get('/')
         self.assertEqual(page.status_code, 200)
-        self.assertIn('Precio y Entorno CABA', page.text)
+        self.assertIn('Lüga', page.text)
 
     def test_concentration_preserves_demo_separation_and_validates_filters(self):
         demo = self.get('/api/delitos/concentracion', barrio='Caballito', modo='demo')

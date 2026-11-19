@@ -75,7 +75,7 @@ def apply_sweeps(store, seen_path, captured_at, echo=print):
 
 
 def update(store, out, sites, max_listings, client=None, history=None, echo=print, webhook=None, post=None,
-           operation='venta'):
+           operation='venta', model_folder=None):
     """Corre una actualización. Nunca lanza por un fallo de captura o importación: lo devuelve con estado
     `error`, lo registra en el historial y lo envía a Make, para que el fallo quede a la vista."""
     started = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
@@ -83,6 +83,23 @@ def update(store, out, sites, max_listings, client=None, history=None, echo=prin
     try:
         entry = {'operacion': operation, 'carpeta': folder,
                  **_capture_and_import(store, out, sites, max_listings, client, echo, operation)}
+        if model_folder is not None:
+            # Un fallo de inferencia no invalida una importación o sus alertas ya persistidas.
+            try:
+                if operation != 'venta':
+                    raise ValueError('La inferencia solo admite venta en USD.')
+                import pandas as pd
+                from precio_entorno.inferencia import load, predict
+                frame = pd.DataFrame(store.listings())
+                frame = frame[frame['currency'].eq('USD')].copy()
+                frame['agency'] = frame['id'].str.split(':').str[0]
+                predictions = predict(load(model_folder), frame)
+                predictions.to_csv(out / 'predicciones.csv', index=False)
+                entry['inferencia'] = {'estado': 'ok', 'avisos': len(predictions),
+                                       'version': predictions['modelo_version'].iloc[0]}
+            except (OSError, ValueError, KeyError) as error:
+                entry['inferencia'] = {'estado': 'error', 'error': str(error)[:300]}
+                echo(f'Error en inferencia: {error}')
     except Exception as error:  # noqa: BLE001 - el fallo se informa, no se oculta
         entry = {'fecha': started, 'operacion': operation, 'carpeta': folder, 'estado': 'error',
                  'error': f'{type(error).__name__}: {error}'[:300], 'alertas': []}
@@ -137,6 +154,7 @@ def main():
     parser.add_argument('--base', type=Path, help='Por defecto, la base real de la operación')
     parser.add_argument('--sitios', nargs='+', choices=sorted(SITES), default=list(DEFAULT_SITES))
     parser.add_argument('--autorizacion-confirmada', action='store_true')
+    parser.add_argument('--modelo', type=Path, help='Carpeta de modelo guardado para predecir tras importar')
     parser.add_argument('--probar-make', nargs='?', const='alertas', choices=sorted(PRUEBAS),
                         help='Envía a Make una corrida ficticia (alertas, sin-novedades o error), '
                              'sin capturar ni importar')
@@ -162,7 +180,7 @@ def main():
     max_listings = BARRIDO_MAX if args.barrido_completo else args.max_avisos
     entry = update(Store(base), out, args.sitios, max_listings, client=PoliteClient(),
                    history=base.parent / 'actualizaciones.jsonl', echo=lambda line: print(line, flush=True),
-                   webhook=webhook, operation=args.operacion)
+                   webhook=webhook, operation=args.operacion, model_folder=args.modelo)
     print(json.dumps(entry, ensure_ascii=False, indent=2))
     if entry['estado'] == 'error':
         raise SystemExit(1)

@@ -1,7 +1,7 @@
 {
   "actorSpecification": 1,
   "name": "precio-entorno-analytics",
-  "title": "Precio y Entorno CABA · Analytics (ETL y EDA)",
+  "title": "Lüga · Analytics (ETL y EDA)",
   "description": "ETL de avisos de venta autorizados con el Mapa del Delito de CABA, y EDA con las tablas del dashboard. Precios de publicación, no tasaciones.",
   "version": "0.1",
   "buildTag": "latest",

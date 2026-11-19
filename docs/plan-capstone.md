@@ -1,4 +1,4 @@
-# Plan de entrega · Precio y Entorno CABA
+# Plan de entrega · Lüga
 
 Actualizado el 9 de noviembre de 2026. Las fechas y los roles vienen del cronograma de alumnos. Las clases aportan los requisitos técnicos y comerciales. El capítulo 11 orienta el método de trabajo. Los responsables nominales, el feedback de Diana y los acuerdos comerciales se completan con evidencia del equipo.
 

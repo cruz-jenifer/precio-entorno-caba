@@ -610,6 +610,14 @@ const NOTA_COMPARACION = '«Frente a parecidos» compara el precio publicado por
 
 const POSICIONES = { debajo: 'Más bajo que la mayoría', dentro: 'En línea', arriba: 'Más alto que la mayoría' };
 
+// Versión en una línea para el pin del mapa.
+function textoComparacion(c) {
+  if (!c) return '';
+  if (!c.posicion) return 'Pocos avisos parecidos para comparar';
+  const signo = c.diferencia_pct > 0 ? '+' : c.diferencia_pct < 0 ? '−' : '';
+  return `${POSICIONES[c.posicion]} · ${signo}${Math.abs(c.diferencia_pct)} % vs. mediana de ${c.n} ${plural(c.n, 'parecido', 'parecidos')}`;
+}
+
 function celdaComparacion(c, moneda) {
   if (!c) return '—';
   if (!c.posicion) return `<span class="fuente" title="${esc(c.motivo || '')}">Pocos parecidos</span>`;
@@ -1188,10 +1196,12 @@ function abrirPin(clave) {
   popup.remove();
   estado.pinAbierto = clave;
   const filas = lista.map((a) => `<li><strong>${esc(dinero(a.precio, a.moneda))}</strong> · ${a.superficie} m² · ${a.ambientes} amb.
-    ${a.enlace ? `<a href="${esc(a.enlace)}" target="_blank" rel="noopener">Ver aviso</a>` : ''}</li>`).join('');
-  const nota = lista.every((a) => a.ubicacion === 'aproximada')
+    ${a.enlace ? `<a href="${esc(a.enlace)}" target="_blank" rel="noopener">Ver aviso</a>` : ''}
+    <span class="pin-comparacion">${textoComparacion(a.comparacion)}</span></li>`).join('');
+  const nota = (lista.every((a) => a.ubicacion === 'aproximada')
     ? 'Ubicación aproximada: el punto publicado cae a entre 150 y 500 m del barrio.'
-    : 'Punto publicado por la fuente, sin precisión declarada.';
+    : 'Punto publicado por la fuente, sin precisión declarada.')
+    + ' Frente a parecidos: precio por m² contra avisos del barrio de tamaño parecido; no es una tasación.';
   popupAviso.setLngLat([lista[0].lon, lista[0].lat])
     .setHTML(`<p class="pin-titulo">${lista.length === 1 ? '1 aviso' : `${lista.length} avisos`} en este punto</p>
       <ul class="pin-lista">${filas}</ul><p class="pin-nota">${nota}</p>`)

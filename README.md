@@ -211,6 +211,16 @@ La ficha de cada barrio sugiere 3 barrios con un entorno parecido, para descubri
 
 Lo calcula `precio_entorno/parecidos.py` y lo sirve `/api/barrios/{barrio}/parecidos`, con los mismos filtros que `/api/barrios` más `prefs` y `nivel`.
 
+### Cada aviso frente a avisos parecidos
+
+La tabla de avisos tiene la columna «Frente a parecidos». Compara el precio publicado por m² cubierto de cada aviso con el de los avisos vigentes del mismo barrio, operación y moneda, aunque no encajen con el filtro de la persona.
+
+- **Parecidos:** ±1 ambiente y superficie cubierta ±25 %. Si el aviso declara antigüedad, se usan los que declaran ±10 años, siempre que haya al menos 8; si no, se compara sin antigüedad y se avisa. En Zonaprop, 0 años cuenta como no informado, porque puede ser el valor por defecto del portal. Los posibles duplicados entre fuentes (mismos ambientes, m² y precio redondeado a miles) cuentan una vez, con el mismo criterio que el modelo.
+- **Qué muestra:** «Más bajo que la mayoría» si queda debajo del primer cuartil de los parecidos, «Más alto que la mayoría» si queda arriba del tercero y «En línea» en el medio, más la diferencia con la mediana y cuántos parecidos hay. Con menos de 8 parecidos dice «Pocos parecidos». No hay puntaje ni la palabra «oportunidad».
+- **Qué no es:** una tasación. Compara precios de publicación y no dice cuánto vale la propiedad ni si conviene.
+
+Lo calcula `precio_entorno/comparables.py` y viaja en el campo `comparacion` de cada aviso de `/api/barrios/{barrio}/avisos`. Con la base real del 19/11, el 92 % de los avisos de venta y el 86 % de los de alquiler tienen suficientes parecidos.
+
 ### Dónde comer (Google Places)
 
 La ficha del barrio muestra los restaurantes, cafés y bares más valorados en Google. Los datos salen de la API oficial de Places (New), nunca de una extracción de Google Maps. La sección aparece solo con datos reales y con la clave configurada.

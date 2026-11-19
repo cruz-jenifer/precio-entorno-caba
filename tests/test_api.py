@@ -66,6 +66,12 @@ class ApiTests(unittest.TestCase):
         self.assertTrue(all(a['enlace'] is None for a in listings))
         self.assertEqual(self.get('/api/barrios/Almagro/avisos', presupuesto=99_000)['avisos'][0]['id'], 'demo-003')
 
+    def test_listings_carry_comparison_with_similar_listings(self):
+        listings = self.get('/api/barrios/Almagro/avisos')['avisos']
+        # La base de ejemplo tiene pocos avisos por barrio: hay comparación, pero sin posición.
+        self.assertTrue(all(a['comparacion']['posicion'] is None for a in listings))
+        self.assertTrue(all(a['comparacion']['n'] < 8 for a in listings))
+
     def test_rooms_or_more_widens_matches(self):
         exact = sum(r['coincidencias'] for r in self.get('/api/barrios', ambientes=1, presupuesto=10**9)['barrios'])
         rows = self.get('/api/barrios', ambientes=1, presupuesto=10**9, superficie=1, ambientes_o_mas='true')['barrios']

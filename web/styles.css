@@ -524,6 +524,12 @@ button, input, select { font: inherit; color: inherit; }
 
 .avisos a { color: var(--jacaranda-oscuro); font-weight: 500; }
 
+/* Aviso frente a avisos parecidos: texto y tono neutros, sin colores de juicio. */
+.comparacion { display: block; font-weight: 500; font-size: var(--t-chico); }
+.comparacion-debajo, .comparacion-arriba { color: var(--jacaranda-oscuro); }
+.comparacion-dentro { color: var(--asfalto-suave); }
+.avisos .comparacion-detalle { display: block; margin: 0; }
+
 /* Mapa */
 .mapa {
   position: relative;

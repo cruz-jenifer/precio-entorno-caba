@@ -322,8 +322,10 @@ function lineaEntorno(e) {
 /* Panel: lista de barrios */
 
 // Insignias redondas de las líneas de subte, con sus colores oficiales.
+// A, D y H llevan texto oscuro: en blanco no llegan a 4,5:1 sobre su color.
+const LINEAS_CLARAS = ['A', 'D', 'H'];
 function insignias(lineas, clase = 'insignia') {
-  return lineas.map((l) => `<span class="${clase}${l === 'H' ? ' insignia-clara' : ''}" style="background:${SUBTE[l] || '#55626B'}"
+  return lineas.map((l) => `<span class="${clase}${LINEAS_CLARAS.includes(l) ? ' insignia-clara' : ''}" style="background:${SUBTE[l] || '#55626B'}"
     title="Línea ${esc(l)}">${esc(l)}</span>`).join('');
 }
 

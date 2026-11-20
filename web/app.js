@@ -471,15 +471,19 @@ function renderFicha() {
   const resumen = b.coincidencias
     ? `${b.coincidencias} de ${b.avisos} ${plural(b.avisos, 'aviso', 'avisos')} en ${estado.moneda} ${plural(b.coincidencias, 'encaja', 'encajan')} con tu búsqueda. Mediana ${dinero(b.mediana, estado.moneda)}.`
     : 'Ningún aviso encaja con tu búsqueda por ahora. Podés crear la alerta igual.';
-  const alerta = estado.ambientesOMas
-    ? '<p class="nota">Para crear una alerta, elegí una cantidad exacta de ambientes.</p>'
-    : `<p class="nota">Te avisamos cuando aparezcan avisos nuevos en ${esc(b.barrio)} que encajen con tu búsqueda.</p>
+  // «N ambientes o más» también se puede guardar: la base y el envío por Make ya lo comparan como mínimo.
+  // El patrón del mail es el mismo que valida la API (EMAIL en api.py), así el error aparece antes de enviar.
+  const alerta = `<p class="nota">Te avisamos cuando aparezcan avisos nuevos en ${esc(b.barrio)} que encajen con tu búsqueda
+      (${textoBusquedaAlerta()}).</p>
       ${estado.modo === 'real' ? `<div class="alerta-mail">
         <label class="campo campo-mail"><span class="campo-etiqueta">Mail</span>
           <input type="email" id="mail-alerta" autocomplete="email" inputmode="email" maxlength="254"
+            pattern="[^@\\s&lt;&gt;&quot;]+@[^@\\s&lt;&gt;&quot;]+\\.[A-Za-z]{2,}" title="Una dirección como nombre@dominio.com"
             placeholder="Opcional, para recibir avisos nuevos"></label>
-        <p class="fuente">Si dejás tu mail, lo usamos solo para mandarte los avisos nuevos de esta búsqueda.
-          Cada correo trae un enlace para darte de baja.</p>
+        <label class="consentimiento" id="consentimiento-campo" hidden>
+          <input type="checkbox" id="consentimiento-alerta">
+          Acepto que usen este mail solo para mandarme los avisos nuevos de esta búsqueda.</label>
+        <p class="fuente">Cada correo trae un enlace para darte de baja.</p>
       </div>` : ''}
       <button class="boton-primario" type="button" id="crear-alerta">Crear alerta para ${esc(b.barrio)}</button>`;
   const panel = (clave, contenido) => `<div class="pestana-panel" role="tabpanel" id="panel-${clave}"
@@ -499,6 +503,7 @@ function renderFicha() {
           <span>Mediana de ${b.coincidencias} ${plural(b.coincidencias, 'aviso que encaja', 'avisos que encajan')}, de ${b.avisos}
           ${plural(b.avisos, 'publicado', 'publicados')} en el barrio. Precios publicados, no tasaciones.</span></p>`
           : '<p class="ficha-resumen">Ningún aviso encaja con tu búsqueda por ahora. Podés crear la alerta igual.</p>'}
+        <button class="boton-texto ir-alerta" type="button" data-ir-alerta>Crear alerta para ${esc(b.barrio)}</button>
         <nav class="pestanas" role="tablist" aria-label="Secciones del barrio">${pestanas}</nav>
       </header>
       ${panel('entorno', `${renderAnalisisDelitos()}${renderPiezas(e)}${renderColectivos(e)}${renderSegunNecesidades()}
@@ -2115,7 +2120,15 @@ function conectarEventos() {
   $('#contenido').addEventListener('click', (e) => {
     const tab = e.target.closest('[data-pestana]');
     if (tab) elegirPestana(tab.dataset.pestana);
+    if (e.target.closest('[data-ir-alerta]')) {
+      elegirPestana('alerta');
+      ($('#mail-alerta') || $('#crear-alerta'))?.focus();
+    }
+    if (e.target.closest('[data-ver-alertas]')) abrirAlertas();
   });
+  // Con mail, la casilla de consentimiento aparece y el botón espera a que se marque.
+  $('#contenido').addEventListener('input', (e) => { if (e.target.matches('#mail-alerta, #consentimiento-alerta')) actualizarAlerta(); });
+  $('#contenido').addEventListener('change', (e) => { if (e.target.matches('#consentimiento-alerta')) actualizarAlerta(); });
   $('#contenido').addEventListener('keydown', (e) => {
     const tab = e.target.closest('[data-pestana]');
     if (!tab || !['ArrowRight', 'ArrowLeft', 'Home', 'End'].includes(e.key)) return;
@@ -2327,17 +2340,45 @@ function cambiarNivel(nivel) {
   }
 }
 
+// Los filtros que guarda la alerta, dichos como se ven en la barra.
+function textoBusquedaAlerta() {
+  const ambientes = `${estado.ambientes} ${plural(estado.ambientes, 'ambiente', 'ambientes')}${estado.ambientesOMas ? ' o más' : ''}`;
+  return `hasta ${dinero(estado.presupuesto, estado.moneda)}, desde ${estado.superficie} m², ${ambientes}`;
+}
+
+// La alerta queda guardada por operación y por datos de trabajo: se dice cuál, para encontrarla después en Mis alertas.
+function contextoAlerta() {
+  return `${estado.operacion === 'venta' ? 'compra' : 'alquiler'}, ${estado.modo === 'demo' ? 'datos de ejemplo' : 'datos reales'}`;
+}
+
+function actualizarAlerta() {
+  const campoMail = $('#mail-alerta');
+  const boton = $('#crear-alerta');
+  if (!campoMail || !boton || boton.getAttribute('aria-busy') === 'true') return;
+  const conMail = Boolean(campoMail.value.trim());
+  const acepta = $('#consentimiento-alerta')?.checked;
+  $('#consentimiento-campo').hidden = !conMail;
+  boton.disabled = conMail && !acepta;
+}
+
 async function crearAlerta(boton) {
   const salida = $('#estado-alerta');
   const campoMail = $('#mail-alerta');
   const email = campoMail ? campoMail.value.trim() : '';
   if (campoMail && email && !campoMail.checkValidity()) {
     salida.className = 'estado error';
-    salida.textContent = 'Revisá el mail: no parece una dirección válida.';
+    salida.textContent = 'Revisá el mail: tiene que ser una dirección como nombre@dominio.com.';
     campoMail.focus();
     return;
   }
+  const consentimiento = Boolean(email && $('#consentimiento-alerta')?.checked);
+  if (email && !consentimiento) return; // el botón ya está deshabilitado; por si llega un clic igual
+  const textoBoton = boton.textContent;
   boton.disabled = true;
+  boton.setAttribute('aria-busy', 'true');
+  boton.textContent = 'Creando alerta…';
+  salida.className = 'estado';
+  salida.textContent = '';
   try {
     const { creada, correo } = await api(`/api/busquedas?${new URLSearchParams({ modo: estado.modo, operacion: estado.operacion })}`, {
       method: 'POST',
@@ -2345,21 +2386,29 @@ async function crearAlerta(boton) {
       body: JSON.stringify({ barrio: estado.seleccionado, presupuesto: estado.presupuesto,
         superficie: estado.superficie, ambientes: estado.ambientes, moneda: estado.moneda,
         ambientes_o_mas: estado.ambientesOMas,
-        ...(email ? { email, consentimiento: true } : {}) }),
+        ...(email ? { email, consentimiento } : {}) }),
     });
+    const barrio = esc(estado.seleccionado);
     const local = creada
-      ? 'Alerta creada. Cuando entre un aviso nuevo que encaje, lo vas a ver en Mis alertas.'
-      : 'Ya tenías una alerta con estos mismos filtros.';
+      ? `Alerta creada para ${barrio}: ${contextoAlerta()}. Cuando entre un aviso nuevo que encaje, aparece en Mis alertas.`
+      : `Ya tenías una alerta para ${barrio} con estos mismos filtros (${contextoAlerta()}).`;
     salida.className = correo && !correo.enviado ? 'estado error' : 'estado ok';
-    salida.textContent = !correo ? local
-      : correo.enviado ? `${local} También te vamos a escribir a ${email}.`
-        : `${local} No se activó el aviso por correo: ${correo.motivo}`;
-    if (correo && correo.enviado) campoMail.value = '';
+    salida.innerHTML = `${!correo ? local
+      : correo.enviado ? `${local} También te vamos a escribir a ${esc(email)}.`
+        : `${local} No se activó el aviso por correo: ${esc(correo.motivo)}`}
+      <button class="boton-texto" type="button" data-ver-alertas>Ver mis alertas</button>`;
+    if (correo && correo.enviado) {
+      campoMail.value = '';
+      $('#consentimiento-alerta').checked = false;
+    }
   } catch (error) {
     salida.className = 'estado error';
     salida.textContent = `No se creó la alerta: ${error.message}`;
   } finally {
+    boton.removeAttribute('aria-busy');
+    boton.textContent = textoBoton;
     boton.disabled = false;
+    actualizarAlerta();
   }
 }
 

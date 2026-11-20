@@ -96,6 +96,14 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(self.client.post('/api/busquedas', params={'operacion': 'alquiler'},
                                           json=dict(body, moneda='EUR')).status_code, 422)
 
+    def test_alert_can_ask_for_rooms_or_more(self):
+        # La interfaz ya no exige ambientes exactos para crear una alerta: la base guarda «N o más» como otra búsqueda.
+        body = {'barrio': 'Boedo', 'presupuesto': 90_000, 'superficie': 30, 'ambientes': 2}
+        self.assertTrue(self.client.post('/api/busquedas', json=dict(body, ambientes_o_mas=True)).json()['creada'])
+        self.assertTrue(self.client.post('/api/busquedas', json=body).json()['creada'])
+        boedo = [s for s in self.get('/api/busquedas')['busquedas'] if s['barrio'] == 'Boedo']
+        self.assertEqual(sorted(s['ambientes_o_mas'] for s in boedo), [False, True])
+
     def test_email_subscription_goes_only_to_make(self):
         sent = []
         root = Path(self.temp.name)

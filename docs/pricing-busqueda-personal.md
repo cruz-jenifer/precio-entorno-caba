@@ -1,6 +1,6 @@
 # Pricing para la búsqueda personalizada de departamentos
 
-Hipótesis comercial · 9 de noviembre de 2026. La propuesta principal es para quien busca departamento en CABA. La venta a inmobiliarias se evalúa por separado. Los importes en USD sirven para probar escenarios. Antes de ofrecer el servicio, fijar importe final, moneda, vigencia y condiciones.
+Hipótesis comercial · 9 de noviembre de 2026. La propuesta principal es para quien busca departamento en CABA. La venta a inmobiliarias se evalúa por separado. Los importes en USD sirven para probar escenarios. Antes de ofrecer el servicio, fijar importe final, moneda, vigencia y condiciones. El [plan de monetización](monetizacion.md) (20/11/2026) agrega el guion de disposición a pagar, la clasificación de funciones y tres niveles, y saca del pase el envío a inmobiliarias y la lista completa como lo que se paga.
 
 ## Qué compra la persona
 

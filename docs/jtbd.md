@@ -107,10 +107,41 @@ Para ganar la gran contratación (crear una alerta o pagar el pase), el rival es
 
 1. **Pedir la alerta antes de que la persona vuelva a Zonaprop.** La alerta de Zonaprop sirve recién cuando se sabe el barrio, y Lüga es donde se elige. Ofrecer la alerta justo después de elegir el barrio: «elegiste Caballito por esto; lo seguimos por vos».
 2. **Mandar un juicio con cada aviso, no solo el aviso.** Dónde queda frente a los parecidos y cómo encaja con la vida diaria. Responde al miedo a pagar de más, que es emocional. La alerta de Zonaprop solo resuelve lo funcional.
-3. **Contar lo que Zonaprop no tiene.** Mob es el caso más claro: 876 avisos de dueños en alquiler, el 21 % de la base. Los sitios de inmobiliarias suman más. Medir cuántos quedan después de quitar los duplicados con Zonaprop antes de anunciarlo.
+3. **Contar lo que Zonaprop no tiene.** Mob es el caso más claro: 876 avisos de dueños en alquiler, el 21 % de la base. Los sitios de inmobiliarias suman poco: en venta, cerca del 70 % de sus avisos también está en Zonaprop (ver la medición más abajo). Medir Mob antes de anunciarlo.
 4. **Presentar Lüga como complemento, no como reemplazo.** Pedir que la persona abandone un hábito es el cambio más difícil. La alerta sigue gratis y sin cuenta. Un pase pago, si llega, va después de que la persona haya visto el valor.
 
 **Posicionamiento:** para quien se muda dentro de CABA sin conocer todos los barrios, Lüga es la compañera de búsqueda que muestra dónde funcionan su presupuesto y su vida diaria y qué avisos nuevos vale la pena consultar. A diferencia de la alerta de un portal, que solo avisa que apareció algo en ese portal, compara cada aviso con sus parecidos y sigue fuentes que el portal no cubre.
+
+**Medición del 20/11/2026: cuántos avisos tiene Lüga que no están en Zonaprop.** Se buscó, para cada aviso activo de otra fuente, un aviso de Zonaprop con la misma clave de posible duplicado que usan `modelo.duplicate_groups` y `comparables.py`: barrio, ambientes, m² cubiertos redondeados y precio redondeado a miles, además de la moneda.
+
+| Fuente | Venta: activos | Venta: con par en Zonaprop | Alquiler: activos | Alquiler: con par en Zonaprop |
+| --- | --- | --- | --- | --- |
+| RE/MAX | 917 | 192 (20,9 %) | 23 | 5 (21,7 %) |
+| Century 21 | 654 | 35 (5,4 %) | 366 | 58 (15,8 %) |
+| Migliorisi | 396 | 7 (1,8 %) | 49 | 8 (16,3 %) |
+| Mob | — | — | 876 | 69 (7,9 %) |
+| Clarín | 18 | 0 | — | — |
+| **Total** | **1.985** | **234 (11,8 %)** | **1.314** | **140 (10,7 %)** |
+
+**La medición no alcanza para afirmar exclusividad.** La copia de Zonaprop en Lüga es una muestra con tope: en venta, entre 20 y 50 avisos por barrio (mediana 48); en alquiler, entre 3 y 73 (mediana 68). Para comparar: solo en el escenario del benchmark (2 ambientes en Caballito y Almagro, hasta USD 150.000, desde 40 m²), Zonaprop mostró 1.024 avisos **[Obs, E1]**. Hay dos sesgos en sentidos opuestos:
+
+- **El tope esconde duplicados.** Un aviso cuya copia en Zonaprop no entró en la muestra parece exclusivo sin serlo.
+- **La clave puede juntar avisos distintos.** Dos unidades del mismo barrio con iguales ambientes, m² y precio redondeado, como las de un emprendimiento, cuentan como par.
+
+Que RE/MAX tenga par en el 21 % de los casos aun contra una muestra tan chica sugiere que buena parte de su oferta también está en Zonaprop.
+
+**Medición con la oferta completa de Zonaprop (20/11/2026).** Se capturó completo el escenario del benchmark en Zonaprop, sin fichas, por USD 1,49 ([detalle en datos.md](datos.md)). En el escenario estricto hay 947 avisos de Zonaprop (517 en Caballito y 430 en Almagro), cerca de los 1.024 del 9/11. Lüga tiene 63 en ese escenario: 18 de Zonaprop y 45 de otras fuentes (16 de RE/MAX, 15 de Century 21 y 14 de Migliorisi). Cada uno de esos 45 se buscó en la captura completa:
+
+| Criterio de par | Con par en Zonaprop |
+| --- | --- |
+| Clave exacta (ambientes, m² redondeados, precio a miles) | 35 de 45 (78 %) |
+| Prueba nula: la misma clave con el precio corrido ±8 % o los m² ±6 | entre 6 y 14 de 45 (13 % a 31 %) |
+| Clave exacta y a 200 m o menos (solo avisos con coordenadas) | 18 de 31 (58 %) |
+| ±2 m², ±5 % de precio y a 200 m o menos (solo avisos con coordenadas) | 25 de 31 (81 %) |
+
+La prueba nula mide cuántos pares aparecen por azar en un escenario tan denso: alrededor de uno de cada cuatro. Descontando ese azar, la clave exacta indica que **cerca del 70 % de los avisos de otras fuentes también está en Zonaprop**. Los criterios con ubicación, que casi no dejan lugar al azar, dan entre 58 % y 81 %. Los 14 avisos de Migliorisi no tienen coordenadas y quedan solo con la clave exacta (13 de 14 con par).
+
+**Lectura.** En este escenario de venta, los avisos que Lüga tiene y Zonaprop no son entre 9 y 19, frente a 947 de Zonaprop: entre 1 % y 2 % de oferta adicional. Además, la copia de Zonaprop en Lüga es el 2 % de lo que Zonaprop publica en el escenario (18 de 947), y 3 de esos 18 ya no aparecen en la captura. Para venta y con estas fuentes, **«avisos que Zonaprop no tiene» no es un argumento**: Lüga tiene que ganar con los puntos 1, 2 y 4. Falta medir lo mismo para Mob en alquiler, que es oferta de dueños y puede comportarse distinto.
 
 Las preguntas 3, 5 y 6 de la [guía de entrevistas](guia-entrevistas.md) ponen a prueba que la alerta de Zonaprop sea de verdad el hábito a vencer.
 

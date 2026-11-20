@@ -75,6 +75,10 @@ Zonaprop autorizó por escrito la consulta automatizada. Sus avisos se obtienen 
   - **Carpetas:** `data/raw/zonaprop-alquiler-20261118-2309/` (17 barrios hasta Mataderos; la conexión se cortó), `-montecastro/` (relectura sin cobro de una corrida que terminó durante el corte), `-reintento/` (los 30 barrios restantes, más Boedo y Colegiales) y `-villaluro/`. Boedo, Colegiales y Villa Luro fallaron primero con un 401 de Zonaprop dentro del actor y salieron bien al reintentarlos.
   - **Resultado:** se adaptaron 1.128 avisos y entraron 827 nuevos a `real-alquiler.sqlite3` (727 en pesos y 100 en dólares), que pasó de 3.359 a 4.186. Ya había 226 avisos en la base, y 30 de ellos cambiaron de precio. Barrios con poca oferta, como Villa Real (4), Villa Riachuelo (9) y Villa Soldati (9), no llegaron a 25.
   - **Costo:** unos USD 2,32 en la cuenta 5. El total del proyecto queda en unos USD 21 de USD 25.
+- **Medición de exclusividad del 20 de noviembre de 2026:** captura completa de Zonaprop del escenario del benchmark, algo ensanchado para no perder pares: departamentos en venta en Caballito y Almagro, 2 ambientes, hasta USD 165.000 y desde 36 m² cubiertos, **sin ficha**. El listado ya trae ambientes, m² cubiertos, precio y coordenadas. Autorizada por el usuario con un tope de USD 2, en la cuenta 5, con USD 0,95 por corrida.
+  - **Carpeta:** `data/raw/zonaprop-exclusividad-20261120/`, con `avisos.json` (solo ID, enlace, barrio, precio, moneda, ambientes, m² y coordenadas; sin contactos ni descripción), `registro.json` y `cruce.json`. No se importó a la base.
+  - **Resultado:** 874 avisos en Caballito y 705 en Almagro; ninguna corrida llegó al tope. El cruce está en [jtbd.md](jtbd.md#52-la-contratación-que-hay-que-vencer).
+  - **Costo:** USD 1,49, con una prueba previa de 5 avisos. La cuenta 5 quedó en USD 3,81 y el total del proyecto en unos USD 22,50 de USD 25.
 
 ### Catálogo de alquileres
 

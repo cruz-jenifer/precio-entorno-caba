@@ -94,6 +94,8 @@ Reconstrucción hipotética, a validar en la entrevista (sección 7.2):
 
 ### 2.6 Trabajo principal (JTBD)
 
+*Este trabajo es el de la asesora inmobiliaria. El de quien busca vivienda, al que apunta el producto actual, está en [jtbd.md](jtbd.md) (20/11/2026).*
+
 > **Cuando** entra una búsqueda nueva o llega una novedad para una búsqueda activa, **quiero** reunir los avisos vigentes que cumplen sus criterios en los barrios donde tiene sentido buscar, sin repetidos, **para** enviarle al comprador pocas opciones relevantes antes de que lo haga otro.
 
 - **Disparador.** Un comprador confirma sus criterios o llega un aviso nuevo **[Hip]**.

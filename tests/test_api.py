@@ -1,5 +1,6 @@
 """Pruebas de la API de la interfaz web con bases temporales y capas sintéticas."""
 
+import re
 import tempfile
 import unittest
 from pathlib import Path
@@ -7,7 +8,7 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 
 from precio_entorno import entorno
-from precio_entorno.api import create_app
+from precio_entorno.api import VERSIONED_ASSETS as VERSIONED, create_app
 from precio_entorno.importing import import_crimes
 from precio_entorno.store import Store
 
@@ -315,6 +316,59 @@ class ApiTests(unittest.TestCase):
             response = client.get('/api/delitos/concentracion', params={'barrio': 'Caballito'})
             self.assertFalse(response.json()['disponible'])
             self.assertIn('capas', response.json()['motivo'])
+
+    def test_map_shapes_are_cached_with_etag_and_answer_304(self):
+        first = self.client.get('/api/mapa/barrios')
+        self.assertEqual(first.status_code, 200)
+        self.assertIn('max-age=86400', first.headers['cache-control'])
+        again = self.client.get('/api/mapa/barrios', headers={'If-None-Match': first.headers['etag']})
+        self.assertEqual((again.status_code, again.content), (304, b''))
+
+    def test_listing_data_revalidates_and_errors_are_not_stored(self):
+        self.assertEqual(self.client.get('/api/estado').headers['cache-control'], 'no-cache')
+        missing = self.client.get('/api/barrios/NoExiste/avisos')
+        self.assertEqual((missing.status_code, missing.headers['cache-control']), (404, 'no-store'))
+
+
+class CacheTests(unittest.TestCase):
+    """index.html versiona app.js y styles.css con el hash del contenido para guardarlos como inmutables."""
+
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.web = Path(self.temp.name) / 'web'
+        self.web.mkdir()
+        (self.web / 'index.html').write_text(
+            '<link href="styles.css" rel="stylesheet"><script src="app.js" defer></script>', encoding='utf-8')
+        (self.web / 'styles.css').write_text('body{}', encoding='utf-8')
+        (self.web / 'app.js').write_text('let a = 1;', encoding='utf-8')
+        self.client = TestClient(create_app(entorno_dir=Path(self.temp.name) / 'sin-capas', web_dir=self.web))
+
+    def tearDown(self):
+        self.temp.cleanup()
+
+    def version(self, html, name):
+        return re.search(rf'{re.escape(name)}\?v=(\w+)"', html)[1]
+
+    def test_index_points_to_versioned_assets_and_revalidates(self):
+        page = self.client.get('/')
+        self.assertEqual(page.headers['cache-control'], 'no-cache')
+        for name in VERSIONED:
+            self.assertRegex(page.text, rf'{re.escape(name)}\?v=\w{{12}}"')
+        again = self.client.get('/', headers={'If-None-Match': page.headers['etag']})
+        self.assertEqual(again.status_code, 304)
+
+    def test_only_the_current_version_is_immutable(self):
+        version = self.version(self.client.get('/').text, 'app.js')
+        self.assertIn('immutable', self.client.get(f'/app.js?v={version}').headers['cache-control'])
+        self.assertEqual(self.client.get('/app.js').headers['cache-control'], 'no-cache')
+        self.assertEqual(self.client.get('/app.js?v=vieja').headers['cache-control'], 'no-cache')
+
+    def test_changing_a_file_changes_its_version(self):
+        before = self.version(self.client.get('/').text, 'app.js')
+        (self.web / 'app.js').write_text('let a = 2; // cambio', encoding='utf-8')
+        after = self.version(self.client.get('/').text, 'app.js')
+        self.assertNotEqual(before, after)
+        self.assertEqual(self.client.get(f'/app.js?v={before}').headers['cache-control'], 'no-cache')
 
 
 if __name__ == '__main__':

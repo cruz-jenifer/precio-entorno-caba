@@ -14,7 +14,7 @@ from pathlib import Path
 from statistics import median
 from typing import Literal
 
-from fastapi import FastAPI, HTTPException, Query, Response
+from fastapi import FastAPI, HTTPException, Query, Request, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
@@ -35,6 +35,27 @@ OFFICIAL = sorted(set(BARRIOS.values()))
 
 
 EMAIL = re.compile(r'[^@\s<>"]+@[^@\s<>"]+\.[A-Za-z]{2,}')
+
+# Caché HTTP. index.html pide app.js y styles.css con ?v=<hash del contenido>: con esa versión el navegador los
+# guarda un año sin volver a preguntar, y un cambio en el archivo cambia la URL. El HTML y lo que depende de los
+# avisos se revalida siempre (no-cache, con ETag); la geometría de los barrios y el radar semanal se guardan un rato.
+# Sin Cache-Control, el navegador estimaba la vigencia por la fecha del archivo y podía usar un app.js viejo.
+VERSIONED_ASSETS = ('app.js', 'styles.css')
+ASSET_REF = re.compile(r'(?P<attr>href|src)="(?P<file>app\.js|styles\.css)"')
+IMMUTABLE = 'public, max-age=31536000, immutable'
+API_CACHE = {
+    '/api/mapa/barrios': 'public, max-age=86400, stale-while-revalidate=604800',
+    '/api/radar': 'public, max-age=3600, stale-while-revalidate=86400',
+}
+
+
+def conditional(request, body, media_type, cache_control):
+    """Respuesta con ETag del contenido; devuelve 304 sin cuerpo si el navegador ya tiene esa versión."""
+    etag = f'"{sha256(body).hexdigest()[:20]}"'
+    headers = {'ETag': etag, 'Cache-Control': cache_control}
+    if etag in (tag.strip() for tag in request.headers.get('if-none-match', '').split(',')):
+        return Response(status_code=304, headers=headers)
+    return Response(body, media_type=media_type, headers=headers)
 
 
 class SearchIn(BaseModel):
@@ -87,6 +108,36 @@ def create_app(demo_path=None, real_path=None, entorno_dir=None, raw_dir=None, w
     interprete = interprete if interprete is not None else preferencias.Interprete.from_env(ROOT / 'data/local')
     lugares = lugares if lugares is not None else lugares_google.Lugares.from_env(ROOT / 'data/local')
     app = FastAPI(title='Lüga', docs_url='/api/docs', openapi_url='/api/openapi.json')
+    versions = {}  # archivo → (mtime_ns, tamaño, hash corto); se recalcula si el archivo cambia
+
+    def asset_version(name):
+        path = web_dir / name
+        if not path.exists():
+            return None
+        stat = path.stat()
+        known = versions.get(name)
+        if not known or known[:2] != (stat.st_mtime_ns, stat.st_size):
+            known = versions[name] = (stat.st_mtime_ns, stat.st_size, sha256(path.read_bytes()).hexdigest()[:12])
+        return known[2]
+
+    @app.middleware('http')
+    async def http_cache(request: Request, call_next):
+        response = await call_next(request)
+        if request.method not in ('GET', 'HEAD') or 'cache-control' in response.headers:
+            return response
+        if response.status_code not in (200, 304):
+            response.headers['Cache-Control'] = 'no-store'  # que un error no quede guardado
+            return response
+        path = request.url.path
+        name = path.lstrip('/')
+        if name in VERSIONED_ASSETS and request.query_params.get('v') == asset_version(name):
+            response.headers['Cache-Control'] = IMMUTABLE
+        elif path in API_CACHE and response.status_code == 200:
+            body = b''.join([chunk async for chunk in response.body_iterator])
+            return conditional(request, body, response.headers.get('content-type'), API_CACHE[path])
+        else:
+            response.headers['Cache-Control'] = 'no-cache'
+        return response
 
     def layers():
         marker = entorno_dir / 'resumen.json'
@@ -521,6 +572,19 @@ def create_app(demo_path=None, real_path=None, entorno_dir=None, raw_dir=None, w
                 result['correo'] = ({'enviado': True} if sent['enviado'] else
                                     {'enviado': False, 'motivo': 'Make no recibió el alta. Probá de nuevo más tarde.'})
         return result
+
+    if (web_dir / 'index.html').exists():
+        @app.get('/', include_in_schema=False)
+        @app.get('/index.html', include_in_schema=False)
+        def index_page(request: Request):
+            html = (web_dir / 'index.html').read_text(encoding='utf-8')
+
+            def versioned(match):
+                version = asset_version(match['file'])
+                return f'{match["attr"]}="{match["file"]}?v={version}"' if version else match[0]
+
+            return conditional(request, ASSET_REF.sub(versioned, html).encode('utf-8'),
+                               'text/html; charset=utf-8', 'no-cache')
 
     if web_dir.exists():
         app.mount('/', StaticFiles(directory=web_dir, html=True), name='web')

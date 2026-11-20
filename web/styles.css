@@ -1211,6 +1211,22 @@ button, input, select { font: inherit; color: inherit; }
 .consentimiento input { margin: 0.125rem 0 0; accent-color: var(--jacaranda-oscuro); }
 .ir-alerta { display: block; margin-top: 0.5rem; color: var(--jacaranda-oscuro); font-weight: 600; }
 .estado .boton-texto { margin-left: 0.25rem; }
+/* Errores: qué pasó y «Probar de nuevo», sin borrar lo que ya se veía debajo. */
+.aviso-error {
+  display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.25rem 1rem; margin: 0 0 1rem; padding: 0.75rem 1rem;
+  border-radius: var(--radio-control); background: #FBEFEA; color: var(--alerta);
+}
+.aviso-error p { margin: 0; flex: 1 1 16rem; }
+.aviso-error .boton-texto { color: var(--alerta); font-weight: 600; }
+.mapa-pista .boton-texto { margin-left: 0.25rem; }
+/* Aviso breve con «Deshacer», arriba al centro: no tapa la hoja ni los controles del mapa. */
+.aviso-flotante {
+  position: fixed; z-index: 7; left: 50%; transform: translateX(-50%);
+  top: calc(var(--barra-real, 2.75rem) + var(--borde) + 0.5rem);
+  display: flex; align-items: center; gap: 1rem; max-width: min(32rem, calc(100vw - 2 * var(--borde)));
+  padding: 0.5rem 1rem; border-radius: 12px; background: var(--asfalto); color: var(--papel); box-shadow: var(--sombra-pastilla);
+}
+.aviso-flotante .boton-texto { color: var(--papel); text-decoration-color: currentColor; font-weight: 600; white-space: nowrap; }
 
 /* Capas y controles al pie del mapa, sin tapar la zona del barrio. */
 .mapa-arriba {

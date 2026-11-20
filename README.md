@@ -16,6 +16,8 @@ La [entrega de Producto 1 del 12/11](docs/entrega-12-11.md) incluye la auditorí
 
 La [guía del flujo de trabajo](docs/flujo-de-trabajo.md) conecta la operación del producto con Analytics, Inference y el seguimiento en Trello.
 
+El [trabajo por hacer (JTBD)](docs/jtbd.md) describe el progreso que busca quien se muda dentro de CABA, con sus dimensiones funcional, emocional y social, y qué falta validar.
+
 ## Ejecutar en Windows
 
 Desde la carpeta `precio-entorno-caba`, en PowerShell:

@@ -149,7 +149,65 @@ La métrica de precio es la del [pricing](pricing-busqueda-personal.md): **una b
 
 **Señal sana a buscar:** que algunas personas digan que es caro y paguen igual. Si nadie dice nunca «caro», el precio está por debajo de la zona de valor.
 
-## 6. Diagnóstico con este plan: 7/10 en el papel
+## 6. Diagnóstico CRO de la página de precios (borrador)
+
+Hecho con la skill `cro-methodology`. Lüga no tiene página de precios: se evaluó la tabla de la sección 4 como si lo fuera. Sin visitantes, las filas que dependen de datos de comportamiento no pueden pasar todavía.
+
+| # | Pregunta | ¿Pasa? | Por qué |
+| --- | --- | --- | --- |
+| 1 | ¿Hay una sola acción que debe hacer quien visita? | **Sí** | La tabla está pensada para que se elija «Buscar» |
+| 2 | ¿Se investigó, sin adivinar, por qué no compran? | No | Las llamadas de precio y el concierge todavía no se hicieron |
+| 3 | ¿Hay una tabla de objeciones y contraobjeciones? | No | No figuraba en el plan (ver el cambio 2) |
+| 4 | ¿La propuesta se entiende en 5 segundos? | No | Son 11 filas de funciones sin un titular, con palabras internas como «juicio de precio» o «veredicto» |
+| 5 | ¿Hay pruebas visibles (testimonios, garantía, datos)? | No | Ninguna. La garantía de devolución está en el concierge, no en la tabla |
+| 6 | ¿Está mapeado el embudo? | No | No está definido en qué momento aparece el precio, y no hay tráfico |
+| 7 | ¿El camino no tiene trabas (velocidad, celular, formularios)? | No se puede evaluar | El pago no existe todavía |
+
+**Puntaje: 1/10.** Pasa 1 de 7 filas. Antes del lanzamiento se puede llegar cerca de **8/10**, con las filas 1 a 5 y la 7. La fila 6 necesita tráfico real.
+
+### Los tres cambios que más acercan a 10/10
+
+Ordenados por ICE: impacto, confianza y facilidad, de 1 a 10 cada uno.
+
+**1. Un titular de resultado y niveles descritos en el idioma de quien busca (ICE 7,3: I7 C6 F9).** Reemplazar la tabla de 11 filas por un titular y tres renglones por nivel:
+
+> **«Seguí buscando donde buscás. Nosotros te decimos qué aviso vale la llamada.»**
+> - **Explorar (gratis):** mirá dónde te rinde el presupuesto y probá 3 avisos con su lectura.
+> - **Buscar:** seguimos tu búsqueda 30 días y te mandamos cada aviso nuevo con su lectura.
+> - **Buscar acompañado:** además, una persona revisa los avisos que elijas.
+
+- **Las palabras de las personas.** Reemplazar «juicio» y «veredicto» por cómo lo digan las personas en las llamadas.
+- **Cómo probarlo.** Hacer una prueba de 5 segundos con 5 personas; se puede sumar al acto 3 del [design sprint](sprint-confianza.md).
+- **Hipótesis:** si el titular dice el resultado en vez de las funciones, más personas eligen Buscar, porque entienden en 5 segundos para qué es.
+
+**2. Una tabla de objeciones con cada respuesta donde aparece la duda (ICE 7,0: I8 C6 F7).** Objeciones previstas, a confirmar con las llamadas y el concierge:
+
+| Objeción | Contraobjeción | Dónde va |
+| --- | --- | --- |
+| **Precio:** «¿Por qué pagar si Zonaprop es gratis?» | «Seguí usando tu portal. Lüga te dice cuáles de esos avisos vale la pena llamar», con una lectura real de ejemplo | Al lado del precio de Buscar |
+| **Confianza:** «¿Los datos están completos y al día?» | La cobertura honesta: qué fuentes, cada cuánto se revisan y la última actualización | Debajo del título de la tabla |
+| **Encaje:** «¿Hay algo para mí?» | El precio aparece **solo después** de la vista previa con coincidencias. Si no hay ninguna, se ofrece guardar la búsqueda gratis, como pide el [pricing](pricing-busqueda-personal.md) | En el momento de la oferta |
+| **Riesgo:** «¿Y si no me sirve?» | «Si en 30 días no te llega ningún aviso útil, te devolvemos la plata». Solo si se va a cumplir | Junto al botón de pago |
+| **Implícita: privacidad** (quien busca no la dice) | Respuesta sin nombrar la objeción: «Tu búsqueda y tu mail no se comparten con nadie» | Junto al campo del mail |
+| **Renovación** | «Pago único, sin renovación automática» | Debajo del precio |
+
+- **Hipótesis:** si cada duda se responde donde aparece, aumenta el porcentaje de quienes ven la oferta y pagan, porque baja la ansiedad de pagar por algo que el portal da gratis.
+
+**3. Pruebas reales junto al precio (ICE 6,7: I7 C7 F6).** Solo con material verdadero:
+
+- **Una tarjeta de ejemplo calculada con la base,** sin inventar cifras. Por ejemplo: «Este 2 ambientes en Caballito está X % arriba de N avisos parecidos».
+- **El resultado de la revisión del corredor** (acción 2 de la [estrategia](estrategia.md)): «Un corredor revisó 30 lecturas y coincidió en X».
+- **La independencia,** con su porqué: «Nadie paga para aparecer acá».
+- **Testimonios con nombre:** después del concierge y con permiso. Nunca testimonios inventados.
+- **Hipótesis:** si la lectura se muestra con su evidencia, más personas confían en ella lo suficiente para pagar, porque ven cómo funciona antes de comprar.
+
+**Cómo medirlo:**
+
+- **Métrica principal:** el porcentaje de quienes ven la oferta y pagan, la misma del concierge.
+- **Métrica que no debe bajar:** las altas de la alerta gratis.
+- **Sin pruebas A/B por ahora:** con tan poco tráfico no alcanzan significancia. Conviene probar cambios grandes entre los grupos del concierge.
+
+## 7. Diagnóstico con este plan: 7/10 en el papel
 
 Lo que hay: disposición a pagar preguntada antes de construir, niveles armados alrededor de los líderes, asesinos afuera y métrica por búsqueda.
 

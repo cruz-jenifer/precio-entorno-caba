@@ -50,6 +50,11 @@ def compare_with_reference(clean, predictions, threshold=THRESHOLD):
             .drop(columns='_rank').reindex(columns=order).reset_index(drop=True))
 
 
+def to_review(table):
+    """Avisos para revisar primero: los que quedan por debajo de su referencia, del más bajo al menos."""
+    return table[table['lectura'] == LABELS[0]].sort_values('diferencia_pct').reset_index(drop=True)
+
+
 def summary(table, bundle, skipped=0):
     """Resumen para el registro OUTPUT y el dashboard: conteos por lectura y el error que aplica."""
     report = bundle.get('report', {})

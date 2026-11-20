@@ -11,7 +11,8 @@ Make lo llama con `run-sync`, que devuelve el registro OUTPUT:
 - `operacion: "eda"`: CSV limpio → OUTPUT con el cuerpo de `values:batchUpdate` de las seis
   pestañas. Cada tabla queda además como CSV, y la de barrios en el dataset.
 - `operacion: "inferencia"`: CSV limpio + `almacenModelo` → OUTPUT con el cuerpo de la pestaña `predicciones`. Las
-  referencias quedan en el dataset y en `predicciones.csv`, y el resumen en RESUMEN_INFERENCIA.
+  referencias completas quedan en `predicciones.csv`; el dataset lleva solo las que conviene revisar
+  primero (debajo de la referencia), y el resumen queda en RESUMEN_INFERENCIA.
 
 Si algo falla, la corrida termina en FAILED y `run-sync` responde con error: Make corta el flujo.
 """
@@ -89,7 +90,8 @@ async def run_inference(actor_input, content):
     predictions, skipped = inference.predict_clean(clean, bundle)
     table = tooling_business.compare_with_reference(clean, predictions)
     summary = tooling_business.summary(table, bundle, skipped)
-    await Actor.push_data(records(table))
+    # El dataset (que cobra por ítem) lleva solo la lista para revisar primero; la tabla completa va a OUTPUT.
+    await Actor.push_data(records(tooling_business.to_review(table)))
     await Actor.set_value('predicciones.csv', preprocessing.to_csv(table), content_type=CSV)
     await Actor.set_value('RESUMEN_INFERENCIA', summary)
     Actor.log.info(f"Inferencia: {summary['avisos_estimados']} avisos con el modelo {summary['modelo_version']}, "

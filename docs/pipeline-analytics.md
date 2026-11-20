@@ -24,7 +24,7 @@ flowchart LR
 | Datos crudos | `01_crudo/avisos_venta_crudo.json` | 4.007 filas de la captura consolidada del 8/11 (inmobiliarias autorizadas, Clarín y Zonaprop), sin contactos de anunciantes |
 | | `01_crudo/delitos_2025_crudo.csv.gz` | Copia comprimida del Mapa del Delito 2025 (17 MB sin comprimir, SHA-256 `1ed67c33…`) |
 | Actor | Apify, cuenta 2, `peerless_anorthite~precio-entorno-analytics` (privado) | `operacion: etl`, `eda` e `inferencia`. Código: [`analytics/main.py`](../precio_entorno/analytics/main.py) (solo entrada y salida de Apify) y un módulo por etapa en [`precio_entorno/analytics/`](../precio_entorno/analytics/) |
-| Escenario | Make, «Precio y Entorno CABA - Pipeline Analytics» (7037544), a pedido | 7 módulos y 7 operaciones por corrida. Se crea con [`make_pipeline.py`](../precio_entorno/make_pipeline.py) |
+| Escenario | Make, «Precio y Entorno CABA - Pipeline Analytics» (7037544), a pedido | 9 módulos y 9 operaciones por corrida. Se crea con [`make_pipeline.py`](../precio_entorno/make_pipeline.py) |
 | Planilla | [Precio y Entorno CABA - Tablas del dashboard](https://docs.google.com/spreadsheets/d/1_3s-zpZAvhCGF1nu8WlSihdXZiIwQayb6C8Qk6NWLuM/edit) | Una pestaña por tabla. Make la vacía y la vuelve a escribir en cada corrida, así Looker Studio no pierde la conexión |
 | Dashboard | [Looker Studio: Precio y Entorno CABA - Dashboard Analytics](https://lookerstudio.google.com/reporting/5057b183-22bb-4370-8c23-a47387a9d6f1) (privado, credenciales de lector) | Página 1: indicadores, top 10 de barrios por USD/m² y tabla de barrios. Página 2: histograma, USD/m² por ambientes, correlaciones, dispersión de delitos contra USD/m² y nota de fuentes |
 
@@ -39,8 +39,12 @@ flowchart LR
 | 3 | Google Drive › Upload a file | `02_limpio/dataset_limpio_AAAA-MM-DD_HHmm.csv`. Queda un CSV por corrida, como historial |
 | 4 | Google Drive › Download a file | Ese mismo CSV: el EDA lee lo que quedó en Drive |
 | 5 | HTTP › Make a request (POST `run-sync`) | `{"operacion":"eda",…}` → cuerpo de `values:batchUpdate` |
-| 6 | Google Sheets › Make an API call | `values:batchClear` de las 6 pestañas |
+| 6 | Google Sheets › Make an API call | `values:batchClear` de las 6 pestañas del EDA y de `predicciones` |
 | 7 | Google Sheets › Make an API call | `values:batchUpdate` con las tablas |
+| 8 | HTTP › Make a request (POST `run-sync`) | `{"operacion":"inferencia","almacenModelo":…}` sobre el CSV del paso 4 → cuerpo de `values:batchUpdate` con las referencias |
+| 9 | Google Sheets › Make an API call | `values:batchUpdate` en la pestaña `predicciones` |
+
+Captura del escenario: [`docs/img/make/escenario-pipeline-analytics.png`](img/make/escenario-pipeline-analytics.png).
 
 Si el Actor falla, `run-sync` responde con error y Make corta el flujo antes de tocar Drive o la planilla. Make avisa por correo los escenarios con error.
 
@@ -48,7 +52,7 @@ Si el Actor falla, `run-sync` responde con error y Make corta el flujo antes de 
 
 **Programarlo.** El plan Free de Make admite 2 escenarios activos, y hoy están activos «Búsquedas» y «Alertas con Apify». Para que el pipeline corra solo (por ejemplo, cada lunes) hay que desactivar otro escenario o pasar a un plan pago. Desde la API, `make_pipeline correr` necesita el escenario activo.
 
-**Costos medidos el 14/11.** ETL: USD 0,003 por corrida. EDA: USD 0,0003. Construir el Actor costó unos USD 0,006. En Make son 7 operaciones por corrida, de las 1.000 mensuales del plan Free.
+**Costos medidos el 14/11.** ETL: USD 0,003 por corrida. EDA: USD 0,0003. Construir el Actor costó unos USD 0,006. En Make son 9 operaciones por corrida desde el 20/11, de las 1.000 mensuales del plan Free. La inferencia cuesta menos de USD 0,004 por corrida: el dataset guarda solo los avisos para revisar primero, porque Apify cobra cada ítem escrito (con los 3.806 costaba unos USD 0,02).
 
 ## Qué hace cada operación
 
@@ -86,9 +90,9 @@ Cada tabla queda además como CSV en el almacén de la corrida en Apify. La de b
 3. Estima la referencia de publicación en USD/m² y en USD para cada aviso.
 4. Compara el USD/m² publicado con la referencia. A más de 20 % por debajo es «debajo de la referencia» (revisar primero), a más de 20 % por encima es «encima» y el resto es «cerca». El 20 % es del orden del error del modelo: el 70 % de la prueba quedó dentro de ±20 %.
 
-OUTPUT trae el cuerpo de `values:batchUpdate` para una pestaña `predicciones`. La tabla también queda en el dataset y en `predicciones.csv`, y el resumen en `RESUMEN_INFERENCIA`. El resumen informa el error que aplica: con los campos del CSV limpio, sin distancias ni rasgos de entorno, el MAE de prueba es 616 USD/m², contra 443 del modelo completo y 627 de la mediana de comparables. Es una referencia de publicación, no una tasación.
+OUTPUT trae el cuerpo de `values:batchUpdate` para una pestaña `predicciones`. La tabla completa queda en `predicciones.csv`; el dataset guarda solo los avisos debajo de la referencia (566), y el resumen en `RESUMEN_INFERENCIA`. El resumen informa el error que aplica: con los campos del CSV limpio, sin distancias ni rasgos de entorno, el MAE de prueba es 616 USD/m², contra 443 del modelo completo y 627 de la mediana de comparables. Es una referencia de publicación, no una tasación.
 
-Subido y probado en Apify el 20/11/2026 (construcción `9F5VDcCprZRPCs68n`, modelo `1d4013afcf906e8c`). Con `probar`, el ETL dio el mismo CSV limpio, byte a byte, que la corrida del 17/11. Las cinco pestañas de datos del EDA salieron idénticas. La inferencia (corrida `rlsa4V9YpWEN9EJsQ`, 14 s, USD 0,0007) dio 3.806 referencias: 566 debajo de la referencia (14,9 %), 2.225 cerca y 1.015 encima. Make todavía no llama a esta operación, y la planilla no tiene la pestaña `predicciones`.
+Subido y probado en Apify el 20/11/2026 (modelo `1d4013afcf906e8c`). Con `probar`, el ETL dio el mismo CSV limpio, byte a byte, que la corrida del 17/11, y las cinco pestañas de datos del EDA salieron idénticas. Ese mismo día Make corrió los 9 módulos desde el editor (Success, 9 operaciones, 92 s) y la pestaña `predicciones` quedó con 3.806 referencias: 566 debajo de la referencia (14,9 %), 2.225 cerca y 1.015 encima. Construcción vigente: `8MaakMhxgfEpbSggG`.
 
 ## Dashboard en Looker Studio
 

@@ -115,6 +115,7 @@ class InferenceAndBusinessTests(unittest.TestCase):
         self.assertEqual(table.at['a:4', 'lectura'], 'sin lectura')
         self.assertEqual(table.at['a:1', 'referencia_publicacion_usd'], 100000)
         self.assertNotIn('a:5', table.index)
+        self.assertEqual(tooling_business.to_review(ordered)['id'].tolist(), ['a:1'])
 
     def test_summary_counts_and_uses_basic_error_without_enrichment(self):
         data = clean()

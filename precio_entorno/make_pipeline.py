@@ -10,6 +10,10 @@
 5. HTTP › Apify `run-sync` con `operacion: eda`: devuelve las tablas como cuerpo de Sheets.
 6. Google Sheets › Make an API call `values:batchClear` y 7. `values:batchUpdate` sobre la
    planilla «Tablas del dashboard» (una pestaña por tabla), que lee Looker Studio.
+8. HTTP › Apify `run-sync` con `operacion: inferencia` sobre el mismo CSV: el Actor usa el modelo
+   ya entrenado (no entrena) y devuelve la referencia de publicación de cada aviso. El almacén del
+   modelo va en `almacenModelo`, porque el Actor corre con permisos limitados.
+9. Google Sheets › Make an API call `values:batchUpdate` en la pestaña `predicciones`.
 
 El token de Apify va en el encabezado del módulo HTTP dentro de Make: se lee del .env al crear el
 escenario y nunca se imprime ni se guarda en el repositorio.
@@ -20,9 +24,9 @@ Uso: python -m precio_entorno.make_pipeline {crear|correr|estado} --account 2
 import argparse
 import json
 
-from precio_entorno.apify_analytics import NAME as ACTOR_NAME
+from precio_entorno.analytics.tooling_business import PREDICTIONS_SHEET, clear_body
+from precio_entorno.apify_analytics import NAME as ACTOR_NAME, Apify, model_store
 from precio_entorno.make_escenarios import TEAM, blueprint, call, last_error, module, scenarios
-from precio_entorno.analytics.tooling_business import clear_body
 from precio_entorno.run_pilot import apify_token
 
 SCENARIO = 'Precio y Entorno CABA - Pipeline Analytics'
@@ -66,8 +70,9 @@ def sheets_call(id_, path, body, x):
         parameters={'__IMTCONN__': CONN['sheets']})
 
 
-def pipeline_blueprint(token, user):
+def pipeline_blueprint(token, user, model_store_id):
     url = f'https://api.apify.com/v2/acts/{user}~{ACTOR_NAME}/run-sync?timeout=280'
+    clear = {'ranges': clear_body()['ranges'] + [PREDICTIONS_SHEET]}
     return blueprint(SCENARIO, [
         download(1, DRIVE['avisos_crudos'], 0),
         apify(2, url, token, '{"operacion":"etl","nombreArchivo":"{{1.name}}",'
@@ -78,8 +83,11 @@ def pipeline_blueprint(token, user):
             parameters={'__IMTCONN__': CONN['drive_escritura']}),
         download(4, '{{3.id}}', 900, 'drive_escritura'),
         apify(5, url, token, '{"operacion":"eda","contenidoBase64":"{{base64(toString(4.data))}}"}', 1200),
-        sheets_call(6, 'values:batchClear', json.dumps(clear_body()), 1500),
+        sheets_call(6, 'values:batchClear', json.dumps(clear), 1500),
         sheets_call(7, 'values:batchUpdate', '{{toString(5.data)}}', 1800),
+        apify(8, url, token, '{"operacion":"inferencia","almacenModelo":"' + model_store_id + '",'
+                             '"contenidoBase64":"{{base64(toString(4.data))}}"}', 2100),
+        sheets_call(9, 'values:batchUpdate', '{{toString(8.data)}}', 2400),
     ], instant=False)
 
 
@@ -90,7 +98,8 @@ def main():
     args = parser.parse_args()
     existing = scenarios().get(SCENARIO)
     if args.accion == 'crear':
-        bp = pipeline_blueprint(apify_token(args.account), APIFY_USER[args.account])
+        token = apify_token(args.account)
+        bp = pipeline_blueprint(token, APIFY_USER[args.account], model_store(Apify(token))['id'])
         if existing:
             call('PATCH', f"scenarios/{existing['id']}", {'confirmed': 'true'},
                  {'blueprint': json.dumps(bp, ensure_ascii=False)})

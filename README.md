@@ -360,7 +360,27 @@ La tarea corre solo con la sesión de Windows iniciada. Si una inmobiliaria reti
 
 Make baja de Google Drive los avisos crudos y se los pasa al Actor `precio-entorno-analytics` de Apify, que hace el ETL. Guarda en Drive el CSV limpio y se lo pasa al mismo Actor para el EDA. Después carga las seis tablas en una planilla de Google, de donde lee el dashboard de Looker Studio. El recorrido, los costos, cómo correrlo en la demo y la guía del dashboard están en [docs/pipeline-analytics.md](docs/pipeline-analytics.md).
 
-<!-- Captura del escenario de Make: guardarla en docs/img/make/ y enlazarla acá. -->
+### Escenario de Make
+
+![Escenario «Pipeline Analytics» en el editor de Make, con sus 9 módulos](docs/img/make/escenario-pipeline-analytics.png)
+
+| # | Módulo | Qué hace |
+| --- | --- | --- |
+| 1 | Google Drive · Download a file | Baja los avisos crudos de `01_crudo` |
+| 2 | HTTP · Apify `run-sync` | Actor con `operacion: etl`: devuelve el CSV limpio |
+| 3 | Google Drive · Upload a file | Guarda el CSV limpio en `02_limpio` |
+| 4 | Google Drive · Download a file | Relee ese CSV, para que el EDA y la inferencia usen lo que quedó en Drive |
+| 5 | HTTP · Apify `run-sync` | Actor con `operacion: eda`: devuelve las tablas del dashboard |
+| 6 | Google Sheets · Make an API call | `values:batchClear` de las pestañas |
+| 7 | Google Sheets · Make an API call | `values:batchUpdate` de las seis tablas del EDA |
+| 8 | HTTP · Apify `run-sync` | Actor con `operacion: inferencia`: referencia de publicación de cada aviso con el modelo ya entrenado |
+| 9 | Google Sheets · Make an API call | `values:batchUpdate` de la pestaña `predicciones` |
+
+Corrida del 20/11/2026 desde el editor: 9 operaciones en 1 minuto, con éxito. La pestaña `predicciones` quedó con 3.806 referencias, primero las que están más por debajo de su referencia.
+
+![Página del escenario con la corrida del 20/11/2026: Success, 9 operaciones](docs/img/make/escenario-pipeline-analytics-corrida.png)
+
+El escenario se crea o actualiza con `python -m precio_entorno.make_pipeline crear`.
 
 ### Código fuente del Actor
 

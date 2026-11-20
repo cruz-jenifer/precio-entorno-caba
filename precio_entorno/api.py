@@ -68,6 +68,8 @@ class SearchIn(BaseModel):
     email: str | None = Field(default=None, max_length=254)
     consentimiento: bool = False
     ambientes_o_mas: bool = False
+    # Nivel pago elegido en «Precios» para anotarse en la primera tanda. Solo viaja con el alta por mail.
+    interes: Literal['buscar', 'acompanado'] | None = None
 
 
 class PreferenciasIn(BaseModel):

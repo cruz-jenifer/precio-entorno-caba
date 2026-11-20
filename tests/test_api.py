@@ -134,6 +134,7 @@ class ApiTests(unittest.TestCase):
                               'superficie': 35, 'ambientes': 2, 'ambientesOMas': False})
             self.assertGreaterEqual(len(alta['busqueda']['id']), 12)  # Aleatorio: sirve de clave para la baja.
             self.assertEqual(alta['descripcion'], 'Boedo · hasta USD 100.000 · 35 m² o más · 2 ambientes')
+            self.assertNotIn('interes', alta)  # Sin nivel elegido en «Precios», el alta no cambia.
             self.assertNotIn(b'persona@example.com', real.read_bytes())  # El mail no queda en la base local.
             # Otra persona con los mismos filtros también se suscribe, con otro ID.
             again = client.post('/api/busquedas', params={'modo': 'real'}, json=dict(body, email='otra@example.com'))
@@ -149,6 +150,25 @@ class ApiTests(unittest.TestCase):
                                           raw_dir=self.raw, subscriptions_url=None))
             result = unset.post('/api/busquedas', params={'modo': 'real'}, json=body).json()
             self.assertFalse(result['correo']['enviado'])
+
+    def test_first_cohort_interest_travels_with_the_email_signup(self):
+        # «Anotarme en la primera tanda» manda el nivel elegido a Make junto con el alta; un nivel inventado se rechaza.
+        sent = []
+        root = Path(self.temp.name)
+        with tempfile.TemporaryDirectory() as temp:
+            client = TestClient(create_app(demo_path=root / 'demo.sqlite3', real_path=Path(temp) / 'real.sqlite3',
+                                           entorno_dir=root / 'entorno', raw_dir=self.raw,
+                                           subscriptions_url='https://hook.us2.make.com/x',
+                                           post=lambda url, body: sent.append(body) or 200))
+            body = {'barrio': 'Boedo', 'presupuesto': 100_000, 'superficie': 35, 'ambientes': 2,
+                    'email': 'persona@example.com', 'consentimiento': True}
+            for nivel in ('buscar', 'acompanado'):
+                result = client.post('/api/busquedas', params={'modo': 'real'}, json=dict(body, interes=nivel))
+                self.assertTrue(result.json()['correo']['enviado'])
+            self.assertEqual([alta['interes'] for alta in sent], ['buscar', 'acompanado'])
+            invalid = client.post('/api/busquedas', params={'modo': 'real'}, json=dict(body, interes='premium'))
+            self.assertEqual(invalid.status_code, 422)
+            self.assertEqual(len(sent), 2)
 
     def test_map_layers_are_cut_to_the_neighborhood(self):
         shapes = self.get('/api/mapa/barrios')

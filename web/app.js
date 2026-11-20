@@ -190,7 +190,66 @@ function renderSegunNecesidades() {
 }
 
 const PRESUPUESTO = { 'venta-USD': 110000, 'alquiler-ARS': 800000, 'alquiler-USD': 900 };
-const VACIO = { type: 'FeatureCollection', features: [] };
+
+// Precios de la primera tanda. Respaldo de costos y decisiones en docs/modelo-de-negocio.md. El precio principal va en
+// pesos (precios a consumidores en moneda local) y el dólar es referencia. Hoy no se cobra: los niveles pagos anotan
+// el interés con la alerta por mail. El orden pone primero el nivel más caro, que funciona como ancla.
+const PRECIOS = {
+  tipoCambio: 1450, // ARS por USD de referencia. Fijar el real antes de cobrar.
+  actualizado: '20/11/2026',
+  cupos: 20,
+  niveles: [
+    { id: 'acompanado', nombre: 'Buscar acompañado', ars: 42000, usd: 29,
+      resumen: 'Además, una persona revisa los avisos que elijas.',
+      incluye: ['Todo lo de Buscar', 'Una persona revisa hasta 5 avisos que elijas y te dice qué preguntar antes de visitar'],
+      boton: 'Anotarme en la primera tanda' },
+    { id: 'buscar', nombre: 'Buscar', ars: 13000, usd: 9, recomendado: true,
+      resumen: 'Seguimos tu búsqueda 30 días y te mandamos cada aviso nuevo con su lectura.',
+      incluye: ['Hasta 3 avisos nuevos por correo, cada uno con su comparación frente a parecidos y el motivo',
+        'Segunda opinión sobre avisos que encuentres en otros portales',
+        'Un resumen de cada aviso para reenviar a tu pareja o tu familia'],
+      boton: 'Anotarme en la primera tanda' },
+    { id: 'explorar', nombre: 'Explorar', ars: 0, usd: 0,
+      resumen: 'Mirá dónde te rinde el presupuesto antes de buscar departamento.',
+      incluye: ['Barrios donde te rinde el presupuesto y su entorno en el mapa',
+        'Avisos con su comparación frente a parecidos del barrio',
+        'Alerta por mail, gratis durante el lanzamiento'],
+      boton: 'Empezar gratis' },
+  ],
+};
+
+function precioNivel(n) {
+  return n.ars ? `ARS ${numero.format(n.ars)}` : 'Gratis';
+}
+
+// Página de precios: titular de resultado, niveles con su precio en pesos y las respuestas a las dudas más probables
+// donde aparecen (precio, confianza, privacidad, renovación y garantía).
+function renderPrecios() {
+  const tarjetas = PRECIOS.niveles.map((n) => `<article class="nivel${n.recomendado ? ' nivel-recomendado' : ''}">
+      ${n.recomendado ? '<p class="nivel-marca">Recomendado</p>' : ''}
+      <h3>${esc(n.nombre)}</h3>
+      <p class="nivel-precio">${precioNivel(n)}</p>
+      <p class="nivel-detalle">${n.ars ? `≈ USD ${n.usd} · por búsqueda, 30 días` : 'Sin registrarte'}</p>
+      <p class="nivel-resumen">${esc(n.resumen)}</p>
+      <ul>${n.incluye.map((i) => `<li>${esc(i)}</li>`).join('')}</ul>
+      <button class="${n.recomendado ? 'boton-primario' : 'boton-secundario'}" type="button" data-anotarme="${n.id}">${esc(n.boton)}</button>
+    </article>`).join('');
+  return `<p class="precios-titular">Seguí buscando donde buscás. Nosotros te decimos qué aviso vale la llamada.</p>
+    <p class="nota">Primera tanda: tomamos ${PRECIOS.cupos} búsquedas, porque una persona del equipo prepara cada correo.
+      Hoy no cobramos: te anotás con tu mail y te escribimos cuando abra. Recién ahí decidís si pagás.</p>
+    <div class="niveles">${tarjetas}</div>
+    <ul class="precios-dudas">
+      <li><strong>No es una tasación.</strong> Comparamos precios publicados con avisos parecidos del mismo barrio.</li>
+      <li><strong>Nadie paga para aparecer.</strong> No cobramos a inmobiliarias ni a anunciantes.</li>
+      <li><strong>Tu mail se usa solo para tu búsqueda.</strong> No lo vendemos ni se lo pasamos a inmobiliarias.</li>
+      <li><strong>Pago único por 30 días,</strong> sin renovación automática.</li>
+      <li><strong>Garantía Tres Avisos:</strong> en la tanda paga, si en 30 días no te llegan al menos 3 avisos nuevos que cumplan lo imprescindible, te devolvemos todo.</li>
+      <li><strong>De dónde salen los avisos:</strong> inmobiliarias y portales con permiso de lectura, revisados cada 2 días.</li>
+    </ul>
+    <p class="fuente">Precio final por búsqueda. El valor en dólares es de referencia, a ARS ${numero.format(PRECIOS.tipoCambio)} por USD (${PRECIOS.actualizado}).</p>`;
+}
+
+const VACIO ={ type: 'FeatureCollection', features: [] };
 const reducido = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 const celular = () => window.matchMedia('(max-width: 820px)').matches;
 
@@ -248,6 +307,7 @@ const estado = {
   cercaniaInfo: null,
   pestana: 'entorno',
   eligiendoAlerta: false, // tras «Activar una alerta», el próximo barrio elegido abre su pestaña de alerta
+  interes: '', // nivel pago elegido en Precios ('buscar' o 'acompanado'); viaja con el alta por mail
   capas: new Set(),
   capasDatos: {},
   delitosDatos: null,
@@ -435,7 +495,9 @@ function renderLista() {
       ${acciones}
     </header>`;
   const eligiendo = estado.eligiendoAlerta
-    ? `<p class="eligiendo-alerta" role="status">Elegí el barrio de tu alerta
+    ? `<p class="eligiendo-alerta" role="status">${estado.interes
+      ? `Elegí el barrio de tu búsqueda para anotarte en «${esc(nivelInteres().nombre)}»`
+      : 'Elegí el barrio de tu alerta'}
         <button class="boton-texto" type="button" id="cancelar-alerta">Cancelar</button></p>`
     : '';
   const filas = con.map((b) => `
@@ -544,7 +606,11 @@ function renderFicha() {
     : 'Ningún aviso encaja con tu búsqueda por ahora. Podés crear la alerta igual.';
   // «N ambientes o más» también se puede guardar: la base y el envío por Make ya lo comparan como mínimo.
   // El patrón del mail es el mismo que valida la API (EMAIL en api.py), así el error aparece antes de enviar.
-  const alerta = `<p class="nota">Te avisamos cuando aparezcan avisos nuevos en ${esc(b.barrio)} que encajen con tu búsqueda
+  const interes = estado.interes && estado.modo === 'real' ? nivelInteres() : null;
+  const alerta = `${interes ? `<p class="nota interes-tanda" role="status">Te estás anotando en la primera tanda de
+      «${esc(interes.nombre)}» (${precioNivel(interes)}). Dejá tu mail: te escribimos cuando abra, y recién ahí decidís si pagás.
+      <button class="boton-texto" type="button" data-quitar-interes>No anotarme</button></p>` : ''}
+      <p class="nota">Te avisamos cuando aparezcan avisos nuevos en ${esc(b.barrio)} que encajen con tu búsqueda
       (${textoBusquedaAlerta()}).</p>
       ${estado.modo === 'real' ? `<div class="alerta-mail">
         <label class="campo campo-mail"><span class="campo-etiqueta">Mail</span>
@@ -2411,7 +2477,8 @@ function conectarEventos() {
     if (e.target.closest('[data-radar-fuentes]')) { detalleFuentesRadar(); return; }
     if (e.target.closest('[data-radar-sin-barrio]')) { detalleSinBarrio(); return; }
     if (e.target.closest('#activar-alerta')) { elegirBarrioAlerta(); return; }
-    if (e.target.closest('#cancelar-alerta')) { estado.eligiendoAlerta = false; renderLista(); return; }
+    if (e.target.closest('#cancelar-alerta')) { estado.eligiendoAlerta = false; estado.interes = ''; renderLista(); return; }
+    if (e.target.closest('[data-quitar-interes]')) { estado.interes = ''; e.target.closest('.interes-tanda')?.remove(); return; }
     const fila = e.target.closest('[data-barrio]');
     if (fila) { seleccionar(fila.dataset.barrio); return; }
     if (e.target.closest('#volver')) { seleccionar(null); return; }
@@ -2459,6 +2526,11 @@ function conectarEventos() {
   });
   $('#leyenda').addEventListener('click', (e) => { if (e.target.closest('[data-fuentes]')) abrirFuentes(); });
 
+  $('#abrir-precios').addEventListener('click', abrirPrecios);
+  $('#dialogo-precios').addEventListener('click', (e) => {
+    const boton = e.target.closest('[data-anotarme]');
+    if (boton) anotarse(boton.dataset.anotarme);
+  });
   $('#abrir-alertas').addEventListener('click', abrirAlertas);
   $('#dialogo-alertas').addEventListener('click', (e) => {
     const quitar = e.target.closest('[data-quitar-busqueda]');
@@ -2517,6 +2589,14 @@ async function crearAlerta(boton) {
   }
   const consentimiento = Boolean(email && $('#consentimiento-alerta')?.checked);
   if (email && !consentimiento) return; // el botón ya está deshabilitado; por si llega un clic igual
+  // Anotarse en la primera tanda necesita el mail: es la única forma de escribirle cuando abra.
+  const interes = estado.interes && campoMail ? estado.interes : '';
+  if (interes && !email) {
+    salida.className = 'estado error';
+    salida.textContent = 'Para anotarte en la primera tanda, dejá tu mail. Si no, borrá la anotación con «No anotarme».';
+    campoMail.focus();
+    return;
+  }
   const textoBoton = boton.textContent;
   boton.disabled = true;
   boton.setAttribute('aria-busy', 'true');
@@ -2530,20 +2610,26 @@ async function crearAlerta(boton) {
       body: JSON.stringify({ barrio: estado.seleccionado, presupuesto: estado.presupuesto,
         superficie: estado.superficie, ambientes: estado.ambientes, moneda: estado.moneda,
         ambientes_o_mas: estado.ambientesOMas,
-        ...(email ? { email, consentimiento } : {}) }),
+        ...(email ? { email, consentimiento } : {}), ...(interes ? { interes } : {}) }),
     });
     const barrio = esc(estado.seleccionado);
+    const anotado = interes && correo && correo.enviado
+      ? ` Quedaste anotado en la primera tanda de «${esc(nivelInteres().nombre)}»: te escribimos cuando abra.` : '';
     const local = creada
       ? `Alerta creada para ${barrio}: ${contextoAlerta()}. Cuando entre un aviso nuevo que encaje, aparece en Mis alertas.`
       : `Ya tenías una alerta para ${barrio} con estos mismos filtros (${contextoAlerta()}).`;
     salida.className = correo && !correo.enviado ? 'estado error' : 'estado ok';
     salida.innerHTML = `${!correo ? local
-      : correo.enviado ? `${local} También te vamos a escribir a ${esc(email)}.`
+      : correo.enviado ? `${local} También te vamos a escribir a ${esc(email)}.${anotado}`
         : `${local} No se activó el aviso por correo: ${esc(correo.motivo)}`}
       <button class="boton-texto" type="button" data-ver-alertas>Ver mis alertas</button>`;
     if (correo && correo.enviado) {
       campoMail.value = '';
       $('#consentimiento-alerta').checked = false;
+      if (anotado) {
+        estado.interes = '';
+        $('.interes-tanda')?.remove();
+      }
     }
   } catch (error) {
     salida.className = 'estado error';
@@ -2639,6 +2725,34 @@ async function abrirAlertas() {
       </tbody></table>` : '<p class="nota">Todavía no entró ningún aviso nuevo que encaje. Los avisos que ya estaban cuando creaste la alerta no cuentan.</p>'}`;
   } catch (error) {
     contenido.innerHTML = bloqueError(`No se pudieron cargar tus alertas. ${error.message}`, 'alertas');
+  }
+}
+
+function nivelInteres() {
+  return PRECIOS.niveles.find((n) => n.id === estado.interes) || PRECIOS.niveles.find((n) => n.recomendado);
+}
+
+function abrirPrecios() {
+  $('#precios-contenido').innerHTML = renderPrecios();
+  const dialogo = $('#dialogo-precios');
+  if (!dialogo.open) dialogo.showModal();
+}
+
+// Un nivel pago lleva al alta de la alerta con mail, con el nivel anotado. El mail solo funciona con datos reales.
+async function anotarse(nivel) {
+  $('#dialogo-precios').close();
+  if (nivel === 'explorar') return;
+  estado.interes = nivel;
+  if (estado.modo !== 'real') {
+    estado.modo = 'real';
+    await cambiarContexto();
+  }
+  if (estado.seleccionado) {
+    estado.pestana = 'alerta';
+    renderPanel();
+    ($('#mail-alerta') || $('#crear-alerta'))?.focus();
+  } else {
+    elegirBarrioAlerta();
   }
 }
 

@@ -20,6 +20,8 @@
 
 **El punto débil:** no es un mercado que crece. Es honesto, y limita el puntaje.
 
+La [cabeza de playa](cabeza-de-playa.md) recorta este segmento a Caballito y Almagro, donde ya está la base de comparación completa, y mapea el producto completo que necesita.
+
 ## 2. Ecuación de valor
 
 | Palanca | Qué hace la oferta |

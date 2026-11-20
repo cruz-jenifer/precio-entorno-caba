@@ -12,6 +12,39 @@
 - Mezclar compra y alquiler, y anotar cuál es cada caso.
 - Al menos 10 entrevistas. Conviene que sean charlas informales, en persona o por videollamada, de unos 30 minutos.
 
+### 1.1 Cómo conseguirlas
+
+**Meta:** 10 charlas, cerca de la mitad de compra y la mitad de alquiler. Para llegar, pedir presentaciones a unas 10 personas conocidas. Según la skill, entre 3 y 5 responden, y cada charla puede traer una o dos presentaciones más.
+
+**Canales, en orden de preferencia:**
+
+1. **Presentaciones de conocidos.** Es el canal que da charlas más sinceras.
+2. **Mensaje directo** a alguien que contó en redes que se mudó o que está buscando.
+3. **Publicación en una comunidad** (subreddit de Buenos Aires, grupos de barrio). Leer antes las reglas de cada grupo y publicar solo donde se permitan pedidos de este tipo.
+
+**Mensajes** (adaptarlos a tu voz; ninguno menciona Lüga):
+
+*Para pedir presentaciones a conocidos:*
+
+> «Estoy investigando cómo busca casa la gente en Buenos Aires. ¿Conocés a alguien que se haya mudado dentro de la Ciudad en los últimos seis meses, o que esté buscando ahora? Me sirve una charla de 20 o 30 minutos. No le voy a vender nada.»
+
+*Para escribirle directamente a la persona:*
+
+> «Hola, [nombre]. [Contacto] me dijo que te mudaste hace poco [o: vi que estás buscando depto]. Estoy tratando de entender cómo se busca vivienda en Buenos Aires y me ayudaría mucho escuchar cómo fue la tuya. ¿Tenés 20 minutos esta semana para un café o una llamada? No te voy a vender nada.»
+
+*Para una comunidad:*
+
+> «Estoy investigando cómo se busca vivienda en CABA. Si te mudaste dentro de la Ciudad en los últimos seis meses, o estás buscando ahora, ¿me contarías cómo fue en una charla de 20 minutos? No vendo nada; solo quiero entender cómo se hace.»
+
+Si alguien no responde, escribir una sola vez más, a los 3 a 5 días, y después no insistir.
+
+**Antes de agendar**, confirmar en el mismo chat:
+
+- ¿Cuándo te mudaste, o desde cuándo buscás?
+- ¿Compra o alquiler?
+
+Si se mudó hace más de seis meses o busca fuera de CABA, agradecer y no agendar.
+
 ## 2. Apertura
 
 Decirla de forma casual y no mencionar Lüga:
@@ -62,21 +95,27 @@ Si la persona dice que la idea «está buenísima», agradecer y volver a los he
 
 ## 5. Qué anotar
 
-Usar una fila por entrevista, sin nombres ni datos de contacto, solo un identificador:
+Copiar la plantilla [registro-entrevistas.csv](plantillas/registro-entrevistas.csv) y usar una fila por entrevista, sin nombres ni datos de contacto, solo un identificador (E01, E02…). Completarla dentro de los 5 minutos siguientes a la charla.
 
 | Columna | Contenido |
 | --- | --- |
 | `id`, `fecha`, `operacion` | Identificador, fecha y compra o alquiler |
-| `hechos` | Lo que la persona hizo o dijo, con sus palabras |
+| `estado`, `canal` | Si ya se mudó o sigue buscando, y cómo se llegó a la persona (presentación, mensaje directo, comunidad) |
+| `hechos` | Lo que la persona hizo, con detalles concretos |
+| `citas` | Frases textuales, entre comillas |
 | `interpretacion` | Lo que creés que significa, separado de los hechos |
-| `alternativas` | Qué usó, en orden (pregunta 3) |
+| `alternativas_en_orden` | Qué usó, en orden (pregunta 3) |
 | `gasto` | En qué gastó y cuánto (pregunta 11) |
 | `compromiso` | Presentación, tiempo o nada |
-| `tiempo_hablando` | Qué parte de la charla hablaste vos, medida con la grabación si la persona lo autoriza |
+| `tiempo_hablando_pct` | Qué parte de la charla hablaste vos, medida con la grabación si la persona lo autoriza. La meta es 20 % o menos |
+| `sorpresas` | Lo que no esperabas escuchar |
+| `contradice` | Qué creencia de la sección 6 contradice, si alguna |
+
+No anotar elogios («qué buena idea»), frases genéricas sin un caso concreto («siempre hago…») ni pedidos de funciones sin el problema que hay detrás.
 
 ## 6. Creencias a actualizar
 
-Cada 5 entrevistas, revisar en equipo estas cuatro creencias de [jtbd.md](jtbd.md) y anotar cuántas personas las confirman o las contradicen:
+Cada 5 entrevistas, revisar en equipo estas cuatro creencias de [jtbd.md](jtbd.md) y anotar en [creencias-entrevistas.csv](plantillas/creencias-entrevistas.csv) cuántas personas las confirman, cuántas las contradicen y en cuántas no hubo dato. Cada revisión suma cuatro filas nuevas con su número:
 
 1. **Elegir barrio es un paso real** (pregunta 2). Se debilita si la mayoría llega con el barrio decidido.
 2. **La alerta de Zonaprop es el hábito a vencer** (preguntas 3, 5 y 6).
@@ -89,6 +128,6 @@ Cuando las respuestas empiecen a repetirse, parar y decidir qué cambia en el pr
 
 Con la escala de la skill `mom-test`, la guía cumple en el papel 4 de 7 filas: habla de la vida de la persona, busca hechos concretos, pide un compromiso y puede cambiar lo que se construye. Las otras tres dependen de cómo se hagan y procesen las entrevistas:
 
-- **Que la persona hable la mayor parte del tiempo:** medirlo con la columna `tiempo_hablando`.
+- **Que la persona hable la mayor parte del tiempo:** medirlo con la columna `tiempo_hablando_pct`.
 - **Que las creencias se actualicen:** revisarlas cada 5 entrevistas (sección 6).
 - **Que se puedan resumir los hechos:** mantener `hechos` separado de `interpretacion`.

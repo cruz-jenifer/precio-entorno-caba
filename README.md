@@ -376,7 +376,7 @@ Make baja de Google Drive los avisos crudos y se los pasa al Actor `precio-entor
 | 8 | HTTP · Apify `run-sync` | Actor con `operacion: inferencia`: referencia de publicación de cada aviso con el modelo ya entrenado |
 | 9 | Google Sheets · Make an API call | `values:batchUpdate` de la pestaña `predicciones` |
 
-Corrida del 20/11/2026 desde el editor: 9 operaciones en 1 minuto, con éxito. La pestaña `predicciones` quedó con 3.806 referencias, primero las que están más por debajo de su referencia.
+Corrida del 20/11/2026 desde el editor: 9 operaciones en 1 minuto, con éxito. La pestaña `predicciones` quedó con 3.806 referencias, primero las que están más por debajo de su referencia. El dashboard de Looker Studio las muestra en la página «Referencias del modelo», con filtros de lectura y barrio.
 
 ![Página del escenario con la corrida del 20/11/2026: Success, 9 operaciones](docs/img/make/escenario-pipeline-analytics-corrida.png)
 

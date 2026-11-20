@@ -26,7 +26,7 @@ flowchart LR
 | Actor | Apify, cuenta 2, `peerless_anorthite~precio-entorno-analytics` (privado) | `operacion: etl`, `eda` e `inferencia`. Código: [`analytics/main.py`](../precio_entorno/analytics/main.py) (solo entrada y salida de Apify) y un módulo por etapa en [`precio_entorno/analytics/`](../precio_entorno/analytics/) |
 | Escenario | Make, «Precio y Entorno CABA - Pipeline Analytics» (7037544), a pedido | 9 módulos y 9 operaciones por corrida. Se crea con [`make_pipeline.py`](../precio_entorno/make_pipeline.py) |
 | Planilla | [Precio y Entorno CABA - Tablas del dashboard](https://docs.google.com/spreadsheets/d/1_3s-zpZAvhCGF1nu8WlSihdXZiIwQayb6C8Qk6NWLuM/edit) | Una pestaña por tabla. Make la vacía y la vuelve a escribir en cada corrida, así Looker Studio no pierde la conexión |
-| Dashboard | [Looker Studio: Precio y Entorno CABA - Dashboard Analytics](https://lookerstudio.google.com/reporting/5057b183-22bb-4370-8c23-a47387a9d6f1) (privado, credenciales de lector) | Página 1: indicadores, top 10 de barrios por USD/m² y tabla de barrios. Página 2: histograma, USD/m² por ambientes, correlaciones, dispersión de delitos contra USD/m² y nota de fuentes |
+| Dashboard | [Looker Studio: Precio y Entorno CABA - Dashboard Analytics](https://lookerstudio.google.com/reporting/5057b183-22bb-4370-8c23-a47387a9d6f1) (privado, credenciales de lector) | Página 1: indicadores, top 10 de barrios por USD/m² y tabla de barrios. Página 2: histograma, USD/m² por ambientes, correlaciones, dispersión de delitos contra USD/m² y nota de fuentes. Página 4: referencias del modelo (inferencia) |
 
 **Por qué el Actor baja los delitos.** El CSV oficial pesa 17 MB y Make Free no mueve archivos de más de 5 MB. El Actor lo baja de Buenos Aires Data y verifica su SHA-256 contra el documentado en [datos.md](datos.md). El resultado queda en `delitos_sha256_esperado` del reporte. En Drive queda la copia cruda como referencia.
 
@@ -106,7 +106,7 @@ El informe ya está armado: [Precio y Entorno CABA - Dashboard Analytics](https:
 | --- | --- |
 | **Audiencia** | Docentes del capstone e inmobiliaria que gestiona búsquedas de compradores |
 | **Pregunta que responde** | Dónde está la oferta de departamentos en venta en CABA, cuánto se pide por m² y qué contexto delictivo tiene cada barrio |
-| **Fuente** | Planilla «Precio y Entorno CABA - Tablas del dashboard», 6 pestañas que escribe el EDA del Actor. Una fila por barrio, por ambientes, por fuente, por tramo de USD/m² o por variable |
+| **Fuente** | Planilla «Precio y Entorno CABA - Tablas del dashboard»: 6 pestañas que escribe el EDA del Actor y la pestaña `predicciones` que escribe la inferencia. Una fila por barrio, por ambientes, por fuente, por tramo de USD/m² o por variable |
 | **Frescura** | A pedido: cada **Run once** del escenario de Make reescribe la planilla. Frescura de los datos en Looker: 15 minutos |
 | **Responsable** | Equipo del capstone. Make avisa por correo si una corrida falla |
 | **Aclaraciones** | Precios de publicación, no tasaciones ni precios de cierre. Delitos registrados en 2025 por barrio como contexto, no como causa |
@@ -116,6 +116,11 @@ El informe ya está armado: [Precio y Entorno CABA - Dashboard Analytics](https:
 | **Panorama de precios** | ¿Cuánto se pide y dónde es más caro? | Indicadores: avisos, mediana USD/m², barrios y mediana de precio. Tabla de los 48 barrios ordenada por mediana USD/m², barras con los barrios más caros y pie con aclaraciones |
 | **Mapa de barrios** | ¿Dónde se concentra la oferta? | Mapa de burbujas: color según mediana USD/m², tamaño según avisos y nombre del barrio al pasar el cursor. Control desplegable de comuna |
 | **Oferta y contexto** | ¿Cómo se reparten los precios y qué los acompaña? | Histograma de USD/m², USD/m² por ambientes, tabla de correlaciones (Pearson y Spearman), dispersión de delitos contra USD/m² y nota de fuentes |
+| **Referencias del modelo** | ¿Qué avisos conviene revisar primero? | Barras con los avisos por lectura (debajo, cerca o encima de la referencia), filtros de lectura y barrio, y tabla de los 3.806 avisos ordenada por diferencia, de la más negativa a la más positiva: aviso, barrio, ambientes, m² cubiertos, USD/m² publicado, referencia USD/m², diferencia % y lectura. El pie aclara que es una referencia de publicación, no una tasación, y da el error aplicable (MAE 616 USD/m² con los campos del CSV limpio) |
+
+La página **Referencias del modelo** se sumó el 20/11/2026. Lee la pestaña `predicciones` como una fuente aparte. En la tabla, los campos tienen nombres legibles y no hay dimensión de período. Con el filtro en «debajo de la referencia», quedan los 566 avisos para revisar primero:
+
+![Página Referencias del modelo en Looker Studio, filtrada en «debajo de la referencia»](img/looker/referencias-del-modelo.png)
 
 **Estética (17/11).** Tema propio: fondo `#EEF2FA`, tarjetas blancas con borde `#DCE3F0` y radio de 12, tipografía Roboto. Cada página abre con una banda en degradado `#172554 → #1D4ED8` y el título en blanco. La página 1 tiene filtros de comuna y barrio, y seis indicadores en tarjetas: Avisos en blanco, y las otras cinco en degradado (azul marino, celeste, verde, rosa y violeta): mediana USD/m², mediana de precio, barrios, filas descartadas en el ETL y posibles duplicados. Los filtros aplican a la tabla y al gráfico de barrios; los indicadores muestran el total de la corrida (pestaña `resumen`). En las fuentes, los campos visibles tienen nombres legibles («Mediana USD/m²», «Delitos registrados (2025)»…) y `filas_descartadas` pasó de fecha a número.
 

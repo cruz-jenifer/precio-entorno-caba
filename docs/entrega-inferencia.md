@@ -17,7 +17,7 @@ Como análisis complementario se realizó el [ANOVA de precios entre barrios](an
 | Integración automática | `actualizar.py --modelo`, habilitado en `scripts/actualizar.cmd` cuando existe el modelo; CLI de inferencia sobre el CSV limpio del ETL; operación `inferencia` del Actor de Apify, sin entrenamiento (`precio_entorno/analytics/`) |
 | Dashboard y costos | Sección de referencias en Streamlit, exportación CSV y presupuesto por escenario |
 
-La interfaz web de búsqueda y el informe remoto de Looker Studio mantienen sus vistas actuales. Al 18/11 la integración era solo local. El 20/11 se sumó la operación `inferencia` al Actor `precio-entorno-analytics`: lee el modelo de un almacén de Apify y no entrena. Quedó subida a Apify y conectada a Make: el escenario «Pipeline Analytics» la corre después del EDA y escribe la pestaña `predicciones` de la planilla del dashboard ([pipeline-analytics.md](pipeline-analytics.md)). Looker Studio todavía no muestra esa pestaña. No se ejecutaron nuevas capturas de avisos.
+La interfaz web de búsqueda y el informe remoto de Looker Studio mantienen sus vistas actuales. Al 18/11 la integración era solo local. El 20/11 se sumó la operación `inferencia` al Actor `precio-entorno-analytics`: lee el modelo de un almacén de Apify y no entrena. Quedó subida a Apify y conectada a Make: el escenario «Pipeline Analytics» la corre después del EDA y escribe la pestaña `predicciones` de la planilla del dashboard ([pipeline-analytics.md](pipeline-analytics.md)). Looker Studio la muestra en la página «Referencias del modelo». No se ejecutaron nuevas capturas de avisos.
 
 ## Datos, configuración y supuestos
 

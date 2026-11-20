@@ -273,14 +273,63 @@ function consulta(extra = {}) {
     ambientes_o_mas: estado.ambientesOMas, ...extra });
 }
 
+// Nombres de los campos que la API puede rechazar, para decir cuál revisar.
+const CAMPOS_API = { presupuesto: 'el presupuesto', superficie: 'la superficie', ambientes: 'los ambientes',
+  moneda: 'la moneda', email: 'el mail', barrio: 'el barrio', texto: 'la descripción' };
+
+// Traduce un fallo a un mensaje que dice qué pasó y qué hacer. El detalle técnico queda en la consola, no en pantalla.
+function mensajeDeError(status, cuerpo) {
+  const detalle = cuerpo?.detail;
+  if (Array.isArray(detalle)) { // validación de FastAPI, en inglés: se nombra el campo y nada más
+    const campo = CAMPOS_API[detalle[0]?.loc?.at(-1)];
+    return campo ? `Revisá ${campo}: el valor no es válido.` : 'Revisá los filtros: hay un valor que no es válido.';
+  }
+  if (typeof detalle === 'string' && detalle && !/python -m/.test(detalle)) return detalle;
+  if (status === 503) return 'Una parte de los datos todavía no está lista. Probá de nuevo en un rato.';
+  if (status >= 500) return 'Lüga tuvo un problema de su lado. Probá de nuevo en un momento.';
+  return 'No se pudo completar el pedido. Probá de nuevo.';
+}
+
 async function api(ruta, opciones) {
-  const respuesta = await fetch(ruta, opciones);
+  let respuesta;
+  try {
+    respuesta = await fetch(ruta, opciones);
+  } catch (error) {
+    if (error.name === 'AbortError') throw error;
+    console.error('Sin respuesta de la API', ruta, error);
+    throw new Error('No hay conexión con Lüga. Revisá tu conexión y probá de nuevo.');
+  }
   if (!respuesta.ok) {
-    let detalle = `Error ${respuesta.status}`;
-    try { const cuerpo = await respuesta.json(); detalle = cuerpo.detail?.[0]?.msg || cuerpo.detail || detalle; } catch { /* sin cuerpo */ }
-    throw new Error(detalle);
+    let cuerpo = null;
+    try { cuerpo = await respuesta.json(); } catch { /* sin cuerpo */ }
+    console.error('Error de la API', ruta, respuesta.status, cuerpo);
+    throw new Error(mensajeDeError(respuesta.status, cuerpo));
   }
   return respuesta.json();
+}
+
+// Bloque de error con «Probar de nuevo». `accion` es una clave de REINTENTOS; `dato` viaja con ella.
+function bloqueError(mensaje, accion, dato = '') {
+  return `<div class="aviso-error" role="alert"><p>${esc(mensaje)}</p>
+    <button class="boton-texto" type="button" data-reintentar="${accion}" data-dato="${esc(dato)}">Probar de nuevo</button></div>`;
+}
+
+// Aviso breve arriba del mapa, con «Deshacer» opcional. Reemplaza a las confirmaciones «¿Estás seguro?».
+let avisoTimer;
+function avisar(texto, deshacer) {
+  let caja = $('#aviso-flotante');
+  if (!caja) {
+    caja = document.createElement('div');
+    caja.id = 'aviso-flotante';
+    caja.className = 'aviso-flotante';
+    caja.setAttribute('role', 'status');
+    document.body.append(caja);
+  }
+  caja.innerHTML = `<span>${esc(texto)}</span>${deshacer ? '<button class="boton-texto" type="button">Deshacer</button>' : ''}`;
+  caja.hidden = false;
+  caja.querySelector('button')?.addEventListener('click', () => { caja.hidden = true; deshacer(); }, { once: true });
+  clearTimeout(avisoTimer);
+  avisoTimer = setTimeout(() => { caja.hidden = true; }, deshacer ? 10000 : 6000);
 }
 
 /* Textos del entorno */
@@ -530,7 +579,7 @@ function renderFicha() {
       </header>
       ${panel('entorno', `${renderAnalisisDelitos()}${renderPiezas(e)}${renderColectivos(e)}${renderSegunNecesidades()}
         ${renderParecidos(b.barrio)}${renderLugares(b.barrio)}${renderRadarFicha(b.barrio)}`)}
-      ${panel('avisos', `${b.coincidencias ? `
+      ${panel('avisos', `${estado.errorAvisos?.barrio === b.barrio ? bloqueError(estado.errorAvisos.mensaje, 'avisos') : b.coincidencias ? `
         ${extra.length ? `<p class="fuente">Deslizá la tabla hacia la derecha para ver ${enumerar(extra.map((c) => `«${c.titulo}»`))}.</p>` : ''}
         <table class="avisos">
           <thead><tr><th>Precio publicado</th><th>Frente a parecidos</th><th>Cubierta</th><th>Amb.</th><th>Cocheras</th>${alquiler ? '<th>Expensas</th>' : ''}${extra.map((c) => `<th>${esc(c.titulo)}</th>`).join('')}<th><span hidden>Enlace</span></th><th>Mapa</th></tr></thead>
@@ -593,7 +642,7 @@ async function elegirColectivo(linea) {
     if (celular()) plegarPanel(false);
   } catch (error) {
     if (estado.colectivo?.linea === linea) estado.colectivo = null;
-    mostrarAvisoMapa(`No se pudo cargar el recorrido: ${error.message}`);
+    mostrarAvisoMapa(`No se pudo cargar el recorrido de la línea ${linea}. ${error.message}`, 'recorrido', linea);
   }
   renderPanel();
   renderControles();
@@ -723,7 +772,7 @@ function textoPrecioParecido(p, barrio) {
 function renderParecidos(barrio) {
   const p = estado.parecidos;
   if (p.barrio !== barrio || (!p.datos && !p.error)) return '';
-  if (p.error) return `<section class="parecidos"><h2>Barrios parecidos</h2><p class="fuente">${esc(p.error)}</p></section>`;
+  if (p.error) return `<section class="parecidos"><h2>Barrios parecidos</h2>${bloqueError(p.error, 'parecidos')}</section>`;
   if (!p.datos.length) return '';
   const elegidas = PREFERENCIAS.filter((x) => estado.prefs.has(x.clave)).map((x) => x.nombre.toLowerCase());
   const items = p.datos.map((x) => `<li class="parecido">
@@ -755,7 +804,7 @@ async function cargarParecidos() {
     estado.parecidos = { barrio, datos: datos.parecidos, error: '' };
   } catch (error) {
     if (barrio !== estado.seleccionado) return;
-    estado.parecidos = { barrio, datos: null, error: `No se pudieron calcular los barrios parecidos: ${error.message}` };
+    estado.parecidos = { barrio, datos: null, error: `No se pudieron calcular los barrios parecidos. ${error.message}` };
   }
   renderPanel();
 }
@@ -879,7 +928,8 @@ function renderRadarLista() {
   const r = estado.radar;
   if (!r) return '';
   if (!r.disponible) {
-    return `<p class="fuente radar-lista">Radar de tendencias barriales: ${esc(r.motivo || 'no está disponible.')}</p>`;
+    return `<p class="fuente radar-lista">Radar de tendencias barriales: ${esc(r.motivo || 'no está disponible.')}${r.reintentable
+      ? ' <button class="boton-texto" type="button" data-reintentar="radar">Probar de nuevo</button>' : ''}</p>`;
   }
   const filas = r.barrios.filter((b) => b.notas || b.aperturas).map((b) => `<tr>
       <th scope="row"><button class="boton-texto" type="button" data-barrio="${esc(b.barrio)}">${esc(b.barrio)}</button></th>
@@ -1007,7 +1057,7 @@ async function cargarRadar() {
   try {
     estado.radar = await api('/api/radar');
   } catch (error) {
-    estado.radar = { disponible: false, motivo: `No se pudo cargar el radar: ${error.message}` };
+    estado.radar = { disponible: false, reintentable: true, motivo: `no se pudo cargar. ${error.message}` };
   }
 }
 
@@ -1449,7 +1499,7 @@ async function actualizarCapas() {
     }
     if (estado.capas.has('delitos') && !await cargarDelitos()) return;
   } catch (error) {
-    mostrarAvisoMapa(`No se pudieron cargar las capas: ${error.message}`);
+    mostrarAvisoMapa(`No se pudieron cargar las capas del mapa. ${error.message}`, 'capas');
   }
   if (barrio !== estado.seleccionado) return;
   for (const c of fijas) mapa?.getSource(c)?.setData(estado.capas.has(c) ? estado.capasDatos[claveCapa(c)] || VACIO : VACIO);
@@ -1524,9 +1574,10 @@ function zonasAltas(celdas, barrio, soloAltas) {
   }
 }
 
-function mostrarAvisoMapa(texto) {
+function mostrarAvisoMapa(texto, accion, dato = '') {
   $('#mapa-pista').hidden = false;
-  $('#mapa-pista').textContent = texto;
+  $('#mapa-pista').innerHTML = esc(texto) + (accion
+    ? ` <button class="boton-texto" type="button" data-reintentar="${accion}" data-dato="${esc(dato)}">Probar de nuevo</button>` : '');
 }
 
 // Capas al elegir un barrio. Sin el explorador, las de «Lo que me importa», como siempre.
@@ -1735,6 +1786,7 @@ async function cargarBarrios() {
 
 async function cargarAvisos() {
   if (!estado.seleccionado) return;
+  estado.errorAvisos = null;
   const barrio = estado.seleccionado;
   const pedido = consulta();
   if (EXPLORADOR && estado.necesidades.size) {
@@ -1788,9 +1840,21 @@ async function seleccionar(nombre) {
     await cargarAvisos();
     if (nombre === estado.seleccionado) renderPanel();
   } catch (error) {
-    $('#contenido').insertAdjacentHTML('beforeend', `<p class="vacio">No se pudieron cargar los avisos: ${esc(error.message)}</p>`);
+    // Antes el mensaje se agregaba al final y el siguiente redibujo lo borraba: la tabla quedaba vacía, como si no hubiera avisos.
+    if (nombre === estado.seleccionado) {
+      estado.errorAvisos = { barrio: nombre, mensaje: `No se pudieron cargar los avisos de ${nombre}. ${error.message}` };
+      renderPanel();
+    }
   }
   await actualizarCapas();
+}
+
+// Pone el error arriba del panel y deja debajo lo que ya se estaba viendo (la lista o la ficha anteriores).
+function mostrarErrorArriba(mensaje, accion) {
+  const contenido = $('#contenido');
+  contenido.querySelector(':scope > .aviso-error')?.remove();
+  contenido.insertAdjacentHTML('afterbegin', bloqueError(mensaje, accion));
+  contenido.scrollTop = 0;
 }
 
 let espera;
@@ -1807,8 +1871,7 @@ function recargar() {
       renderPanel();
       renderLeyenda();
     } catch (error) {
-      $('#contenido').innerHTML = `<p class="vacio">No se pudieron cargar los barrios: ${esc(error.message)}.
-        Revisá que la API esté corriendo con <code>python -m precio_entorno.api</code>.</p>`;
+      mostrarErrorArriba(`No se pudo actualizar la búsqueda. ${error.message}`, 'barrios');
     }
   }, 280);
 }
@@ -1906,7 +1969,7 @@ async function cambiarContexto() {
     renderPanel();
     renderLeyenda();
   } catch (error) {
-    $('#contenido').innerHTML = `<p class="vacio">No se pudieron cargar los datos: ${esc(error.message)}</p>`;
+    mostrarErrorArriba(`No se pudieron cargar los datos. ${error.message}`, 'contexto');
   }
 }
 
@@ -1963,8 +2026,6 @@ function conectarPreferencias() {
     requiereConfirmacion = propuesta.dudas.length > 0 || barrios.length > 1 ||
       propuesta.no_soportadas.some((c) => c.obligatoria);
     $('#avisos-preferencias').innerHTML = avisos.map((aviso) => '<li>' + esc(aviso) + '</li>').join('');
-    $('#confirmar-preferencias').hidden = !requiereConfirmacion;
-    $('#confirmacion-preferencias').checked = false;
     revisar.hidden = false;
   }
 
@@ -1973,7 +2034,7 @@ function conectarPreferencias() {
   dialogo.addEventListener('close', () => {
     pedido?.abort();
     pedido = null;
-    interpretar.reset();
+    // No se borra lo escrito: si la persona cierra sin aplicar, lo encuentra al volver a abrir.
     interpretar.querySelector('button').disabled = false;
     revisar.hidden = true;
     $('#campos-preferencias').replaceChildren();
@@ -2023,11 +2084,11 @@ function conectarPreferencias() {
       salida.textContent = 'Para comprar, elegí USD.';
       return;
     }
-    if (requiereConfirmacion && !$('#confirmacion-preferencias').checked) {
-      salida.textContent = 'Confirmá que revisaste los avisos antes de aplicar.';
-      return;
-    }
     clearTimeout(espera);
+    const antes = { operacion: estado.operacion, moneda: estado.moneda, presupuesto: estado.presupuesto,
+      superficie: estado.superficie, ambientes: estado.ambientes, ambientesOMas: estado.ambientesOMas,
+      prefs: [...estado.prefs], seleccionado: estado.seleccionado };
+    const dudosos = requiereConfirmacion;
     estado.operacion = f.get('operacion');
     estado.moneda = f.get('moneda');
     estado.presupuesto = Number(f.get('presupuesto'));
@@ -2035,14 +2096,46 @@ function conectarPreferencias() {
     estado.ambientes = Number(f.get('ambientes'));
     estado.ambientesOMas = f.get('ambientes_o_mas') === 'true';
     capas.forEach((capa) => estado.prefs.add(capa));
+    $('#texto-preferencias').value = '';
     dialogo.close();
     await cambiarContexto();
     await seleccionar(f.get('barrio') || null);
+    avisar(dudosos ? 'Cambiamos los filtros según tu descripción. Había datos dudosos: revisá la barra.'
+      : 'Cambiamos los filtros según tu descripción.', async () => {
+      const { seleccionado, prefs, ...filtros } = antes;
+      Object.assign(estado, filtros, { prefs: new Set(prefs) });
+      await cambiarContexto();
+      await seleccionar(seleccionado);
+    });
   });
 }
 
 function conectarEventos() {
   conectarPreferencias();
+  // «Probar de nuevo» en cualquier bloque de error vuelve a pedir lo que falló.
+  const REINTENTOS = {
+    inicio: () => cargarInicio(),
+    barrios: () => recargar(),
+    contexto: () => cambiarContexto(),
+    avisos: async () => {
+      try {
+        await cargarAvisos();
+      } catch (error) {
+        estado.errorAvisos = { barrio: estado.seleccionado, mensaje: `No se pudieron cargar los avisos de ${estado.seleccionado}. ${error.message}` };
+      }
+      renderPanel();
+    },
+    parecidos: () => cargarParecidos(),
+    radar: async () => { await cargarRadar(); renderPanel(); },
+    capas: () => { renderChips(); return actualizarCapas(); },
+    recorrido: (linea) => elegirColectivo(linea),
+    alertas: () => abrirAlertas(),
+    fuentes: () => abrirFuentes(),
+  };
+  document.addEventListener('click', (e) => {
+    const boton = e.target.closest('[data-reintentar]');
+    if (boton) REINTENTOS[boton.dataset.reintentar]?.(boton.dataset.dato);
+  });
   document.querySelectorAll('[data-operacion]').forEach((boton) => boton.addEventListener('click', () => {
     if (estado.operacion === boton.dataset.operacion) return;
     estado.operacion = boton.dataset.operacion;
@@ -2065,12 +2158,25 @@ function conectarEventos() {
     const valor = enteroDe(e.target.value);
     if (valor) { estado.presupuesto = valor; recargar(); }
   });
-  $('#presupuesto').addEventListener('blur', (e) => { e.target.value = numero.format(estado.presupuesto); });
+  $('#presupuesto').addEventListener('blur', (e) => {
+    if (!enteroDe(e.target.value)) {
+      const vigente = dinero(estado.presupuesto, estado.moneda);
+      avisar(e.target.value.trim() ? `El presupuesto tiene que ser mayor que 0. Volvimos a ${vigente}.`
+        : `El presupuesto quedó vacío. Volvimos a ${vigente}.`);
+    }
+    e.target.value = numero.format(estado.presupuesto);
+  });
   $('#superficie').addEventListener('input', (e) => {
     const valor = enteroDe(e.target.value);
     if (valor) { estado.superficie = valor; recargar(); }
   });
-  $('#superficie').addEventListener('blur', (e) => { e.target.value = estado.superficie; });
+  $('#superficie').addEventListener('blur', (e) => {
+    if (!enteroDe(e.target.value)) {
+      avisar(e.target.value.trim() ? `La superficie tiene que ser de al menos 1 m². Volvimos a ${estado.superficie} m².`
+        : `La superficie quedó vacía. Volvimos a ${estado.superficie} m².`);
+    }
+    e.target.value = estado.superficie;
+  });
   $('#ambientes').addEventListener('change', (e) => {
     estado.ambientes = parseInt(e.target.value, 10);
     estado.ambientesOMas = e.target.value.endsWith('+');
@@ -2167,11 +2273,19 @@ function conectarEventos() {
     aplicarNecesidades();
   });
   $('#restablecer-necesidades')?.addEventListener('click', () => {
+    const antes = { necesidades: [...estado.necesidades], apagadas: [...estado.apagadas], prefs: [...estado.prefs] };
     estado.necesidades.clear();
     estado.apagadas.clear();
     estado.prefs = new Set(['subte', 'verdes']);
     renderNecesidades();
     aplicarNecesidades();
+    avisar('Se restablecieron tus elecciones de «Lo que me importa».', () => {
+      estado.necesidades = new Set(antes.necesidades);
+      estado.apagadas = new Set(antes.apagadas);
+      estado.prefs = new Set(antes.prefs);
+      renderNecesidades();
+      aplicarNecesidades();
+    });
   });
   $('#contenido').addEventListener('click', (e) => {
     if (!e.target.closest('[data-abrir-importa]')) return;
@@ -2438,7 +2552,7 @@ async function abrirAlertas() {
   const dialogo = $('#dialogo-alertas');
   const contenido = $('#alertas-contenido');
   contenido.innerHTML = '<p class="nota">Cargando…</p>';
-  dialogo.showModal();
+  if (!dialogo.open) dialogo.showModal();
   try {
     const { busquedas, alertas } = await api(`/api/busquedas?${new URLSearchParams({ modo: estado.modo, operacion: estado.operacion })}`);
     const contexto = `${estado.operacion === 'venta' ? 'Compra' : 'Alquiler'} con ${estado.modo === 'demo' ? 'datos de ejemplo' : 'datos reales'}.`;
@@ -2458,7 +2572,7 @@ async function abrirAlertas() {
           ?? (a.enlace ? `<a href="${esc(a.enlace)}" target="_blank" rel="noopener">Ver aviso</a>` : 'Ejemplo')}</td></tr>`).join('')}
       </tbody></table>` : '<p class="nota">Todavía no entró ningún aviso nuevo que encaje. Los avisos que ya estaban cuando creaste la alerta no cuentan.</p>'}`;
   } catch (error) {
-    contenido.innerHTML = `<p class="vacio">No se pudieron cargar las alertas: ${esc(error.message)}</p>`;
+    contenido.innerHTML = bloqueError(`No se pudieron cargar tus alertas. ${error.message}`, 'alertas');
   }
 }
 
@@ -2466,7 +2580,7 @@ async function abrirFuentes() {
   const dialogo = $('#dialogo-fuentes');
   const contenido = $('#fuentes-contenido');
   contenido.innerHTML = '<p class="nota">Cargando…</p>';
-  dialogo.showModal();
+  if (!dialogo.open) dialogo.showModal();
   try {
     const { generado, fuentes } = await api('/api/fuentes');
     const catalogo = estado.info?.catalogo;
@@ -2480,7 +2594,7 @@ async function abrirFuentes() {
       <p class="nota">${estado.modo === 'demo' ? 'En la demo, los avisos y los delitos son ficticios.'
         : `Avisos del catálogo autorizado ${esc(catalogo || 'sin cargar')}, con precios de publicación. Delitos del Mapa del Delito de CABA${estado.info?.delitos ? `, archivo ${esc(estado.info.delitos.archivo)}` : ''}.`}</p>`;
   } catch (error) {
-    contenido.innerHTML = `<p class="vacio">No se pudieron cargar las fuentes: ${esc(error.message)}</p>`;
+    contenido.innerHTML = bloqueError(`No se pudieron cargar las fuentes. ${error.message}`, 'fuentes');
   }
 }
 
@@ -2497,20 +2611,23 @@ function seguirAltoBarra() {
   fijar();
 }
 
+async function cargarInicio() {
+  $('#contenido').innerHTML = '<p class="nota">Cargando barrios…</p>';
+  try {
+    await Promise.all([cargarEstado(), cargarBarrios(), cargarRadar()]);
+    renderPanel();
+  } catch (error) {
+    $('#contenido').innerHTML = bloqueError(`No se pudieron cargar los barrios. ${error.message}`, 'inicio');
+  }
+}
+
 async function iniciar() {
   seguirAltoBarra();
   renderNecesidades();
   sincronizarControles();
   conectarEventos();
   renderChips();
-  $('#contenido').innerHTML = '<p class="nota">Cargando barrios…</p>';
-  try {
-    await Promise.all([cargarEstado(), cargarBarrios(), cargarRadar()]);
-    renderPanel();
-  } catch (error) {
-    $('#contenido').innerHTML = `<p class="vacio">No se pudieron cargar los barrios: ${esc(error.message)}.
-      Revisá que la API esté corriendo con <code>python -m precio_entorno.api</code>.</p>`;
-  }
+  await cargarInicio();
   try {
     await prepararMapa();
     // Si la persona eligió un barrio mientras el mapa cargaba, se aplica ahora.

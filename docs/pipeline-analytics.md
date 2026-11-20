@@ -4,6 +4,8 @@ Make orquesta todo el recorrido. Lee los datos crudos de Google Drive, le pide a
 
 Probado de punta a punta el 14 de noviembre de 2026: la ejecución de Make terminó en SUCCESS y la planilla quedó con la corrida de las 15:08 UTC.
 
+El 17/11/2026 a las 22:12 UTC se volvió a correr, con el tratamiento de nulls ([tratamiento-nulls.md](tratamiento-nulls.md)). El CSV de Drive es `02_limpio/dataset_limpio_2026-11-17_1912.csv`, con 3.806 filas, 25 columnas y 0 nulls. El Actor necesita subir también `descripcion.py`, que usa `importing.py`. `tests/test_actor_analytics.py` controla que no falte ningún módulo y que ninguno sea de entrenamiento.
+
 ```mermaid
 flowchart LR
   D1["Drive · 01_crudo<br/>avisos_venta_crudo.json"] -->|Download a file| A1["Apify · ETL<br/>precio-entorno-analytics"]
@@ -21,7 +23,7 @@ flowchart LR
 | Carpeta en Drive | [Precio y Entorno CABA - Pipeline Analytics](https://drive.google.com/drive/folders/1pjfJG1SbhkOUAdpCSmbQU_yGT7HSaZad) | `01_crudo`, `02_limpio`, `03_tablas_dashboard` |
 | Datos crudos | `01_crudo/avisos_venta_crudo.json` | 4.007 filas de la captura consolidada del 8/11 (inmobiliarias autorizadas, Clarín y Zonaprop), sin contactos de anunciantes |
 | | `01_crudo/delitos_2025_crudo.csv.gz` | Copia comprimida del Mapa del Delito 2025 (17 MB sin comprimir, SHA-256 `1ed67c33…`) |
-| Actor | Apify, cuenta 2, `peerless_anorthite~precio-entorno-analytics` (privado) | `operacion: etl` y `operacion: eda`. Código: [`actor_analytics.py`](../precio_entorno/actor_analytics.py) y [`pipeline_analytics.py`](../precio_entorno/pipeline_analytics.py) |
+| Actor | Apify, cuenta 2, `peerless_anorthite~precio-entorno-analytics` (privado) | `operacion: etl`, `eda` e `inferencia`. Código: [`analytics/main.py`](../precio_entorno/analytics/main.py) (solo entrada y salida de Apify) y un módulo por etapa en [`precio_entorno/analytics/`](../precio_entorno/analytics/) |
 | Escenario | Make, «Precio y Entorno CABA - Pipeline Analytics» (7037544), a pedido | 7 módulos y 7 operaciones por corrida. Se crea con [`make_pipeline.py`](../precio_entorno/make_pipeline.py) |
 | Planilla | [Precio y Entorno CABA - Tablas del dashboard](https://docs.google.com/spreadsheets/d/1_3s-zpZAvhCGF1nu8WlSihdXZiIwQayb6C8Qk6NWLuM/edit) | Una pestaña por tabla. Make la vacía y la vuelve a escribir en cada corrida, así Looker Studio no pierde la conexión |
 | Dashboard | [Looker Studio: Precio y Entorno CABA - Dashboard Analytics](https://lookerstudio.google.com/reporting/5057b183-22bb-4370-8c23-a47387a9d6f1) (privado, credenciales de lector) | Página 1: indicadores, top 10 de barrios por USD/m² y tabla de barrios. Página 2: histograma, USD/m² por ambientes, correlaciones, dispersión de delitos contra USD/m² y nota de fuentes |
@@ -50,26 +52,43 @@ Si el Actor falla, `run-sync` responde con error y Make corta el flujo antes de 
 
 ## Qué hace cada operación
 
-**ETL** ([`pipeline_analytics.etl`](../precio_entorno/pipeline_analytics.py)):
+**ETL** ([`analytics/ETL.py`](../precio_entorno/analytics/ETL.py)):
 1. Valida cada aviso con las reglas del importador de la app: barrio de CABA, precio en USD dentro de rango, superficie, ambientes y USD/m² plausibles.
 2. Deja una fila por aviso, la de la captura más reciente.
 3. Marca los posibles duplicados entre fuentes, con la misma regla del modelo: barrio, ambientes, m² y precio redondeados.
 4. Suma el contexto delictivo del barrio: delitos registrados, robos y hurtos y porcentaje con arma, sin siniestros viales, con `periodo_delitos` y `unidad_delitos = barrio`.
+5. Trata los nulls y verifica que no quede ninguno ([tratamiento-nulls.md](tratamiento-nulls.md)):
+   - Superficie total faltante → la cubierta (`superficie_total_imputada`).
+   - Expensas → se elimina la columna, por faltar en el 58 %; queda `expensas_informadas`.
+   - Sin pin → mediana de los pines del barrio (`ubicacion_origen`).
+
+   Si queda algún null, el Actor falla y Make no escribe en Drive.
 
 Corrida del 14/11: 4.007 filas leídas, 201 descartadas y 3.806 avisos en 48 barrios, con 444 posibles duplicados.
 
-**EDA** ([`pipeline_analytics.eda`](../precio_entorno/pipeline_analytics.py)):
+**EDA** ([`analytics/EDA.py`](../precio_entorno/analytics/EDA.py)):
 
 | Pestaña | Una fila por | Para el gráfico |
 | --- | --- | --- |
 | `resumen` | corrida | Indicadores: avisos, barrios, mediana USD/m², descartes, período de delitos |
 | `barrios` | barrio | Barras de USD/m², mapa de burbujas (`ubicacion` = lat,lon), dispersión de delitos contra USD/m² |
 | `ambientes` | 1, 2, 3, 4, 5 o más | Barras de USD/m² y precio por ambientes |
-| `fuentes` | fuente | Composición del catálogo y completitud (pin, expensas, superficie total) |
+| `fuentes` | fuente | Composición del catálogo y completitud de lo publicado, antes de imputar (pin, expensas, superficie total) |
 | `distribucion` | tramo de 500 USD/m² | Histograma |
-| `correlaciones` | variable | Pearson (lineal) y Spearman (monotónica) contra USD/m², con n |
+| `correlaciones` | variable | Pearson (lineal) y Spearman (monotónica) contra USD/m², con n. Latitud y longitud, solo con pines publicados |
 
 Cada tabla queda además como CSV en el almacén de la corrida en Apify. La de barrios también queda en el dataset, que se exporta a CSV, Excel o JSON desde Apify Console.
+
+**Inferencia** ([`analytics/inference.py`](../precio_entorno/analytics/inference.py) y [`analytics/tooling_business.py`](../precio_entorno/analytics/tooling_business.py)):
+
+1. Lee el modelo ya entrenado del almacén con nombre `precio-entorno-modelo` (`modelo.joblib` y `evaluacion`). El ID del almacén llega en la entrada `almacenModelo`: el Actor corre con permisos limitados y solo puede leer, sin escribir, el almacén que recibe ahí. Controla que su SHA-256 coincida con la evaluación y que scikit-learn sea la 1.7.2 del entrenamiento. No entrena ni reajusta.
+2. Pasa el CSV limpio a las variables del modelo ([`analytics/preprocessing.py`](../precio_entorno/analytics/preprocessing.py)). Solo entra venta en USD. Las coordenadas y la superficie total que el ETL imputó para el dashboard vuelven a quedar como faltantes, igual que en el entrenamiento.
+3. Estima la referencia de publicación en USD/m² y en USD para cada aviso.
+4. Compara el USD/m² publicado con la referencia. A más de 20 % por debajo es «debajo de la referencia» (revisar primero), a más de 20 % por encima es «encima» y el resto es «cerca». El 20 % es del orden del error del modelo: el 70 % de la prueba quedó dentro de ±20 %.
+
+OUTPUT trae el cuerpo de `values:batchUpdate` para una pestaña `predicciones`. La tabla también queda en el dataset y en `predicciones.csv`, y el resumen en `RESUMEN_INFERENCIA`. El resumen informa el error que aplica: con los campos del CSV limpio, sin distancias ni rasgos de entorno, el MAE de prueba es 616 USD/m², contra 443 del modelo completo y 627 de la mediana de comparables. Es una referencia de publicación, no una tasación.
+
+Subido y probado en Apify el 20/11/2026 (construcción `9F5VDcCprZRPCs68n`, modelo `1d4013afcf906e8c`). Con `probar`, el ETL dio el mismo CSV limpio, byte a byte, que la corrida del 17/11. Las cinco pestañas de datos del EDA salieron idénticas. La inferencia (corrida `rlsa4V9YpWEN9EJsQ`, 14 s, USD 0,0007) dio 3.806 referencias: 566 debajo de la referencia (14,9 %), 2.225 cerca y 1.015 encima. Make todavía no llama a esta operación, y la planilla no tiene la pestaña `predicciones`.
 
 ## Dashboard en Looker Studio
 
@@ -125,8 +144,10 @@ Los pasos de abajo sirven para rehacerlo o ampliarlo.
 ```powershell
 python -m precio_entorno.pipeline_analytics etl data/raw/venta-consolidada-20261108/avisos.json
 python -m precio_entorno.pipeline_analytics eda data/processed/pipeline/dataset_limpio.csv
-python -m precio_entorno.apify_analytics subir --account 2    # sube y construye el Actor
-python -m precio_entorno.apify_analytics probar --account 2   # ETL y EDA en Apify, como Make
+python -m precio_entorno.pipeline_analytics inferencia data/processed/pipeline/dataset_limpio.csv
+python -m precio_entorno.apify_analytics subir --account 2         # sube y construye el Actor
+python -m precio_entorno.apify_analytics subir-modelo --account 2  # guarda el modelo entrenado en Apify
+python -m precio_entorno.apify_analytics probar --account 2        # ETL, EDA e inferencia en Apify, como Make
 python -m precio_entorno.make_pipeline crear                  # crea o actualiza el escenario
 ```
 

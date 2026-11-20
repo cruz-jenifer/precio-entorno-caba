@@ -1,18 +1,23 @@
 """Sube, construye y prueba el Actor «precio-entorno-analytics» por la API de Apify, sin el CLI.
 
     python -m precio_entorno.apify_analytics subir --account 2
+    python -m precio_entorno.apify_analytics subir-modelo --account 2
     python -m precio_entorno.apify_analytics probar --account 2
     python -m precio_entorno.apify_analytics gasto
 
 `subir` crea el Actor (privado) si no existe, reemplaza su código por los archivos de
-`actores/analytics/.actor/` y los módulos que usa, y lo construye. `probar` corre ETL y EDA con
-`run-sync`, igual que Make, y guarda las salidas en `data/processed/pipeline-apify/`. Antes de
-cada operación paga se controla que la cuenta quede debajo del tope de USD 5. El token nunca se
-imprime.
+`actores/analytics/.actor/`, el paquete `precio_entorno/analytics/` y los módulos compartidos que
+usa, y lo construye. No sube nada de entrenamiento. `subir-modelo` guarda el modelo ya entrenado
+(`data/processed/inferencia/modelo.joblib` y su `evaluacion.json`) en el almacén con nombre
+`precio-entorno-modelo`, de donde lo lee el Actor; el binario no va a Git. `probar` corre ETL,
+EDA e inferencia con `run-sync`, igual que Make, y guarda las salidas en
+`data/processed/pipeline-apify/`. Antes de cada operación paga se controla que la cuenta quede
+debajo del tope de USD 5. El token nunca se imprime.
 """
 
 import argparse
 import base64
+import hashlib
 import json
 import time
 from pathlib import Path
@@ -26,9 +31,12 @@ ROOT = Path(__file__).resolve().parents[1]
 NAME = 'precio-entorno-analytics'
 VERSION = '0.1'
 ACTOR_DIR = ROOT / 'actores/analytics/.actor'
-MODULES = ['__init__.py', 'importing.py', 'eda_delitos.py', 'pipeline_analytics.py', 'actor_analytics.py']
+# Módulos compartidos que usa el Actor, además de todo `precio_entorno/analytics/`.
+SHARED_MODULES = ['__init__.py', 'importing.py', 'descripcion.py', 'eda_delitos.py']
+MODEL_DIR = ROOT / 'data/processed/inferencia'
+MODEL_STORE = 'precio-entorno-modelo'
 ACCOUNT_CAP_USD = 5.0
-MARGIN_USD = 0.05  # Lo que puede costar una construcción o una prueba de ETL y EDA.
+MARGIN_USD = 0.05  # Lo que puede costar una construcción o una prueba de ETL, EDA e inferencia.
 RAW = ROOT / 'data/raw/venta-consolidada-20261108/avisos.json'
 
 
@@ -60,9 +68,33 @@ class Apify:
 def source_files():
     files = [{'name': f'.actor/{p.name}', 'format': 'TEXT', 'content': p.read_text(encoding='utf-8')}
              for p in sorted(ACTOR_DIR.iterdir()) if p.is_file()]
-    files += [{'name': f'precio_entorno/{m}', 'format': 'TEXT',
-               'content': (ROOT / 'precio_entorno' / m).read_text(encoding='utf-8')} for m in MODULES]
+    modules = [ROOT / 'precio_entorno' / m for m in SHARED_MODULES]
+    modules += sorted((ROOT / 'precio_entorno/analytics').glob('*.py'))
+    files += [{'name': p.relative_to(ROOT).as_posix(), 'format': 'TEXT', 'content': p.read_text(encoding='utf-8')}
+              for p in modules]
     return files
+
+
+def upload_model(api, folder=MODEL_DIR):
+    """Guarda el modelo entrenado y su evaluación en el almacén con nombre que lee el Actor."""
+    check_budget(api)
+    model = (folder / 'modelo.joblib').read_bytes()
+    report = json.loads((folder / 'evaluacion.json').read_text(encoding='utf-8'))
+    if hashlib.sha256(model).hexdigest() != report.get('artefacto_sha256'):
+        raise SystemExit('La huella de modelo.joblib no coincide con evaluacion.json: no se sube nada.')
+    store = model_store(api)
+    api.call('PUT', f'key-value-stores/{store["id"]}/records/modelo.joblib', raw=model,
+             content_type='application/octet-stream', timeout=120)
+    api.call('PUT', f'key-value-stores/{store["id"]}/records/evaluacion', body=report)
+    print(f'Modelo {report.get("version")} ({len(model):,} bytes, scikit-learn {report.get("sklearn")}) '
+          f'en el almacén «{MODEL_STORE}».')
+    print(f'Para Make, en la inferencia: "almacenModelo": "{store["id"]}"')
+
+
+def model_store(api):
+    """Almacén con nombre del modelo, creado con el token de la cuenta. El Actor corre con permisos
+    limitados y solo lo puede leer si llega en la entrada `almacenModelo`."""
+    return api.json('POST', 'key-value-stores', params={'name': MODEL_STORE})
 
 
 def check_budget(api):
@@ -87,7 +119,7 @@ def upload(api):
     actor = find_actor(api)
     if actor is None:
         actor = api.json('POST', 'acts', body={
-            'name': NAME, 'title': 'Lüga · Analytics', 'isPublic': False, 'versions': [version],
+            'name': NAME, 'title': 'Lüga · Analytics (ETL, EDA e inferencia)', 'isPublic': False, 'versions': [version],
             'defaultRunOptions': {'build': 'latest', 'timeoutSecs': 300, 'memoryMbytes': 1024}})
         print(f'Actor creado: {actor["id"]}')
     else:
@@ -130,20 +162,28 @@ def probe(api, out):
     (out / 'sheets_body.json').write_bytes(body)
     tabs = [d['range'] for d in json.loads(body)['data']]
     print(f'EDA: {len(body):,} bytes ({kind}) en {time.monotonic() - start:.0f} s · pestañas {tabs}')
-    for run in api.json('GET', f'acts/{actor["id"]}/runs', params={'desc': 'true', 'limit': 2})['items']:
+    start = time.monotonic()
+    body, kind = run_sync(api, actor['id'], {'operacion': 'inferencia', 'almacenModelo': model_store(api)['id'],
+                                             'contenidoBase64': base64.b64encode(csv_bytes).decode()})
+    (out / 'sheets_predicciones_body.json').write_bytes(body)
+    rows = len(json.loads(body)['data'][0]['values']) - 1
+    print(f'Inferencia: {rows} referencias ({kind}) en {time.monotonic() - start:.0f} s')
+    for run in api.json('GET', f'acts/{actor["id"]}/runs', params={'desc': 'true', 'limit': 3})['items']:
         detail = api.json('GET', f'actor-runs/{run["id"]}')
         print(f'Corrida {run["id"]}: {detail["status"]} · USD {detail.get("usageTotalUsd") or 0:.4f}')
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument('accion', choices=('subir', 'probar', 'gasto'))
+    parser.add_argument('accion', choices=('subir', 'subir-modelo', 'probar', 'gasto'))
     parser.add_argument('--account', type=int, required=True, help='Cuenta de Apify según el orden del .env')
     parser.add_argument('--salida', type=Path, default=ROOT / 'data/processed/pipeline-apify')
     args = parser.parse_args()
     api = Apify(apify_token(args.account))
     if args.accion == 'subir':
         upload(api)
+    elif args.accion == 'subir-modelo':
+        upload_model(api)
     elif args.accion == 'probar':
         probe(api, args.salida)
     else:

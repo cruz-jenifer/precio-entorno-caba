@@ -1,3 +1,6 @@
 apify==4.2.1
 pandas==2.3.3
 numpy>=2.1,<2.4
+# Las mismas versiones del entrenamiento: inference.py rechaza otra versión de scikit-learn.
+scikit-learn==1.7.2
+joblib==1.5.2

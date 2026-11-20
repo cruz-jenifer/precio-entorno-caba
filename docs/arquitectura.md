@@ -417,7 +417,7 @@ sequenceDiagram
 | --- | --- | --- |
 | Núcleo | `precio_entorno/actor_alertas.py` | Valida la entrada, captura con `run_capture`, valida con `parse_listings`, descarta los IDs vistos y cruza con `matching.matches`. No depende del SDK y se prueba sin red. |
 | Entrada | `precio_entorno/actor_main.py` | Usa el SDK `apify`: lee la entrada, carga y guarda los IDs vistos en el almacén con nombre, publica el dataset y el registro `OUTPUT` |
-| Configuración | `.actor/actor.json`, `.actor/input_schema.json`, `.actor/Dockerfile`, `.actor/requirements.txt` | Imagen `apify/actor-python:3.13` con el paquete y nada más; `.dockerignore` deja afuera datos, `.env` y notebooks |
+| Configuración | `.actor/actor.json`, `.actor/input_schema.json`, `.actor/Dockerfile`, `.actor/requirements.txt` | Imagen `apify/actor-python:3.13` con solo los módulos que importa el Actor, sin entrenamiento; `.dockerignore` deja afuera datos, `.env` y notebooks. `tests/test_actor_analytics.py` controla la lista |
 
 - **Entrada:** `busquedas` (id, operacion, barrio, presupuesto, moneda, superficie, ambientes, ambientesOMas), `sitios` (solo los de `DEFAULT_SITES`), `maxAvisosPorSitio` (1–200, 50 por defecto), `alertarPrimeraCorrida` y `autorizacionConfirmada`, que es obligatoria.
 - **Línea de base:** la primera corrida de cada operación solo guarda los IDs vigentes y no alerta, salvo que `alertarPrimeraCorrida` sea verdadero. Así no llega un correo con todo el catálogo.

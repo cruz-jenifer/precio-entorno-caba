@@ -6,7 +6,7 @@ from pathlib import Path
 import numpy as np
 
 from precio_entorno.inferencia import inputs, load, predict, save, train
-from precio_entorno.pipeline_analytics import inference
+from precio_entorno.analytics.inference import predict_clean
 from test_comparar_modelos import synthetic
 
 
@@ -61,6 +61,7 @@ class InferenceTests(unittest.TestCase):
                                        'covered_area': 'superficie_cubierta_m2', 'agency': 'fuente'})
         with tempfile.TemporaryDirectory() as tmp:
             save(self.bundle, self.report, self.errors, Path(tmp))
-            result = inference(clean, Path(tmp))
+            result, skipped = predict_clean(clean, load(Path(tmp)))
+        self.assertEqual(skipped, 0)
         self.assertEqual(result['id'].tolist(), self.df['id'].tolist())
         self.assertTrue(result['modelo_version'].eq(self.bundle['version']).all())

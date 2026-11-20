@@ -165,14 +165,21 @@ Un aviso que deja de publicarse **no se borra**: cambia su `status` en `listings
   - El modelo los usa como `grupo` en `GroupKFold`: las copias nunca quedan una en entrenamiento y otra en prueba.
   - El EDA cuenta cada grupo una sola vez cuando busca oportunidades.
 
-## 5. Faltantes
+## 5. Faltantes (nulls)
+
+El detalle de cada decisión y su justificación está en [tratamiento-nulls.md](tratamiento-nulls.md). En resumen:
 
 - **Campos obligatorios** (ID, enlace, fecha de captura, precio, moneda, superficie cubierta, ambientes y
   barrio): sin cualquiera de ellos, el aviso se descarta y se cuenta por campo.
-- **Campos opcionales:** quedan como `NULL`. **No se imputan en la base.**
-  - El EDA los muestra como «sin dato» e informa la cobertura por fuente.
+- **CSV limpio del análisis (`dataset_limpio.csv`): 0 nulls.** Si queda alguno, la corrida falla.
+  - Superficie total faltante (1,9 %) → la cubierta, marcada en `superficie_total_imputada`.
+  - Expensas (57,8 % faltante, tres fuentes no las publican) → se elimina la columna y queda `expensas_informadas`.
+  - Sin pin (11,2 %) → mediana de los pines publicados del barrio, marcada en `ubicacion_origen`. Las
+    correlaciones geográficas usan solo pines publicados.
+- **Base operativa de la app:** los opcionales siguen como `NULL`, que significa «la fuente no lo publicó». La
+  app lo muestra así, sin inventar un valor.
   - El modelo usa `HistGradientBoostingRegressor`, que trata los faltantes de forma nativa.
-  - Las variables a 500 m solo se calculan para avisos con pin.
+  - Las variables a 500 m solo se calculan para avisos con pin publicado.
 - **Delitos:** sin barrio, el hecho se descarta. Sin franja, queda como desconocida. Los totales se muestran
   siempre con su período y su unidad geográfica.
 

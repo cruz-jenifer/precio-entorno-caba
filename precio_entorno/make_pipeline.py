@@ -22,7 +22,7 @@ import json
 
 from precio_entorno.apify_analytics import NAME as ACTOR_NAME
 from precio_entorno.make_escenarios import TEAM, blueprint, call, last_error, module, scenarios
-from precio_entorno.pipeline_analytics import clear_body
+from precio_entorno.analytics.tooling_business import clear_body
 from precio_entorno.run_pilot import apify_token
 
 SCENARIO = 'Precio y Entorno CABA - Pipeline Analytics'

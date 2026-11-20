@@ -5,7 +5,10 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from precio_entorno.pipeline_analytics import CLEAN_COLUMNS, SHEETS, clear_body, eda, etl, read_clean, sheets_body, to_csv
+from precio_entorno.analytics.EDA import eda
+from precio_entorno.analytics.ETL import CLEAN_COLUMNS, etl
+from precio_entorno.analytics.preprocessing import read_clean, to_csv
+from precio_entorno.analytics.tooling_business import SHEETS, clear_body, sheets_body
 
 CRIME_HEADER = '"id-mapa","anio","mes","dia","fecha","franja","tipo","subtipo","uso_arma","uso_moto","barrio","comuna","latitud","longitud","cantidad"'
 
@@ -79,6 +82,66 @@ class PipelineAnalyticsTests(unittest.TestCase):
         json.dumps(body)  # Serializable: sin NaN ni tipos de numpy.
         self.assertNotIn('NaN', json.dumps(body))
         self.assertEqual(clear_body()['ranges'], list(SHEETS))
+
+    def test_clean_csv_has_no_nulls_and_flags_every_imputation(self):
+        crimes = self.crimes.read_text(encoding='utf-8') + '\n' + crime(6, 'Robo', 'BOEDO', 5)
+        self.crimes.write_text(crimes, encoding='utf-8')
+        raw = json.dumps([
+            aviso(1, 'remax', 'Almagro', 150000, area=60, total_area_m2=70, expenses=90000,
+                  latitude=-34.60, longitude=-58.42),
+            aviso(2, 'remax', 'Almagro', 120000, latitude=-34.62, longitude=-58.44),
+            aviso(3, 'migliorisi', 'Almagro', 110000, latitude=None, longitude=None),   # Sin pin.
+            aviso(4, 'zonaprop', 'Almagro', 100000, latitude=None),                     # Medio par.
+            aviso(5, 'migliorisi', 'Boedo', 100000, latitude=None, longitude=None),     # Barrio sin pines.
+        ]).encode()
+        clean, report = etl(raw, 'avisos.json', self.crimes)
+        self.assertEqual(int(clean.isna().sum().sum()), 0)
+        self.assertEqual(int(read_clean(to_csv(clean)).isna().sum().sum()), 0)
+        rows = clean.set_index('id')
+
+        # Superficie total: la publicada se respeta; la faltante toma la cubierta y queda marcada.
+        self.assertEqual(rows.at['remax:1', 'superficie_total_m2'], 70)
+        self.assertFalse(rows.at['remax:1', 'superficie_total_imputada'])
+        self.assertEqual(rows.at['remax:2', 'superficie_total_m2'], 50)
+        self.assertTrue(rows.at['remax:2', 'superficie_total_imputada'])
+
+        # Expensas: no hay columna de montos, solo si se informaron.
+        self.assertNotIn('expensas_ars', clean.columns)
+        self.assertTrue(rows.at['remax:1', 'expensas_informadas'])
+        self.assertFalse(rows.at['remax:2', 'expensas_informadas'])
+
+        # Coordenadas: mediana de los pines publicados del barrio; si no hay, de la comuna.
+        self.assertEqual(rows.at['remax:1', 'ubicacion_origen'], 'publicada')
+        for i in ('migliorisi:3', 'zonaprop:4'):
+            self.assertEqual(rows.at[i, 'ubicacion_origen'], 'mediana_barrio')
+            self.assertFalse(rows.at[i, 'tiene_pin'])
+            self.assertAlmostEqual(rows.at[i, 'latitud'], -34.61)
+            self.assertAlmostEqual(rows.at[i, 'longitud'], -58.43)
+        self.assertEqual(rows.at['migliorisi:5', 'ubicacion_origen'], 'mediana_comuna')
+        self.assertAlmostEqual(rows.at['migliorisi:5', 'latitud'], -34.61)
+
+        nulls = report['tratamiento_nulls']
+        self.assertEqual(nulls['superficie_total_m2']['filas_imputadas'], 4)
+        self.assertEqual(nulls['expensas_ars']['faltantes'], 4)
+        self.assertEqual(nulls['latitud_longitud']['por_origen'],
+                         {'publicada': 2, 'mediana_barrio': 2, 'mediana_comuna': 1})
+        self.assertEqual(nulls['nulls_finales'], 0)
+
+        # El EDA mide la cobertura de lo publicado, no de lo imputado, y correlaciona solo pines publicados.
+        tables = eda(read_clean(to_csv(clean)), report)
+        fuentes = tables['fuentes'].set_index('fuente')
+        self.assertEqual(fuentes.at['remax', 'pct_con_expensas'], 50.0)
+        self.assertEqual(fuentes.at['remax', 'pct_con_superficie_total'], 50.0)
+        self.assertEqual(fuentes.at['migliorisi', 'pct_con_pin'], 0.0)
+        corr = tables['correlaciones'].set_index('columna')
+        self.assertEqual(corr.at['latitud', 'n'], 2)
+        self.assertEqual(corr.at['ambientes', 'n'], 5)
+
+    def test_etl_fails_instead_of_writing_nulls(self):
+        # Palermo no está en el archivo de delitos: no hay comuna ni contexto delictivo para ese barrio.
+        raw = json.dumps([aviso(1, 'remax', 'Palermo', 150000), aviso(2, 'remax', 'Almagro', 150000)]).encode()
+        with self.assertRaisesRegex(ValueError, 'nulls en: comuna'):
+            etl(raw, 'avisos.json', self.crimes)
 
     def test_etl_rejects_file_without_valid_listings(self):
         with self.assertRaises(ValueError):

@@ -128,6 +128,8 @@ La métrica de precio es la del [pricing](pricing-busqueda-personal.md): **una b
 
 **Coherente con la [estrategia](estrategia.md):** sin plata de anunciantes ni línea para inmobiliarias. El valor del nivel óptimo viene del juicio humano, no del inventario.
 
+La [oferta para quien compra su primer depto](oferta.md) arma «Buscar acompañado» como oferta completa: bonus con nombre, garantía, escasez real y nombre.
+
 ## 5. Qué fracaso vigilar y disparadores de precio
 
 **Una tasa de cierre cerca del 100 % sin quejas por el precio** es la señal de libro de la *minivación*: el producto correcto con un precio demasiado tímido. Hoy Lüga no tiene esa señal: no cobra nada (no hay pago en el código) y el concierge no se hizo. Con precio cero, que todos acepten no dice nada sobre el valor. Si los «sí» salen de conversaciones donde se mencionó USD 9, son cortesía: coinciden con el precio dado y no son compromisos.
@@ -206,6 +208,8 @@ Ordenados por ICE: impacto, confianza y facilidad, de 1 a 10 cada uno.
 - **Métrica principal:** el porcentaje de quienes ven la oferta y pagan, la misma del concierge.
 - **Métrica que no debe bajar:** las altas de la alerta gratis.
 - **Sin pruebas A/B por ahora:** con tan poco tráfico no alcanzan significancia. Conviene probar cambios grandes entre los grupos del concierge.
+
+Estas y otras ideas de conversión están puntuadas con ICE, con hipótesis y métricas para las dos primeras, en [ideas-conversion.md](ideas-conversion.md).
 
 ## 7. Diagnóstico con este plan: 7/10 en el papel
 

@@ -70,13 +70,51 @@ Reducir la ansiedad y el hábito puede rendir más que sumar atracción. La port
 
 ## 5. Competencia y contratación
 
-**Qué se puede «contratar» para el mismo trabajo:**
+### 5.1 Todo lo que se puede «contratar» para el mismo trabajo
 
-- Portales (Zonaprop, Argenprop, Mercado Libre) y agregadores como Roomix **[Doc, fase 1, §3.4]**.
-- Preguntar a conocidos o recorrer el barrio un fin de semana.
-- No hacer nada: renovar el contrato o postergar la mudanza. Probablemente es la competencia más grande.
+| # | Alternativa | Tipo | Por qué se contrata (dimensión) | Qué le falta para este trabajo |
+| --- | --- | --- | --- | --- |
+| 1 | **Zonaprop, con búsqueda guardada y alerta** | Directa | Más avisos, gratis, ya está donde la persona mira. Según un corredor de Caballito citado en la prensa, más del 80 % de sus clientes llega por ahí **[Doc, E24]** (funcional) | Hay que elegir el barrio antes. Avisa solo sobre su propia oferta. La alerta pide iniciar sesión **[Obs, E5]** |
+| 2 | Alerta de Argenprop | Directa | Alerta por correo sin cuenta **[Obs, E13]** | Las mismas faltas, con menos oferta |
+| 3 | Mercado Libre Inmuebles | Directa | La cuenta ya existe | Las mismas faltas. No se pudo filtrar por barrio en la prueba **[NV, E14]** |
+| 4 | Cabaprop | Directa | Solo publican corredores matriculados, lo que da tranquilidad (emocional) | Menos conocido. No se recorrió en detalle |
+| 5 | **Roomix** | Directa, la más parecida | Varias fuentes, USD/m² por aviso y alertas por WhatsApp **[Doc, E16]** | Usa subbarrios no oficiales. El lenguaje natural no aplicó los filtros en la prueba **[Obs, E17]** |
+| 6 | Marketplace de Facebook y grupos de WhatsApp o Facebook por barrio | Indirecta | Avisos de dueños, sin comisión (funcional y emocional) | Dispersos y con riesgo de estafa **[Hip]** |
+| 7 | Google Maps, Street View o recorrer la zona un fin de semana | Indirecta | Percepción directa de la vida diaria y de la seguridad (emocional) | Lento, de a una zona por vez **[Hip]** |
+| 8 | Hilos de Reddit, guías de barrios en la prensa, Index Zonaprop | Indirecta | «¿Qué barrio me recomiendan?» respondido por gente real (social) | Genérico y sin relación con el presupuesto de la persona **[Hip]** |
+| 9 | **Una planilla** (Google Sheets compartida con la pareja) | Solución casera | Control y un registro común para una decisión de a dos (social) | Se carga a mano, se desactualiza y no trae avisos nuevos **[Hip]** |
+| 10 | Pestañas abiertas, favoritos en cada portal, capturas, mensajes de WhatsApp a sí misma o a la pareja | Solución casera | No requiere preparar nada | Se pierde y acumula repetidos **[Hip]** |
+| 11 | **Contratar a una inmobiliaria** para que busque | Contratar a alguien | Delega el trabajo en alguien que conoce la zona (funcional y emocional) | Poco habitual del lado del comprador en CABA, donde la inmobiliaria suele representar al vendedor. Prioriza su cartera **[Hip]** |
+| 12 | Un amigo o familiar que conoce la zona o trabaja en el rubro | Contratar a alguien, gratis | Confianza (emocional y social) | La mirada de una persona sobre pocos barrios **[Hip]** |
+| 13 | **No hacer nada**: renovar el contrato, seguir en lo de los padres, esperar precios o crédito | Sin consumo | Cero esfuerzo y cero riesgo. Las escrituras con hipoteca cayeron 15,5 % interanual en septiembre **[Doc, E25]** | El trabajo no se hace |
+| 14 | **Buscar solo donde ya vive** | Sin consumo parcial | No hay que decidir barrio | Se saltea justo el paso con el que abre la portada de Lüga **[Hip]** |
 
-**Gran contratación y pequeña contratación:**
+### 5.2 La contratación que hay que vencer
+
+Para ganar la gran contratación (crear una alerta o pagar el pase), el rival es **la alerta gratis de Zonaprop**, junto con las pestañas o la planilla que la acompañan. No es Roomix ni no hacer nada.
+
+- **No hacer nada compite antes.** Compite con la decisión de mudarse, no con Lüga. Cuando alguien está por crear una alerta, ya decidió mudarse, y lo que usaría en su lugar es la alerta del portal que ya tiene abierto.
+- **Zonaprop ya cubre la mayor parte de lo que alertaría Lüga.** Base local al 20/11/2026 **[Obs]**:
+  - en venta, 2.272 de 4.257 avisos activos (53 %) son de Zonaprop;
+  - en alquiler, 2.869 de 4.183 (69 %);
+  - Lüga trae hasta unos 50 avisos de Zonaprop por barrio. En el escenario del benchmark mostró 59 avisos contra 1.024 de Zonaprop **[Obs, E1, E28]**;
+  - la actualización es cada 2 días.
+
+  En cantidad de avisos y en velocidad, Lüga pierde contra una alerta gratis que ya está configurada.
+- **Roomix es la competencia a vigilar, no la que hay que vencer.** No hay evidencia de que quienes buscan en CABA lo conozcan. Pelea contra el mismo hábito y por las mismas personas dispuestas a cambiar.
+
+**Cómo ganarle:**
+
+1. **Pedir la alerta antes de que la persona vuelva a Zonaprop.** La alerta de Zonaprop sirve recién cuando se sabe el barrio, y Lüga es donde se elige. Ofrecer la alerta justo después de elegir el barrio: «elegiste Caballito por esto; lo seguimos por vos».
+2. **Mandar un juicio con cada aviso, no solo el aviso.** Dónde queda frente a los parecidos y cómo encaja con la vida diaria. Responde al miedo a pagar de más, que es emocional. La alerta de Zonaprop solo resuelve lo funcional.
+3. **Contar lo que Zonaprop no tiene.** Mob es el caso más claro: 876 avisos de dueños en alquiler, el 21 % de la base. Los sitios de inmobiliarias suman más. Medir cuántos quedan después de quitar los duplicados con Zonaprop antes de anunciarlo.
+4. **Presentar Lüga como complemento, no como reemplazo.** Pedir que la persona abandone un hábito es el cambio más difícil. La alerta sigue gratis y sin cuenta. Un pase pago, si llega, va después de que la persona haya visto el valor.
+
+**Posicionamiento:** para quien se muda dentro de CABA sin conocer todos los barrios, Lüga es la compañera de búsqueda que muestra dónde funcionan su presupuesto y su vida diaria y qué avisos nuevos vale la pena consultar. A diferencia de la alerta de un portal, que solo avisa que apareció algo en ese portal, compara cada aviso con sus parecidos y sigue fuentes que el portal no cubre.
+
+Las preguntas 3, 5 y 6 de la [guía de entrevistas](guia-entrevistas.md) ponen a prueba que la alerta de Zonaprop sea de verdad el hábito a vencer.
+
+### 5.3 Gran contratación y pequeña contratación
 
 - **Gran contratación:** activar una alerta o pagar el pase.
 - **Pequeña contratación:** abrir el correo de la alerta y entrar a un aviso.
@@ -98,7 +136,7 @@ Puntos de profundidad: el enunciado no nombra el producto (+1) y la competencia 
 
 ## 7. Qué hacer
 
-1. **Entrevistas de cronología (la brecha más grande).** Hablar con 10 o más personas que se mudaron en los últimos seis meses. Preguntar solo por hechos pasados: cuándo pensaron en mudarse por primera vez, qué buscaron y dónde, qué alternativas descartaron, qué las decidió y qué temían. Nada de «¿usarías…?».
+1. **Entrevistas de cronología (la brecha más grande).** Hablar con 10 o más personas que se mudaron en los últimos seis meses. Preguntar solo por hechos pasados: cuándo pensaron en mudarse por primera vez, qué buscaron y dónde, qué alternativas descartaron, qué las decidió y qué temían. Nada de «¿usarías…?». Las preguntas están en la [guía de entrevistas](guia-entrevistas.md).
 2. **Confirmar o descartar las dimensiones emocional y social** de la sección 3 con esas entrevistas, usando las palabras exactas de las personas.
 3. **Medir la pequeña contratación:** aperturas de alertas y clics a avisos, aparte de las altas y los pagos.
 4. **Revisar las funciones que no se conectan con el trabajo.** La mayoría sí se conecta. Algunas no tanto, como la capa «Rampas» (registro de obras 2011–2016, no inventario), las capas de Recreación o el radar editorial. Para cada una, nombrar el subtrabajo que sirve o considerar quitarla.

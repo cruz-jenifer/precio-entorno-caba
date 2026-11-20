@@ -530,11 +530,11 @@ async function elegirColectivo(linea) {
     if (estado.colectivo?.linea !== linea) return;
     datos.properties.tooltip = `Línea ${linea} · Recorrido del GTFS de 2019 · Tocá para quitarlo`;
     estado.colectivo.datos = datos;
-    mapa.getSource('colectivo')?.setData({ type: 'FeatureCollection', features: [datos] });
+    mapa?.getSource('colectivo')?.setData({ type: 'FeatureCollection', features: [datos] });
     const coords = datos.geometry.coordinates.flat();
     const lons = coords.map((c) => c[0]);
     const lats = coords.map((c) => c[1]);
-    mapa.fitBounds([[Math.min(...lons), Math.min(...lats)], [Math.max(...lons), Math.max(...lats)]],
+    mapa?.fitBounds([[Math.min(...lons), Math.min(...lats)], [Math.max(...lons), Math.max(...lats)]],
       { padding: 40, maxZoom: 14 });
     if (celular()) plegarPanel(false);
   } catch (error) {
@@ -548,8 +548,8 @@ async function elegirColectivo(linea) {
 function quitarColectivo() {
   if (!estado.colectivo) return;
   estado.colectivo = null;
-  mapa.getSource('colectivo')?.setData(VACIO);
-  popup.remove();
+  mapa?.getSource('colectivo')?.setData(VACIO);
+  popup?.remove();
   renderPanel();
   renderControles();
   if (estado.seleccionado) encuadrar(estado.seleccionado);
@@ -593,6 +593,7 @@ async function puntoDeBusqueda(origen, output) {
     }
     marcarMiUbicacion(punto);
   } else if (origen === 'mapa') {
+    if (!mapa) throw new Error('El mapa todavía se está cargando. Probá de nuevo en un momento.');
     const centro = mapa.getCenter();
     punto = { lat: centro.lat, lon: centro.lng };
   } else {
@@ -964,29 +965,60 @@ function renderPanel() {
 
 /* Mapa */
 
-const mapa = new maplibregl.Map({
-  container: 'mapa',
-  style: ESTILO,
-  center: [-58.445, -34.615],
-  zoom: 11.2,
-  minZoom: 10,
-  maxZoom: 17.5,
-  dragRotate: false,
-  pitchWithRotate: false,
-  attributionControl: { compact: true },
-});
-mapa.touchZoomRotate.disableRotation();
-mapa.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right');
-// Centra el mapa en la ubicación del navegador; después se puede buscar desde «El centro del mapa».
-// La posición queda en el navegador y no se envía al servidor hasta que se pide una búsqueda.
-if (window.isSecureContext && navigator.geolocation) {
-  mapa.addControl(new maplibregl.GeolocateControl({
-    positionOptions: { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 },
-    fitBoundsOptions: { maxZoom: 16 }, showAccuracyCircle: true, trackUserLocation: false,
-  }), 'top-right');
+// MapLibre pesa unos 210 KB comprimido: se pide recién después de pintar la lista, para que no compita por la red
+// con lo que hace falta para el primer pantallazo. Hasta que llega, `mapa`, `popup` y `popupAviso` valen null y
+// las funciones del mapa no hacen nada; prepararMapa() pinta todo al final.
+const MAPLIBRE_JS = 'https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js';
+let mapa = null;
+let mapaListo = null;
+let popup = null;
+let popupAviso = null;
+
+function cargarMapLibre() {
+  if (window.maplibregl) return Promise.resolve();
+  return new Promise((resolver, rechazar) => {
+    const script = document.createElement('script');
+    script.src = MAPLIBRE_JS;
+    script.addEventListener('load', resolver, { once: true });
+    script.addEventListener('error', () => rechazar(new Error('no se pudo descargar MapLibre')), { once: true });
+    document.head.append(script);
+  });
 }
+
+function crearMapa() {
+  mapa = new maplibregl.Map({
+    container: 'mapa',
+    style: ESTILO,
+    center: [-58.445, -34.615],
+    zoom: 11.2,
+    minZoom: 10,
+    maxZoom: 17.5,
+    dragRotate: false,
+    pitchWithRotate: false,
+    attributionControl: { compact: true },
+  });
+  mapa.touchZoomRotate.disableRotation();
+  mapa.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right');
+  // Centra el mapa en la ubicación del navegador; después se puede buscar desde «El centro del mapa».
+  // La posición queda en el navegador y no se envía al servidor hasta que se pide una búsqueda.
+  if (window.isSecureContext && navigator.geolocation) {
+    mapa.addControl(new maplibregl.GeolocateControl({
+      positionOptions: { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 },
+      fitBoundsOptions: { maxZoom: 16 }, showAccuracyCircle: true, trackUserLocation: false,
+    }), 'top-right');
+  }
+  mapaListo = new Promise((resolver) => mapa.on('load', resolver));
+  new ResizeObserver(() => mapa.resize()).observe(document.querySelector('.mapa'));
+  popup = new maplibregl.Popup({ closeButton: false, closeOnClick: false, offset: 10, maxWidth: '18rem' });
+  // Lista de avisos de un punto, con enlaces. Se cierra a mano al tocar otro lugar del mapa.
+  popupAviso = new maplibregl.Popup({ closeButton: true, closeOnClick: false, offset: OFFSET_PIN, maxWidth: '20rem',
+    className: 'popup-avisos' });
+  popupAviso.on('close', () => { estado.pinAbierto = null; });
+}
+
 let marcadorUbicacion = null;
 function marcarMiUbicacion({ lat, lon, precision }) {
+  if (!mapa) return;
   if (!marcadorUbicacion) {
     const punto = document.createElement('div');
     punto.className = 'mi-ubicacion';
@@ -996,9 +1028,6 @@ function marcarMiUbicacion({ lat, lon, precision }) {
   marcadorUbicacion.getElement().title = `Tu ubicación (precisión aproximada ${precision} m)`;
   mapa.flyTo({ center: [lon, lat], zoom: Math.max(mapa.getZoom(), 15) });
 }
-const mapaListo = new Promise((resolver) => mapa.on('load', resolver));
-new ResizeObserver(() => mapa.resize()).observe(document.querySelector('.mapa'));
-const popup = new maplibregl.Popup({ closeButton: false, closeOnClick: false, offset: 10, maxWidth: '18rem' });
 // Los pines de avisos se dibujan hacia arriba desde el punto: el globo no tiene que taparlos.
 const OFFSET_PIN = { top: [0, 4], 'top-left': [0, 4], 'top-right': [0, 4], bottom: [0, -34],
   'bottom-left': [0, -34], 'bottom-right': [0, -34], left: [12, -16], right: [-12, -16] };
@@ -1035,13 +1064,11 @@ function imagenPin(relleno, borde) {
   c.fill();
   return c.getImageData(0, 0, lienzo.width, lienzo.height);
 }
-// Lista de avisos de un punto, con enlaces. Se cierra a mano al tocar otro lugar del mapa.
-const popupAviso = new maplibregl.Popup({ closeButton: true, closeOnClick: false, offset: OFFSET_PIN, maxWidth: '20rem',
-  className: 'popup-avisos' });
-popupAviso.on('close', () => { estado.pinAbierto = null; });
-
 async function prepararMapa() {
-  const [formas] = await Promise.all([api('/api/mapa/barrios'), mapaListo]);
+  const pedidoFormas = api('/api/mapa/barrios');
+  await cargarMapLibre();
+  crearMapa();
+  const [formas] = await Promise.all([pedidoFormas, mapaListo]);
   estado.formas = formas;
   mapa.resize();
   if (!estado.seleccionado) encuadrar(null, true);
@@ -1163,7 +1190,7 @@ async function prepararMapa() {
     const pin = mapa.queryRenderedFeatures(evento.point, { layers: ['avisos'] })[0];
     if (pin) {
       mapa.getCanvas().style.cursor = 'pointer';
-      if (estado.pinAbierto === pin.properties.clave) popup.remove();
+      if (estado.pinAbierto === pin.properties.clave) popup?.remove();
       else popup.setOffset(OFFSET_PIN).setLngLat(pin.geometry.coordinates).setHTML(esc(textoPin(pin.properties.clave))).addTo(mapa);
       return;
     }
@@ -1172,16 +1199,16 @@ async function prepararMapa() {
     const texto = elemento ? textoElemento(elemento) : (barrio && !estado.seleccionado ? textoBarrio(barrio.id) : null);
     mapa.getCanvas().style.cursor = barrio || elemento ? 'pointer' : '';
     if (texto) popup.setLngLat(evento.lngLat).setHTML(esc(texto)).addTo(mapa);
-    else popup.remove();
+    else popup?.remove();
   };
-  mapa.on('mouseout', () => { popup.remove(); marcarHover(null, 'mapa'); });
+  mapa.on('mouseout', () => { popup?.remove(); marcarHover(null, 'mapa'); });
   mapa.on('click', (evento) => {
     const pin = mapa.queryRenderedFeatures(evento.point, { layers: ['avisos'] })[0];
     if (pin) {
       abrirPin(pin.properties.clave);
       return;
     }
-    popupAviso.remove();
+    popupAviso?.remove();
     if (estado.colectivo && mapa.queryRenderedFeatures(evento.point, { layers: ['colectivo'] }).length) {
       quitarColectivo();
       return;
@@ -1220,14 +1247,14 @@ function gruposAvisos() {
 }
 
 function pintarAvisos() {
-  const fuente = mapa.getSource('avisos');
+  const fuente = mapa?.getSource('avisos');
   if (!fuente) return;
   const grupos = estado.seleccionado ? gruposAvisos() : new Map();
   fuente.setData({ type: 'FeatureCollection', features: [...grupos].map(([clave, lista]) => ({
     type: 'Feature', geometry: { type: 'Point', coordinates: [lista[0].lon, lista[0].lat] },
     properties: { clave, cantidad: lista.length, aproximada: lista.every((a) => a.ubicacion === 'aproximada') },
   })) });
-  if (estado.pinAbierto && !grupos.has(estado.pinAbierto)) popupAviso.remove();
+  if (estado.pinAbierto && !grupos.has(estado.pinAbierto)) popupAviso?.remove();
 }
 
 function textoPin(clave) {
@@ -1242,8 +1269,8 @@ function textoPin(clave) {
 
 function abrirPin(clave) {
   const lista = gruposAvisos().get(clave);
-  if (!lista) return;
-  popup.remove();
+  if (!lista || !popupAviso) return;
+  popup?.remove();
   estado.pinAbierto = clave;
   const filas = lista.map((a) => `<li><strong>${esc(dinero(a.precio, a.moneda))}</strong> · ${a.superficie} m² · ${a.ambientes} amb.
     ${a.enlace ? `<a href="${esc(a.enlace)}" target="_blank" rel="noopener">Ver aviso</a>` : ''}
@@ -1280,9 +1307,9 @@ function textoElemento(f) {
 
 function marcarHover(nombre, origen) {
   if (estado.hover === nombre) return;
-  if (estado.hover && mapa.getSource('barrios')) mapa.setFeatureState({ source: 'barrios', id: estado.hover }, { hover: false });
+  if (estado.hover && mapa?.getSource('barrios')) mapa.setFeatureState({ source: 'barrios', id: estado.hover }, { hover: false });
   estado.hover = nombre;
-  if (nombre && mapa.getSource('barrios')) mapa.setFeatureState({ source: 'barrios', id: nombre }, { hover: true });
+  if (nombre && mapa?.getSource('barrios')) mapa.setFeatureState({ source: 'barrios', id: nombre }, { hover: true });
   if (origen === 'mapa') {
     document.querySelectorAll('.fila.resaltada').forEach((fila) => fila.classList.remove('resaltada'));
     if (nombre) document.querySelector(`.fila[data-barrio="${CSS.escape(nombre)}"]`)?.classList.add('resaltada');
@@ -1290,7 +1317,7 @@ function marcarHover(nombre, origen) {
 }
 
 function pintarCoropletas() {
-  if (!mapa.getSource('barrios')) return;
+  if (!mapa?.getSource('barrios')) return;
   const maximo = Math.max(1, ...estado.barrios.map((b) => b.coincidencias));
   for (const b of estado.barrios) {
     mapa.setFeatureState({ source: 'barrios', id: b.barrio }, { r: b.coincidencias ? b.coincidencias / maximo : 0 });
@@ -1332,6 +1359,7 @@ function encuadrar(nombre, inmediato = false) {
 }
 
 function encuadrarPin(pin) {
+  if (!mapa) return;
   const dlat = 1100 / 111320;
   const dlon = dlat / Math.cos(pin.lat * Math.PI / 180);
   mapa.fitBounds([[pin.lon - dlon, pin.lat - dlat], [pin.lon + dlon, pin.lat + dlat]], {
@@ -1350,7 +1378,7 @@ async function actualizarCapas() {
   const barrio = estado.seleccionado;
   const fijas = CAPAS_MAPA.map((c) => c.clave);
   if (!barrio) {
-    fijas.concat('delitos', 'radios', 'inmueble', 'colectivo').forEach((id) => mapa.getSource(id)?.setData(VACIO));
+    fijas.concat('delitos', 'radios', 'inmueble', 'colectivo').forEach((id) => mapa?.getSource(id)?.setData(VACIO));
     estado.colectivo = null;
     renderControles();
     renderLeyenda();
@@ -1370,13 +1398,13 @@ async function actualizarCapas() {
     mostrarAvisoMapa(`No se pudieron cargar las capas: ${error.message}`);
   }
   if (barrio !== estado.seleccionado) return;
-  for (const c of fijas) mapa.getSource(c)?.setData(estado.capas.has(c) ? estado.capasDatos[claveCapa(c)] || VACIO : VACIO);
-  if (mapa.getLayer('ruido')) mapa.setFilter('ruido', ['>=', ['get', 'tipico'], estado.ruido === 'diurno' ? 70 : 65]);
+  for (const c of fijas) mapa?.getSource(c)?.setData(estado.capas.has(c) ? estado.capasDatos[claveCapa(c)] || VACIO : VACIO);
+  if (mapa?.getLayer('ruido')) mapa.setFilter('ruido', ['>=', ['get', 'tipico'], estado.ruido === 'diurno' ? 70 : 65]);
   const delitos = estado.capas.has('delitos') && estado.delitosDatos?.disponible ? estado.delitosDatos.celdas : VACIO;
-  mapa.getSource('delitos')?.setData(delitos);
+  mapa?.getSource('delitos')?.setData(delitos);
   const d = estado.capas.has('delitos') && estado.delitosDatos?.disponible ? estado.delitosDatos : null;
-  mapa.getSource('radios')?.setData(d?.radios || VACIO);
-  mapa.getSource('inmueble')?.setData(d?.inmueble ? { type: 'FeatureCollection', features: [{ type: 'Feature',
+  mapa?.getSource('radios')?.setData(d?.radios || VACIO);
+  mapa?.getSource('inmueble')?.setData(d?.inmueble ? { type: 'FeatureCollection', features: [{ type: 'Feature',
     geometry: { type: 'Point', coordinates: [d.inmueble.lon, d.inmueble.lat] }, properties: {} }] } : VACIO);
   renderControles();
   renderLeyenda();
@@ -1668,7 +1696,7 @@ async function cargarAvisos() {
 }
 
 async function seleccionar(nombre) {
-  if (estado.seleccionado && mapa.getSource('barrios')) {
+  if (estado.seleccionado && mapa?.getSource('barrios')) {
     mapa.setFeatureState({ source: 'barrios', id: estado.seleccionado }, { sel: false });
   }
   estado.seleccionado = nombre;
@@ -1679,9 +1707,9 @@ async function seleccionar(nombre) {
   estado.delitos.inmueble = '';
   estado.pedidoDelitos += 1;
   estado.lugares = { ...lugaresIniciales(estado.lugares.tipo), pedido: estado.lugares.pedido + 1 };
-  popup.remove();
-  popupAviso.remove();
-  if (nombre && mapa.getSource('barrios')) mapa.setFeatureState({ source: 'barrios', id: nombre }, { sel: true });
+  popup?.remove();
+  popupAviso?.remove();
+  if (nombre && mapa?.getSource('barrios')) mapa.setFeatureState({ source: 'barrios', id: nombre }, { sel: true });
   estado.capas = nombre ? capasIniciales() : new Set();
   pintarCoropletas();
   encuadrar(nombre);
@@ -1799,7 +1827,7 @@ async function cambiarContexto() {
   estado.delitosDatos = null;
   estado.delitos = { anio: '', tipo: 'todos', franja: 'todas', radio: '500', inmueble: '' };
   estado.avisos = [];
-  for (const id of ['delitos', 'radios', 'inmueble']) mapa.getSource(id)?.setData(VACIO);
+  for (const id of ['delitos', 'radios', 'inmueble']) mapa?.getSource(id)?.setData(VACIO);
   renderPanel();
   sincronizarControles();
   guardar();
@@ -2151,6 +2179,7 @@ function conectarEventos() {
     if (e.target.closest('[data-quitar-colectivo]')) { quitarColectivo(); return; }
     const estacionamiento = e.target.closest('[data-estacionamiento-lat]');
     if (estacionamiento) {
+      if (!mapa) return;
       const coords = [Number(estacionamiento.dataset.estacionamientoLon), Number(estacionamiento.dataset.estacionamientoLat)];
       mapa.flyTo({ center: coords, zoom: 17 });
       popupAviso.setLngLat(coords).setHTML(esc(estacionamiento.dataset.estacionamientoTexto) + '<p>Inventario sin fecha de relevamiento informada. Confirmá funcionamiento y cupos.</p>').addTo(mapa);

@@ -46,6 +46,8 @@ SmartLead de Zonaprop ya ofrece información de búsqueda de algunos usuarios de
 
 ## Prueba para decidir
 
+El [experimento concierge](experimento-concierge.md) (20/11/2026) baja esta prueba a una ficha: correo elegido a mano, la misma meta de 5 pagos entre 20 personas y criterio de pivote fijado antes de empezar.
+
 - **Primera muestra.** Reclutar 20 personas con búsqueda activa en la misma operación y zona. Mostrar coincidencias reales y explicar por qué cada una encaja. Registrar si abren un aviso, piden una visita, qué vieron antes en otros canales y cuánto tiempo les llevó.
 - **Oferta real.** Mostrar el precio de USD 9 a quienes vieron una vista previa que cumple sus requisitos obligatorios. Antes de cobrar, poder entregar el pase y aclarar frecuencia, cobertura y condiciones. Registrar pagos y rechazos, con el motivo. Probar USD 15 después en una cohorte comparable con el mismo servicio.
 - **Medición.** Contar conversiones sobre personas elegibles, coincidencias útiles y nuevas, avisos vigentes al abrir, latencia desde publicación cuando se conozca, latencia desde detección hasta entrega, costo variable por pase y costo de adquisición. Informar también cuántas búsquedas quedaron sin oferta. Medir cuántas personas pagarían de nuevo entre quienes continúan buscando.

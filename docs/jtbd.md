@@ -167,8 +167,11 @@ Puntos de profundidad: el enunciado no nombra el producto (+1) y la competencia 
 
 ## 7. Qué hacer
 
+El [núcleo de estrategia](estrategia.md) ordena estos pasos en un diagnóstico, una política guía, tres acciones con responsables y una lista de lo que no se hace.
+
 1. **Entrevistas de cronología (la brecha más grande).** Hablar con 10 o más personas que se mudaron en los últimos seis meses. Preguntar solo por hechos pasados: cuándo pensaron en mudarse por primera vez, qué buscaron y dónde, qué alternativas descartaron, qué las decidió y qué temían. Nada de «¿usarías…?». Las preguntas están en la [guía de entrevistas](guia-entrevistas.md).
 2. **Confirmar o descartar las dimensiones emocional y social** de la sección 3 con esas entrevistas, usando las palabras exactas de las personas.
 3. **Medir la pequeña contratación:** aperturas de alertas y clics a avisos, aparte de las altas y los pagos.
-4. **Revisar las funciones que no se conectan con el trabajo.** La mayoría sí se conecta. Algunas no tanto, como la capa «Rampas» (registro de obras 2011–2016, no inventario), las capas de Recreación o el radar editorial. Para cada una, nombrar el subtrabajo que sirve o considerar quitarla.
-5. **Elegir un trabajo para el capstone.** Si es el de quien busca vivienda, actualizar [alcance.md](alcance.md) y adaptar el [protocolo de validación](validacion-inmobiliaria.md), que hoy está pensado para una inmobiliaria.
+4. **Probar que alguien paga antes de construir más.** La suposición más riesgosa es que quien busca pague por el seguimiento aunque la alerta de Zonaprop sea gratis. El [experimento concierge](experimento-concierge.md) la prueba sin código.
+5. **Revisar las funciones que no se conectan con el trabajo.** La mayoría sí se conecta. Algunas no tanto, como la capa «Rampas» (registro de obras 2011–2016, no inventario), las capas de Recreación o el radar editorial. Para cada una, nombrar el subtrabajo que sirve o considerar quitarla.
+6. **Elegir un trabajo para el capstone.** Si es el de quien busca vivienda, actualizar [alcance.md](alcance.md) y adaptar el [protocolo de validación](validacion-inmobiliaria.md), que hoy está pensado para una inmobiliaria.

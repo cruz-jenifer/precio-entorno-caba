@@ -18,6 +18,7 @@
     <div class="barra-fila">
       <a class="marca" href="./">Lüga</a>
       <div class="barra-extremo">
+        <button class="boton-texto" id="abrir-precios" type="button">Precios</button>
         <button class="boton-texto" id="abrir-alertas" type="button">Mis alertas</button>
         <div class="segmentado segmentado-chico" role="radiogroup" aria-label="Datos de trabajo">
           <button type="button" role="radio" data-modo="demo" aria-checked="true">Ejemplo</button>
@@ -139,6 +140,14 @@
       <button class="boton-texto" type="button" data-cerrar>Cerrar</button>
     </div>
     <div id="alertas-contenido"></div>
+  </dialog>
+
+  <dialog class="dialogo dialogo-precios" id="dialogo-precios" aria-labelledby="titulo-precios">
+    <div class="dialogo-cabeza">
+      <h2 id="titulo-precios">Precios</h2>
+      <button class="boton-texto" type="button" data-cerrar>Cerrar</button>
+    </div>
+    <div id="precios-contenido"></div>
   </dialog>
 
   <dialog class="dialogo" id="dialogo-fuentes" aria-labelledby="titulo-fuentes">

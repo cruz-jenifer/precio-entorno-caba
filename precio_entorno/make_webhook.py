@@ -52,7 +52,11 @@ def subscription(search_id, operation, search, email, now):
     description = describe_search({'neighborhood': search['barrio'], 'budget': search['presupuesto'],
                                    'currency': search['moneda'], 'min_area': search['superficie'],
                                    'rooms': search['ambientes'], 'or_more': criteria['ambientesOMas']})
-    return {'tipo': 'alta', 'fecha': now, 'busqueda': criteria, 'descripcion': description, 'email': email}
+    body = {'tipo': 'alta', 'fecha': now, 'busqueda': criteria, 'descripcion': description, 'email': email}
+    # Nivel pago elegido en «Precios» (primera tanda). Solo se agrega si existe, así las altas sin él no cambian.
+    if search.get('interes'):
+        body['interes'] = search['interes']
+    return body
 
 
 def money(value, currency):

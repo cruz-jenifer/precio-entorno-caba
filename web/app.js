@@ -247,6 +247,7 @@ const estado = {
   avisos: [],
   cercaniaInfo: null,
   pestana: 'entorno',
+  eligiendoAlerta: false, // tras «Activar una alerta», el próximo barrio elegido abre su pestaña de alerta
   capas: new Set(),
   capasDatos: {},
   delitosDatos: null,
@@ -334,12 +335,38 @@ function renderLista() {
   const sin = estado.barrios.filter((b) => !b.coincidencias);
   const total = estado.barrios.reduce((s, b) => s + b.avisos, 0);
   const encajan = con.reduce((s, b) => s + b.coincidencias, 0);
-  const titulo = con.length
-    ? `${con.length} ${plural(con.length, 'barrio tiene', 'barrios tienen')} avisos para vos`
-    : 'Ningún aviso encaja con estos filtros';
-  const nota = con.length
-    ? `${numero.format(encajan)} de ${numero.format(total)} avisos en ${estado.moneda} encajan con tu búsqueda. Precios publicados, no tasaciones. Elegí un barrio para ver su entorno en el mapa.`
-    : 'Probá subir el presupuesto, bajar la superficie mínima o cambiar los ambientes. Igual podés elegir un barrio para ver su entorno.';
+  // Portada con SB7: quien busca es el protagonista y Lüga lo guía. Las cifras salen de los datos cargados.
+  const acciones = `<div class="acciones-portada">
+      <button class="boton-primario" type="button" id="activar-alerta">Activar una alerta</button>
+      <button class="boton-texto" type="button" data-fuentes>Ver de dónde salen los datos</button>
+    </div>`;
+  const guia = estado.modo === 'demo'
+    ? 'Sabemos lo que es saltar entre pestañas de portales. Por eso juntamos avisos y datos abiertos de la Ciudad, cada uno con su fuente y su período. En esta demo, los avisos son de ejemplo.'
+    : `Sabemos lo que es saltar entre pestañas de portales. Por eso cruzamos ${numero.format(total)} avisos vigentes con los datos abiertos de la Ciudad, cada uno con su fuente y su período.`;
+  const portada = con.length
+    ? `<header class="portada">
+      <h1 class="titulo-lista">Encontrá el barrio donde te alcanza</h1>
+      <p class="portada-sub">Elegir un barrio que conocés solo de nombre da vértigo. Te mostramos qué hay alrededor
+        —subte, plazas, ruido y delitos registrados— ${con.length === 1 ? 'en el barrio' : `en los ${con.length} barrios`}
+        donde hay avisos para tu presupuesto.</p>
+      <p class="portada-guia">${guia}</p>
+      <ol class="plan" aria-label="Cómo funciona">
+        <li>Decí cuánto tenés</li><li>Compará barrios en el mapa</li><li>Activá una alerta</li>
+      </ol>
+      ${acciones}
+      <p class="portada-pie">${numero.format(encajan)} de ${numero.format(total)} avisos en ${estado.moneda} encajan con tu búsqueda.
+        Precios publicados, no tasaciones. Sin una alerta, los avisos que te servían pueden irse antes de que los veas.</p>
+    </header>`
+    : `<header class="portada">
+      <h1 class="titulo-lista">Ningún aviso encaja con estos filtros</h1>
+      <p class="portada-sub">Probá subir el presupuesto, bajar la superficie mínima o cambiar los ambientes.
+        También podés activar una alerta y te avisamos cuando aparezca algo.</p>
+      ${acciones}
+    </header>`;
+  const eligiendo = estado.eligiendoAlerta
+    ? `<p class="eligiendo-alerta" role="status">Elegí el barrio de tu alerta
+        <button class="boton-texto" type="button" id="cancelar-alerta">Cancelar</button></p>`
+    : '';
   const filas = con.map((b) => `
     <li><button class="fila" type="button" data-barrio="${esc(b.barrio)}">
       <span class="fila-nombre">${esc(b.barrio)}</span>
@@ -351,11 +378,11 @@ function renderLista() {
     </button></li>`).join('');
   const compactos = sin.map((b) => `<li><button type="button" data-barrio="${esc(b.barrio)}">${esc(b.barrio)} · ${b.avisos}</button></li>`).join('');
   $('#contenido').innerHTML = `
-    <h1 class="titulo-lista">${titulo}</h1>
-    <p class="nota">${nota}</p>
+    ${portada}
     ${renderRadarLista()}
+    ${eligiendo}
     ${con.length ? `<ul class="barrios">${filas}</ul>` : ''}
-    ${sin.length ? `<details class="sin-coincidencias"${con.length ? '' : ' open'}>
+    ${sin.length ? `<details class="sin-coincidencias"${con.length && !estado.eligiendoAlerta ? '' : ' open'}>
       <summary>${sin.length} ${plural(sin.length, 'barrio', 'barrios')} sin avisos que encajen</summary>
       <ul class="lista-compacta">${compactos}</ul></details>` : ''}`;
 }
@@ -1667,12 +1694,23 @@ async function cargarAvisos() {
   }
 }
 
+// Las alertas son por barrio: desde la lista, el botón pide elegir uno y lleva a su pestaña de alerta.
+function elegirBarrioAlerta() {
+  estado.eligiendoAlerta = true;
+  renderLista();
+  const aviso = $('#contenido .eligiendo-alerta');
+  const quieto = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  aviso?.scrollIntoView({ block: 'start', behavior: quieto ? 'auto' : 'smooth' });
+  ($('#contenido .barrios .fila') || $('#contenido .lista-compacta [data-barrio]'))?.focus({ preventScroll: true });
+}
+
 async function seleccionar(nombre) {
   if (estado.seleccionado && mapa.getSource('barrios')) {
     mapa.setFeatureState({ source: 'barrios', id: estado.seleccionado }, { sel: false });
   }
   estado.seleccionado = nombre;
-  estado.pestana = 'entorno';
+  estado.pestana = nombre && estado.eligiendoAlerta ? 'alerta' : 'entorno';
+  estado.eligiendoAlerta = false;
   estado.verTodos = false;
   estado.avisos = [];
   estado.delitosDatos = null;
@@ -2194,6 +2232,8 @@ function conectarEventos() {
     if (numero) { detalleRadar(numero.dataset.radarBarrio, numero.dataset.radarTipo); return; }
     if (e.target.closest('[data-radar-fuentes]')) { detalleFuentesRadar(); return; }
     if (e.target.closest('[data-radar-sin-barrio]')) { detalleSinBarrio(); return; }
+    if (e.target.closest('#activar-alerta')) { elegirBarrioAlerta(); return; }
+    if (e.target.closest('#cancelar-alerta')) { estado.eligiendoAlerta = false; renderLista(); return; }
     const fila = e.target.closest('[data-barrio]');
     if (fila) { seleccionar(fila.dataset.barrio); return; }
     if (e.target.closest('#volver')) { seleccionar(null); return; }

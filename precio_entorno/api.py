@@ -537,6 +537,13 @@ def create_app(demo_path=None, real_path=None, entorno_dir=None, raw_dir=None, w
                          'enlace': a.get('url') if modo == 'real' else None} for a in store.alerts()],
         }
 
+    @app.delete('/api/busquedas/{busqueda_id}')
+    def delete_search(busqueda_id: int, modo: Mode = 'demo', operacion: Operation = 'venta'):
+        # El alta por correo vive en Make: se da de baja con el enlace de cada correo, no desde acá.
+        if not store_for(modo, operacion).delete_search(busqueda_id):
+            raise HTTPException(404, 'Esa alerta ya no existe. Puede que la hayas quitado en otra pestaña.')
+        return {'quitada': True}
+
     def subscriptions_webhook():
         if subscriptions_url is not ...:
             return subscriptions_url

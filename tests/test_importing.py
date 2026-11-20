@@ -17,6 +17,16 @@ class ImportTests(unittest.TestCase):
         self.path = Path(temp.name) / 'real.sqlite3'
         self.store = Store(self.path)
 
+    def test_removing_a_search_also_removes_its_alerts(self):
+        self.store.save_search('Caballito', 110000, 40, 2)
+        fixture = FIXTURES / 'avisos_prueba.csv'
+        import_listings(self.store, fixture.read_bytes(), fixture.name, 'Catálogo de prueba')
+        search_id = self.store.searches()[0]['id']
+        self.assertTrue(self.store.alerts())
+        self.assertTrue(self.store.delete_search(search_id))
+        self.assertEqual((self.store.searches(), self.store.alerts()), ([], []))
+        self.assertFalse(self.store.delete_search(search_id))
+
     def test_csv_validates_and_alerts_only_once(self):
         self.store.save_search('Caballito', 110000, 40, 2)
         fixture = FIXTURES / 'avisos_prueba.csv'

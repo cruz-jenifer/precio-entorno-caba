@@ -18,6 +18,8 @@ La [guía del flujo de trabajo](docs/flujo-de-trabajo.md) conecta la operación 
 
 El [trabajo por hacer (JTBD)](docs/jtbd.md) describe el progreso que busca quien se muda dentro de CABA, con sus dimensiones funcional, emocional y social, las alternativas que compiten por ese trabajo y qué falta validar. La [guía de entrevistas](docs/guia-entrevistas.md) tiene 12 preguntas sobre hechos pasados para confirmarlo. El [plan de design sprint](docs/sprint-confianza.md) prueba si la gente confía en la comparación con avisos parecidos que llega en la alerta.
 
+El [plan de crecimiento](docs/plan-de-crecimiento.md) reúne la estrategia, los precios publicados, los costos y el plan semana a semana para la web, el negocio y las formas de cobrar.
+
 ## Ejecutar en Windows
 
 Desde la carpeta `precio-entorno-caba`, en PowerShell:

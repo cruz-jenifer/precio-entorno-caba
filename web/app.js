@@ -2460,6 +2460,14 @@ function conectarEventos() {
   $('#leyenda').addEventListener('click', (e) => { if (e.target.closest('[data-fuentes]')) abrirFuentes(); });
 
   $('#abrir-alertas').addEventListener('click', abrirAlertas);
+  $('#dialogo-alertas').addEventListener('click', (e) => {
+    const quitar = e.target.closest('[data-quitar-busqueda]');
+    if (quitar) quitarBusqueda(quitar);
+    const deshacer = e.target.closest('[data-deshacer-quitar]');
+    if (deshacer) deshacerQuitar(deshacer.dataset.deshacerQuitar);
+  });
+  $('#dialogo-alertas').addEventListener('close', () => { [...quitando.keys()].forEach((id) => confirmarQuitar(id)); });
+  window.addEventListener('pagehide', () => { [...quitando.keys()].forEach((id) => confirmarQuitar(id, true)); });
   document.querySelectorAll('[data-cerrar]').forEach((b) => b.addEventListener('click', () => b.closest('dialog').close()));
   $('#panel-asa').addEventListener('click', () => plegarPanel(!$('#panel').classList.contains('expandido')));
 }
@@ -2548,6 +2556,61 @@ async function crearAlerta(boton) {
   }
 }
 
+// Quitar una alerta: la fila ofrece «Deshacer» unos segundos y recién entonces se borra en el servidor. No hace
+// falta una confirmación «¿Estás seguro?», y el esquema de la base no cambia. Al cerrar el diálogo o la página,
+// lo pendiente se confirma.
+const QUITAR_MS = 8000;
+const quitando = new Map(); // id → { timer, modo, operacion }
+
+function filasDeBusqueda(id) {
+  return document.querySelectorAll(`#alertas-contenido tr[data-busqueda="${CSS.escape(id)}"]`);
+}
+
+function quitarBusqueda(boton) {
+  const id = boton.dataset.quitarBusqueda;
+  if (quitando.has(id)) return;
+  const fila = boton.closest('tr');
+  filasDeBusqueda(id).forEach((tr) => { tr.hidden = true; });
+  fila.insertAdjacentHTML('afterend', `<tr class="fila-quitada" data-quitada="${esc(id)}"><td colspan="5">
+    Quitaste la alerta de ${esc(boton.dataset.nombre)}.
+    <button class="boton-texto" type="button" data-deshacer-quitar="${esc(id)}">Deshacer</button></td></tr>`);
+  document.querySelector(`[data-deshacer-quitar="${CSS.escape(id)}"]`).focus();
+  quitando.set(id, { modo: estado.modo, operacion: estado.operacion, timer: setTimeout(() => confirmarQuitar(id), QUITAR_MS) });
+}
+
+function deshacerQuitar(id) {
+  const pendiente = quitando.get(id);
+  if (!pendiente) return;
+  clearTimeout(pendiente.timer);
+  quitando.delete(id);
+  filasDeBusqueda(id).forEach((tr) => { tr.hidden = false; });
+  document.querySelector(`[data-quitada="${CSS.escape(id)}"]`)?.remove();
+  document.querySelector(`[data-quitar-busqueda="${CSS.escape(id)}"]`)?.focus();
+}
+
+async function confirmarQuitar(id, alSalir = false) {
+  const pendiente = quitando.get(id);
+  if (!pendiente) return;
+  clearTimeout(pendiente.timer);
+  quitando.delete(id);
+  const ruta = `/api/busquedas/${encodeURIComponent(id)}?${new URLSearchParams({ modo: pendiente.modo, operacion: pendiente.operacion })}`;
+  if (alSalir) { fetch(ruta, { method: 'DELETE', keepalive: true }); return; }
+  const respuesta = await fetch(ruta, { method: 'DELETE' }).catch(() => null);
+  const aviso = document.querySelector(`[data-quitada="${CSS.escape(id)}"] td`);
+  if (respuesta?.ok || respuesta?.status === 404) { // 404: ya la habían quitado, por ejemplo en otra pestaña
+    filasDeBusqueda(id).forEach((tr) => tr.remove());
+    if (aviso) aviso.textContent = 'Alerta quitada.';
+    return;
+  }
+  // No se pudo: la alerta vuelve a su lugar, con su botón «Quitar» para intentar otra vez.
+  filasDeBusqueda(id).forEach((tr) => { tr.hidden = false; });
+  if (aviso) {
+    aviso.parentElement.classList.add('fila-error');
+    aviso.textContent = respuesta ? 'No se pudo quitar la alerta: Lüga tuvo un problema de su lado. Probá de nuevo en un momento.'
+      : 'No se pudo quitar la alerta: no hay conexión con Lüga. Revisá tu conexión y probá de nuevo.';
+  }
+}
+
 async function abrirAlertas() {
   const dialogo = $('#dialogo-alertas');
   const contenido = $('#alertas-contenido');
@@ -2562,12 +2625,15 @@ async function abrirAlertas() {
     }
     contenido.innerHTML = `<p class="nota">${contexto}</p>
       <h3>Alertas creadas</h3>
-      <table class="tabla"><thead><tr><th>Barrio</th><th>Hasta</th><th>Desde</th><th>Ambientes</th></tr></thead><tbody>
-      ${busquedas.map((b) => `<tr><td>${esc(b.barrio)}</td><td>${dinero(b.presupuesto, b.moneda)}</td>
-        <td>${b.superficie} m²</td><td>${b.ambientes}${b.ambientes_o_mas ? ' o más' : ''}</td></tr>`).join('')}</tbody></table>
+      <table class="tabla"><thead><tr><th>Barrio</th><th>Hasta</th><th>Desde</th><th>Ambientes</th><th><span hidden>Quitar</span></th></tr></thead><tbody>
+      ${busquedas.map((b) => `<tr data-busqueda="${b.id}"><td>${esc(b.barrio)}</td><td>${dinero(b.presupuesto, b.moneda)}</td>
+        <td>${b.superficie} m²</td><td>${b.ambientes}${b.ambientes_o_mas ? ' o más' : ''}</td>
+        <td><button class="boton-texto" type="button" data-quitar-busqueda="${b.id}" data-nombre="${esc(b.barrio)}"
+          aria-label="Quitar la alerta de ${esc(b.barrio)}">Quitar</button></td></tr>`).join('')}</tbody></table>
+      ${estado.modo === 'real' ? '<p class="fuente">Quitar una alerta no da de baja los correos: para eso está el enlace que trae cada correo.</p>' : ''}
       <h3>Avisos nuevos que encajan</h3>
       ${alertas.length ? `<table class="tabla"><thead><tr><th>Barrio</th><th>Precio publicado</th><th>Cubierta</th><th>Amb.</th><th></th></tr></thead><tbody>
-      ${alertas.map((a) => `<tr><td>${esc(a.barrio)}</td><td>${dinero(a.precio, a.moneda)}</td><td>${a.superficie} m²</td>
+      ${alertas.map((a) => `<tr data-busqueda="${a.busqueda}"><td>${esc(a.barrio)}</td><td>${dinero(a.precio, a.moneda)}</td><td>${a.superficie} m²</td>
         <td>${a.ambientes}</td><td>${{ baja: 'Ya no está publicado', reservado: 'Reservado' }[a.estado]
           ?? (a.enlace ? `<a href="${esc(a.enlace)}" target="_blank" rel="noopener">Ver aviso</a>` : 'Ejemplo')}</td></tr>`).join('')}
       </tbody></table>` : '<p class="nota">Todavía no entró ningún aviso nuevo que encaje. Los avisos que ya estaban cuando creaste la alerta no cuentan.</p>'}`;

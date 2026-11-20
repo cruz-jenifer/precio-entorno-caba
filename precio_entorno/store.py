@@ -257,6 +257,12 @@ class Store:
                 VALUES (?, ?, ?, ?, ?, ?)
             """, (neighborhood, budget, min_area, rooms, currency, int(or_more))).rowcount)
 
+    def delete_search(self, search_id):
+        """Quita una búsqueda guardada y los avisos que le habían llegado. Devuelve si existía."""
+        with closing(self.connect()) as db, db:
+            db.execute("DELETE FROM alerts WHERE search_id = ?", (search_id,))
+            return bool(db.execute("DELETE FROM searches WHERE id = ?", (search_id,)).rowcount)
+
     def listings(self, include_inactive=False):
         """Avisos vigentes (`activo` o `no_visto`). Con `include_inactive`, también los reservados y dados de baja."""
         where = '' if include_inactive else f"WHERE l.status IN ({','.join('?' * len(VIGENTES))})"

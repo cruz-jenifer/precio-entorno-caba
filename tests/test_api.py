@@ -85,6 +85,16 @@ class ApiTests(unittest.TestCase):
         self.assertGreater(sum(r['coincidencias'] for r in rows), 0)
         self.assertEqual(self.client.get('/api/barrios', params={'moneda': 'ARS'}).status_code, 422)
 
+    def test_search_can_be_removed_once(self):
+        body = {'barrio': 'Flores', 'presupuesto': 95_000, 'superficie': 35, 'ambientes': 2}
+        self.assertTrue(self.client.post('/api/busquedas', json=body).json()['creada'])
+        flores = next(s for s in self.get('/api/busquedas')['busquedas'] if s['barrio'] == 'Flores')
+        self.assertEqual(self.client.delete(f"/api/busquedas/{flores['id']}").json(), {'quitada': True})
+        self.assertNotIn('Flores', [s['barrio'] for s in self.get('/api/busquedas')['busquedas']])
+        again = self.client.delete(f"/api/busquedas/{flores['id']}")
+        self.assertEqual(again.status_code, 404)
+        self.assertIn('ya no existe', again.json()['detail'])
+
     def test_search_is_saved_once_and_validated(self):
         body = {'barrio': 'Villa Crespo', 'presupuesto': 120_000, 'superficie': 40, 'ambientes': 2}
         self.assertTrue(self.client.post('/api/busquedas', json=body).json()['creada'])

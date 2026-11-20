@@ -10,6 +10,8 @@
   <link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,100..900&display=swap" rel="stylesheet">
   <link href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet">
   <link href="styles.css" rel="stylesheet">
+  <!-- app.js pinta la lista primero; MapLibre se pide después (cargarMapLibre) para no competir por la red. -->
+  <script src="app.js" defer></script>
 </head>
 <body>
   <header class="barra">
@@ -80,6 +82,16 @@
       <button class="boton-filtro" id="abrir-preferencias-texto" type="button" hidden>Describí tu búsqueda</button>
     </form>
   </header>
+  <script>
+    // Fija la altura real de la barra antes del primer pintado, para que la hoja no salte cuando llega app.js.
+    // Es el mismo cálculo que seguirAltoBarra() en app.js, que después la sigue actualizando.
+    (function () {
+      var barra = document.querySelector('.barra');
+      var filas = [].slice.call(barra.querySelectorAll('.marca, .barra-extremo, .filtros')).map(function (n) { return n.getBoundingClientRect().bottom; });
+      var alto = Math.max.apply(null, [0].concat(filas)) - barra.getBoundingClientRect().top;
+      if (alto > 0) document.documentElement.style.setProperty('--barra-real', Math.round(alto) + 'px');
+    })();
+  </script>
 
   <p class="franja-demo" id="franja-demo">Datos de ejemplo. Los avisos y los delitos son ficticios. El mapa y el entorno son datos abiertos reales.</p>
 
@@ -149,7 +161,5 @@
     <div id="radar-contenido"></div>
   </dialog>
 
-  <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
-  <script src="app.js"></script>
 </body>
 </html>

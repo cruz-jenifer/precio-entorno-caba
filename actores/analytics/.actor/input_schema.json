@@ -1,20 +1,24 @@
 {
-  "title": "ETL o EDA del flujo Analytics",
+  "title": "ETL, EDA o inferencia del flujo Analytics",
   "type": "object",
   "schemaVersion": 1,
   "properties": {
     "operacion": {
       "title": "Operación",
       "type": "string",
-      "description": "etl: avisos crudos → CSV limpio. eda: CSV limpio → tablas del dashboard.",
+      "description": "etl: avisos crudos → CSV limpio. eda: CSV limpio → tablas del dashboard. inferencia: CSV limpio → referencia de publicación por aviso con el modelo ya entrenado.",
       "editor": "select",
-      "enum": ["etl", "eda"],
+      "enum": [
+        "etl",
+        "eda",
+        "inferencia"
+      ],
       "default": "etl"
     },
     "contenidoBase64": {
       "title": "Archivo en base64",
       "type": "string",
-      "description": "etl: avisos crudos (JSON o CSV). eda: el CSV limpio. Make lo arma con base64(toString(data)).",
+      "description": "etl: avisos crudos (JSON o CSV). eda e inferencia: el CSV limpio. Make lo arma con base64(toString(data)).",
       "editor": "textarea"
     },
     "contenidoUrl": {
@@ -35,7 +39,19 @@
       "type": "string",
       "description": "Solo para etl. Vacío: delitos_2025.csv de Buenos Aires Data.",
       "editor": "textfield"
+    },
+    "almacenModelo": {
+      "title": "Almacén del modelo",
+      "type": "string",
+      "description": "Solo para inferencia: ID (o nombre) del almacén con modelo.joblib y evaluacion. Con permisos limitados, el Actor solo puede leer el almacén que se le pasa acá. Lo crea `python -m precio_entorno.apify_analytics subir-modelo`.",
+      "editor": "textfield",
+      "resourceType": "keyValueStore",
+      "resourcePermissions": [
+        "READ"
+      ]
     }
   },
-  "required": ["operacion"]
+  "required": [
+    "operacion"
+  ]
 }

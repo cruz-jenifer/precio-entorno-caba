@@ -1,4 +1,8 @@
-"""Ajuste agrupado y predicción reproducible de precios publicados de venta en USD."""
+"""Entrenamiento agrupado y persistencia del modelo de precios publicados de venta en USD.
+
+Este script entrena y guarda el artefacto; nunca entra en el Actor de Apify. La carga y la
+predicción viven en `precio_entorno/analytics/inference.py`, que es lo único que usa el Actor.
+"""
 
 import argparse
 import hashlib
@@ -9,7 +13,6 @@ from pathlib import Path
 
 import joblib
 import numpy as np
-import pandas as pd
 import sklearn
 from sklearn.base import clone
 from sklearn.compose import ColumnTransformer
@@ -18,43 +21,13 @@ from sklearn.model_selection import GridSearchCV, GroupKFold
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OrdinalEncoder
 
+from precio_entorno.analytics.inference import load, predict
+from precio_entorno.analytics.preprocessing import inputs, validate
 from precio_entorno.comparar_modelos import DEFAULT_DATASET, feature_sets, load_dataset, metrics
 from precio_entorno.modelo import comparables, group_split
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_OUT = ROOT / 'data/processed/inferencia'
-
-
-def validate(df, target=False):
-    required = ['id', 'neighborhood', 'covered_area', 'rooms']
-    if target:
-        required += ['grupo', 'precio_m2']
-    missing = set(required) - set(df)
-    if missing or df.empty:
-        raise ValueError(f'Entrada vacía o faltan columnas: {sorted(missing)}')
-    if df[['id', 'neighborhood']].isna().any().any():
-        raise ValueError('ID y barrio son obligatorios.')
-    for c in ['covered_area', 'rooms'] + (['precio_m2'] if target else []):
-        x = pd.to_numeric(df[c], errors='coerce')
-        if not (np.isfinite(x) & (x > 0)).all():
-            raise ValueError(f'{c} debe ser numérico, finito y positivo.')
-    if target and df['grupo'].isna().any():
-        raise ValueError('Todos los avisos deben tener grupo.')
-    if 'currency' in df and not df['currency'].eq('USD').all():
-        raise ValueError('El modelo admite únicamente venta en USD.')
-    if 'operation' in df and not df['operation'].eq('venta').all():
-        raise ValueError('El modelo admite únicamente venta.')
-
-
-def inputs(df, numeric, categorical):
-    out = df.reindex(columns=numeric + categorical).copy()
-    for c in numeric:
-        out[c] = pd.to_numeric(out[c], errors='coerce')
-        if np.isinf(out[c]).any():
-            raise ValueError(f'{c} contiene infinitos.')
-    for c in categorical:
-        out[c] = out[c].fillna('sin_dato').astype(str)
-    return out
 
 
 def train(df, seed=42, folds=5):
@@ -125,20 +98,6 @@ def train(df, seed=42, folds=5):
     return bundle, report, errors
 
 
-def predict(bundle, df):
-    validate(df)
-    x = inputs(df, bundle['numeric'], bundle['categorical'])
-    pred = bundle['model'].predict(x)
-    out = df[['id', 'neighborhood']].copy()
-    out['referencia_publicacion_usd_m2'] = pred
-    out['referencia_publicacion_usd'] = pred * pd.to_numeric(df['covered_area'])
-    out['barrio_no_visto'] = ~df['neighborhood'].isin(bundle['barrios'])
-    out['variables_numericas_faltantes'] = x[bundle['numeric']].isna().sum(axis=1)
-    out['modelo_version'] = bundle.get('version', 'sin_version')
-    out['fecha_prediccion_utc'] = datetime.now(timezone.utc).isoformat()
-    return out
-
-
 def save(bundle, report, errors, out):
     out.mkdir(parents=True, exist_ok=True)
     version = hashlib.sha256(json.dumps(report, sort_keys=True).encode()).hexdigest()[:16]
@@ -147,16 +106,6 @@ def save(bundle, report, errors, out):
     report['artefacto_sha256'] = hashlib.sha256((out / 'modelo.joblib').read_bytes()).hexdigest()
     (out / 'evaluacion.json').write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding='utf-8')
     errors.to_csv(out / 'errores_prueba.csv', index=False)
-
-
-def load(out):
-    """Carga únicamente artefactos locales propios, nunca pickle subido por usuarios."""
-    report = json.loads((out / 'evaluacion.json').read_text(encoding='utf-8'))
-    if hashlib.sha256((out / 'modelo.joblib').read_bytes()).hexdigest() != report['artefacto_sha256']:
-        raise ValueError('La huella del modelo no coincide con la evaluación.')
-    if report['sklearn'] != sklearn.__version__:
-        raise ValueError('La versión de scikit-learn cambió; regenerá el modelo.')
-    return joblib.load(out / 'modelo.joblib')
 
 
 def main():

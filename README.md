@@ -360,9 +360,56 @@ La tarea corre solo con la sesión de Windows iniciada. Si una inmobiliaria reti
 
 Make baja de Google Drive los avisos crudos y se los pasa al Actor `precio-entorno-analytics` de Apify, que hace el ETL. Guarda en Drive el CSV limpio y se lo pasa al mismo Actor para el EDA. Después carga las seis tablas en una planilla de Google, de donde lee el dashboard de Looker Studio. El recorrido, los costos, cómo correrlo en la demo y la guía del dashboard están en [docs/pipeline-analytics.md](docs/pipeline-analytics.md).
 
+### Escenario de Make
+
+![Escenario «Pipeline Analytics» en el editor de Make, con sus 9 módulos](docs/img/make/escenario-pipeline-analytics.png)
+
+| # | Módulo | Qué hace |
+| --- | --- | --- |
+| 1 | Google Drive · Download a file | Baja los avisos crudos de `01_crudo` |
+| 2 | HTTP · Apify `run-sync` | Actor con `operacion: etl`: devuelve el CSV limpio |
+| 3 | Google Drive · Upload a file | Guarda el CSV limpio en `02_limpio` |
+| 4 | Google Drive · Download a file | Relee ese CSV, para que el EDA y la inferencia usen lo que quedó en Drive |
+| 5 | HTTP · Apify `run-sync` | Actor con `operacion: eda`: devuelve las tablas del dashboard |
+| 6 | Google Sheets · Make an API call | `values:batchClear` de las pestañas |
+| 7 | Google Sheets · Make an API call | `values:batchUpdate` de las seis tablas del EDA |
+| 8 | HTTP · Apify `run-sync` | Actor con `operacion: inferencia`: referencia de publicación de cada aviso con el modelo ya entrenado |
+| 9 | Google Sheets · Make an API call | `values:batchUpdate` de la pestaña `predicciones` |
+
+Corrida del 20/11/2026 desde el editor: 9 operaciones en 1 minuto, con éxito. La pestaña `predicciones` quedó con 3.806 referencias, primero las que están más por debajo de su referencia. El dashboard de Looker Studio las muestra en la página «Referencias del modelo», con filtros de lectura y barrio.
+
+![Página del escenario con la corrida del 20/11/2026: Success, 9 operaciones](docs/img/make/escenario-pipeline-analytics-corrida.png)
+
+El escenario se crea o actualiza con `python -m precio_entorno.make_pipeline crear`.
+
+### Código fuente del Actor
+
+El Actor es **solo de inferencia**: usa el modelo ya entrenado y nunca entrena ni itera por lotes. El entrenamiento está en [`precio_entorno/inferencia.py`](precio_entorno/inferencia.py), que no entra al Actor.
+
+| Archivo | Qué hace |
+| --- | --- |
+| [`actores/analytics/.actor/`](actores/analytics/.actor/) | `actor.json`, `input_schema.json`, `Dockerfile` y `requirements.txt` del Actor |
+| [`analytics/main.py`](precio_entorno/analytics/main.py) | Solo la entrada y salida de Apify: lee la entrada, abre almacenes, publica en el dataset y deja OUTPUT |
+| [`analytics/ETL.py`](precio_entorno/analytics/ETL.py) | Avisos crudos + Mapa del Delito → CSV limpio sin nulls y reporte de calidad |
+| [`analytics/preprocessing.py`](precio_entorno/analytics/preprocessing.py) | Lectura del CSV limpio y paso a las variables del modelo, sin ajustar nada |
+| [`analytics/EDA.py`](precio_entorno/analytics/EDA.py) | Tablas del dashboard: resumen, barrios, ambientes, fuentes, distribución y correlaciones |
+| [`analytics/inference.py`](precio_entorno/analytics/inference.py) | Carga el modelo (controla SHA-256 y versión de scikit-learn) y estima la referencia de publicación |
+| [`analytics/tooling_business.py`](precio_entorno/analytics/tooling_business.py) | Compara el USD/m² publicado con la referencia, ordena qué revisar primero y arma los cuerpos para Google Sheets |
+
+La entrada `operacion` elige la etapa: `etl`, `eda` o `inferencia`. El modelo vive en el almacén con nombre `precio-entorno-modelo` de Apify, no en Git, y llega al Actor por la entrada `almacenModelo`, con permiso de solo lectura. El Dockerfile copia solo los módulos que el Actor importa, y `tests/test_actor_analytics.py` controla que ninguno sea de entrenamiento.
+
 ```powershell
 python -m precio_entorno.pipeline_analytics etl data/raw/venta-consolidada-20261108/avisos.json
 python -m precio_entorno.pipeline_analytics eda data/processed/pipeline/dataset_limpio.csv
+python -m precio_entorno.pipeline_analytics inferencia data/processed/pipeline/dataset_limpio.csv
+```
+
+Para publicarlo en Apify (cuenta 2), primero el código y después el modelo:
+
+```powershell
+python -m precio_entorno.apify_analytics subir --account 2
+python -m precio_entorno.apify_analytics subir-modelo --account 2
+python -m precio_entorno.apify_analytics probar --account 2
 ```
 
 ## Radar de tendencias barriales

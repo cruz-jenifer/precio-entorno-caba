@@ -14,10 +14,10 @@ Como análisis complementario se realizó el [ANOVA de precios entre barrios](an
 | Configuración, datos y supuestos | Este documento y `reports/evaluacion_inferencia.json`, con SHA-256 de todos los insumos y versión de scikit-learn |
 | Evaluación y baseline | MAE, RMSE, R², proporción dentro de ±20 %, errores por barrio y comparación con mediana de comparables |
 | Métrica de negocio | Minutos netos ahorrados por revisión; protocolo y objetivo de aceptación definidos abajo, todavía sin medición de cliente |
-| Integración automática | `actualizar.py --modelo`, habilitado en `scripts/actualizar.cmd` cuando existe el modelo; CLI de inferencia sobre el CSV limpio del ETL |
+| Integración automática | `actualizar.py --modelo`, habilitado en `scripts/actualizar.cmd` cuando existe el modelo; CLI de inferencia sobre el CSV limpio del ETL; operación `inferencia` del Actor de Apify, sin entrenamiento (`precio_entorno/analytics/`) |
 | Dashboard y costos | Sección de referencias en Streamlit, exportación CSV y presupuesto por escenario |
 
-La interfaz web de búsqueda y el informe remoto de Looker Studio mantienen sus vistas actuales. Se generó un cuerpo de actualización de Sheets para una futura pestaña `predicciones`; no se publicó ese cambio en Make, Apify, Sheets ni Looker Studio. La integración probada es local. No se ejecutaron nuevas capturas ni servicios pagos.
+La interfaz web de búsqueda y el informe remoto de Looker Studio mantienen sus vistas actuales. Al 18/11 la integración era solo local. El 20/11 se sumó la operación `inferencia` al Actor `precio-entorno-analytics`: lee el modelo de un almacén de Apify y no entrena. Quedó subida a Apify y conectada a Make: el escenario «Pipeline Analytics» la corre después del EDA y escribe la pestaña `predicciones` de la planilla del dashboard ([pipeline-analytics.md](pipeline-analytics.md)). Looker Studio la muestra en la página «Referencias del modelo». No se ejecutaron nuevas capturas de avisos.
 
 ## Datos, configuración y supuestos
 
@@ -72,6 +72,7 @@ Desde la raíz del proyecto, usando el Python con `requirements.txt` instalado:
 $env:OMP_NUM_THREADS='2'
 python -m precio_entorno.inferencia entrenar --edificio data/raw/zonaprop-venta-20261108-edificio/avisos.json data/raw/inmobiliarias-20261109-edificio/avisos.json data/raw/zonaprop-venta-20261108-descripcion-completa/avisos.json data/raw/rasgos-inmobiliarias-20261115/avisos.json
 python -m precio_entorno.pipeline_analytics inferencia data/processed/pipeline/dataset_limpio.csv
+python -m precio_entorno.apify_analytics subir-modelo --account 2
 python -m streamlit run app.py
 python -m unittest discover -s tests -v
 ```

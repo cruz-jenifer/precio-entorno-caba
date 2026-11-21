@@ -12,7 +12,7 @@ Como análisis complementario se realizó el [ANOVA de precios entre barrios](an
 | --- | --- |
 | Elegir estrategia y entrenar | `precio_entorno/inferencia.py`: búsqueda de 3 configuraciones, 5 pliegues agrupados dentro de entrenamiento |
 | Configuración, datos y supuestos | Este documento y `reports/evaluacion_inferencia.json`, con SHA-256 de todos los insumos y versión de scikit-learn |
-| Evaluación y baseline | MAE, RMSE, R², proporción dentro de ±20 %, errores por barrio y comparación con mediana de comparables |
+| Evaluación y baseline | MAE, RMSE, R², proporción dentro de ±20 %, errores por barrio y comparación con mediana de comparables. Validación temporal con avisos del 13 al 20/11 |
 | Métrica de negocio | Minutos netos ahorrados por revisión; protocolo y objetivo de aceptación definidos abajo, todavía sin medición de cliente |
 | Integración automática | `actualizar.py --modelo`, habilitado en `scripts/actualizar.cmd` cuando existe el modelo; CLI de inferencia sobre el CSV limpio del ETL; operación `inferencia` del Actor de Apify, sin entrenamiento (`precio_entorno/analytics/`) |
 | Dashboard y costos | Sección de referencias en Streamlit, exportación CSV y presupuesto por escenario |
@@ -54,7 +54,33 @@ La brecha entre MAE de entrenamiento y prueba es 205,5 USD/m²: hay sobreajuste 
 
 **Disponibilidad de variables en operación.** Repitiendo la prueba con solo superficie, ambientes, coordenadas, barrio e inmobiliaria disponibles en el importador, el MAE sube a **616,0 USD/m²**, RMSE 1.004,6 y R² 0,423. La ventaja sobre el baseline queda en apenas 1,8 %. No se debe atribuir el MAE de 442,7 a nuevos avisos sin enriquecimiento. El dashboard informa esta diferencia y la cantidad de variables ausentes. Para sostener la mejora completa hace falta enriquecer los avisos nuevos con el mismo contrato y evaluar nuevamente.
 
-La prueba histórica fue usada en comparaciones previas del proyecto, por lo que no es una prueba final independiente. Esta CV también es una estimación de selección de hiperparámetros, sin CV anidada. No se demostró generalización temporal, a alquileres, otras monedas, otras ciudades o fuentes nuevas. La próxima evaluación debe congelar modelo y reglas y utilizar una captura posterior, con rasgos disponibles a su fecha y grupos de inmuebles separados. No se estimaron intervalos de predicción; el MAE no sirve como intervalo individual ni como descuento recomendado.
+La prueba histórica fue usada en comparaciones previas del proyecto, por lo que no es una prueba final independiente. Esta CV también es una estimación de selección de hiperparámetros, sin CV anidada. No se demostró generalización a alquileres, otras monedas u otras ciudades. La generalización temporal se evaluó después, el 20/11, con el modelo y las reglas congelados y una captura posterior (ver la sección siguiente). No se estimaron intervalos de predicción; el MAE no sirve como intervalo individual ni como descuento recomendado.
+
+## Validación temporal · 20/11/2026
+
+Se evaluó el modelo guardado (`1d4013afcf906e8c`, entrenado con avisos del 7 al 9/11) con avisos publicados después, del 13 al 20/11. No se reentrenó ni se ajustó nada. Se quitaron los avisos que ya estaban en el entrenamiento: 147 con el mismo ID y 139 que probablemente son el mismo inmueble publicado por otra fuente, según la misma regla de duplicados del modelo. Las variables se calcularon con el mismo pipeline del entrenamiento: pines aproximados y las mismas capas de puntos de interés. La línea de base es la mediana de comparables calculada solo con los datos de entrenamiento.
+
+| Segmento | Avisos | MAE modelo | MAE línea de base | Mejora | IC 95 % de la mejora | Dentro de ±20 % (modelo / base) |
+| --- | ---: | ---: | ---: | ---: | --- | --- |
+| Inmobiliarias autorizadas, 13 a 17/11, 40 barrios | 411 | 558,5 | 610,4 | 8,5 % | 15,9 a 86,5 USD/m² | 59,9 % / 57,4 % |
+| Zonaprop por Apify, 20/11, Caballito y Almagro, 2 amb., hasta USD 165.000 | 1.352 | 519,7 | 572,1 | 9,2 % | 35,9 a 68,7 USD/m² | 52,0 % / 50,8 % |
+| **Todos** | **1.763** | **528,7** | **581,0** | **9,0 %** | **37,0 a 67,7 USD/m²** | **53,8 % / 52,4 %** |
+
+El intervalo sale de 2.000 remuestreos por aviso de la diferencia de errores absolutos. En los dos segmentos queda por encima de cero.
+
+**Lectura.**
+
+- **El modelo sigue mejor que la línea de base con avisos que nunca vio**, pero la ventaja baja del 29,4 % de la prueba original al 9 %, y el MAE sube de 442,7 a 528,7 USD/m².
+- **Faltan variables.** Una causa probable es que los avisos nuevos traen menos variables que la prueba original: la mediana es de 11 variables numéricas faltantes por aviso. La captura de Zonaprop no trae rasgos de edificio ni de descripción, y solo una parte de los avisos de inmobiliarias informa antigüedad o cocheras. Esta validación no permite separar ese efecto del paso del tiempo.
+- **El modelo subestima.** La mediana del error es −122 USD/m², y el 56,7 % de los avisos queda por debajo de su precio publicado.
+  - En las inmobiliarias no hay suba de precios por barrio: la mediana barrio a barrio cambió −0,8 % en los 20 barrios con 5 avisos nuevos o más.
+  - En el segmento de Zonaprop, la mediana pasó de 2.439 USD/m² en el entrenamiento (107 avisos) a 2.602 (1.352 avisos), con superficies parecidas (41 y 43 m²). Puede deberse a que esa captura trae los avisos más nuevos primero, que suelen pedir más, y a que el entrenamiento tenía pocos avisos de ese segmento.
+- **El R² no es comparable con el de la prueba original:** dentro de un segmento angosto hay poca variación de precios para explicar.
+- **Ese segmento en la prueba original:** había 26 avisos, con MAE 330,4 del modelo y 722,7 de la línea de base. Es una muestra demasiado chica para una conclusión estable.
+
+**Qué cambia.** El error para defender con avisos nuevos es del orden de 530 USD/m², no 443. La lista priorizada sigue siendo mejor que ordenar por la mediana del barrio. Un reentrenamiento con capturas recientes debería corregir la subestimación, pero conviene limitar el peso del segmento de Zonaprop, para no sesgar el modelo hacia Caballito y Almagro, y guardar otra captura posterior como prueba.
+
+Se reproduce con `python -m precio_entorno.validacion_temporal`. El reporte agregado está en [`reports/validacion_temporal.json`](../reports/validacion_temporal.json). Las predicciones por aviso quedan en `data/processed/validacion-temporal/`, fuera de Git.
 
 ## Métrica de negocio y objetivo del cliente
 

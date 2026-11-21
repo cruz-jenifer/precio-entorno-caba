@@ -20,4 +20,6 @@ python -c "import nbformat; from nbclient import NotebookClient; from pathlib im
 python -m unittest discover -s tests -v
 ```
 
+**Validación temporal.** `python -m precio_entorno.validacion_temporal` evalúa el modelo guardado con avisos publicados después del entrenamiento y escribe [`validacion_temporal.json`](validacion_temporal.json). La lectura está en [entrega-inferencia.md](../docs/entrega-inferencia.md#validación-temporal--20112026).
+
 La ejecución ajusta hasta 505 modelos en un hilo y puede tardar varios minutos. En la copia ejecutada quedan las métricas por muestra y subgrupo, parámetros elegidos, tablas de ranking y explicaciones por fold. [Auditoría metodológica](auditoria_metodologica.md)

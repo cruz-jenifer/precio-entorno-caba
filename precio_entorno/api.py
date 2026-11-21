@@ -8,6 +8,7 @@ import json
 import math
 import re
 import secrets
+import threading
 from datetime import datetime, timezone
 from hashlib import sha256
 from pathlib import Path
@@ -15,6 +16,7 @@ from statistics import median
 from typing import Literal
 
 from fastapi import FastAPI, HTTPException, Query, Request, Response
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
@@ -102,10 +104,13 @@ def create_app(demo_path=None, real_path=None, entorno_dir=None, raw_dir=None, w
     `lugares` consulta Google Places para «Dónde comer»; por defecto se configura con GOOGLE_MAPS_API_KEY.
     """
     entorno_dir = Path(entorno_dir or ROOT / 'data/processed/entorno')
+    # El índice de delitos armado se guarda solo con los CSV de siempre; con otra carpeta (las pruebas), no.
+    crime_index_file = ROOT / 'data/local/indice_delitos.pickle' if raw_dir is None else None
     raw_dir = Path(raw_dir or ROOT / 'data/raw')
     web_dir = Path(web_dir or ROOT / 'web')
     radar_dir = Path(radar_dir or radar.RADAR_DIR)
     cache = {}
+    index_lock = threading.Lock()
     layer_cache = {}  # (versión, capa, barrio, variante) → GeoJSON listo para el mapa
     interprete = interprete if interprete is not None else preferencias.Interprete.from_env(ROOT / 'data/local')
     lugares = lugares if lugares is not None else lugares_google.Lugares.from_env(ROOT / 'data/local')
@@ -141,11 +146,20 @@ def create_app(demo_path=None, real_path=None, entorno_dir=None, raw_dir=None, w
             response.headers['Cache-Control'] = 'no-cache'
         return response
 
+    # Comprime en gzip lo que pasa de 1 KB: las capas del mapa son JSON muy repetitivo y bajan de 1,6 MB a ~200 KB.
+    # Se agrega después del middleware de caché para quedar por fuera y comprimir la respuesta final. Nivel 5:
+    # casi el mismo tamaño que el 9 con una fracción del tiempo de CPU.
+    app.add_middleware(GZipMiddleware, minimum_size=1024, compresslevel=5)
+
+    layers_lock = threading.Lock()
+
     def layers():
         marker = entorno_dir / 'resumen.json'
         stamp = marker.stat().st_mtime if marker.exists() else None
         if 'layers' not in cache or cache.get('stamp') != stamp:
-            cache.update(stamp=stamp, layers=entorno.load(entorno_dir) if stamp else None, cercania=None)
+            with layers_lock:  # el precalentado y el primer pedido no las cargan dos veces
+                if 'layers' not in cache or cache.get('stamp') != stamp:
+                    cache.update(stamp=stamp, layers=entorno.load(entorno_dir) if stamp else None, cercania=None)
         return cache['layers']
 
     def proximity_index():
@@ -154,8 +168,38 @@ def create_app(demo_path=None, real_path=None, entorno_dir=None, raw_dir=None, w
             cache['cercania'] = cercania.Cercania(data)
         return cache.get('cercania')
 
+    stores = {}  # (modo, operación, rutas) → Store ya abierto
+
     def store_for(mode, operation):
-        return open_store(mode == 'demo', operation, demo_path or demo_base(), real_path or REAL_BASE)
+        # Abrir la base corre las migraciones y, en la demo, vuelve a cargar el lote ficticio: son escrituras en
+        # disco (unos 100 ms por pedido). Se hace una vez por base; si el archivo desaparece, se vuelve a abrir.
+        paths = (demo_path or demo_base(), real_path or REAL_BASE)
+        key = (mode, operation, *map(str, paths))
+        store = stores.get(key)
+        if store is None or not store.path.exists():
+            store = stores[key] = open_store(mode == 'demo', operation, *paths)
+        return store
+
+    def db_signature(path):
+        """Fecha y tamaño de la base (y de su -wal): cambian con cada escritura, también desde Streamlit o Make."""
+        out = []
+        for file in (path, path.with_name(path.name + '-wal')):
+            try:
+                stat = file.stat()
+                out.append((stat.st_mtime_ns, stat.st_size))
+            except FileNotFoundError:
+                out.append(None)
+        return tuple(out)
+
+    def read(store, method):
+        """Lecturas de la base que se repiten en cada pedido (los 4.000 avisos: ~70 ms; los períodos de delitos:
+        ~35 ms). Se guardan hasta que el archivo cambia. El resultado se comparte: los llamadores no lo modifican."""
+        key = ('lectura', str(store.path), method)
+        signature = db_signature(store.path)
+        hit = cache.get(key)
+        if hit is None or hit[0] != signature:
+            hit = cache[key] = (signature, getattr(store, method)())
+        return hit[1]
 
     def check_barrio(name):
         if name not in OFFICIAL:
@@ -168,7 +212,7 @@ def create_app(demo_path=None, real_path=None, entorno_dir=None, raw_dir=None, w
         return currency
 
     def crime_source(store):
-        crime_file, periods = store.crime_periods()
+        crime_file, periods = read(store, 'crime_periods')
         if not crime_file:
             return None, periods, 'Todavía no se cargó un archivo del Mapa del Delito.'
         path = raw_dir / crime_file['filename']
@@ -191,8 +235,8 @@ def create_app(demo_path=None, real_path=None, entorno_dir=None, raw_dir=None, w
     @app.get('/api/estado')
     def state(modo: Mode = 'demo', operacion: Operation = 'venta'):
         store = store_for(modo, operacion)
-        listings = store.listings()
-        crime_file, periods = store.crime_periods()
+        listings = read(store, 'listings')
+        crime_file, periods = read(store, 'crime_periods')
         return {
             'modo': modo, 'operacion': operacion, 'monedas': CURRENCIES[operacion],
             'interpretar_preferencias': interprete.enabled,
@@ -212,11 +256,15 @@ def create_app(demo_path=None, real_path=None, entorno_dir=None, raw_dir=None, w
                       superficie: int = Query(40, ge=1), ambientes: int = Query(2, ge=1), moneda: str = 'USD',
                       ambientes_o_mas: bool = False):
         check_currency(operacion, moneda)
-        listings = store_for(modo, operacion).listings()
+        listings = read(store_for(modo, operacion), 'listings')
         summary = (layers() or {}).get('resumen', {})
+        by_barrio = {}  # una sola pasada por los avisos, no una por cada uno de los 48 barrios
+        for i in listings:
+            if (i.get('currency') or 'USD') == moneda:
+                by_barrio.setdefault(i['neighborhood'], []).append(i)
         rows = []
         for name in OFFICIAL:
-            own = [i for i in listings if i['neighborhood'] == name and (i.get('currency') or 'USD') == moneda]
+            own = by_barrio.get(name, [])
             found = [i['price'] for i in own if matches(i, presupuesto, superficie, ambientes, moneda, ambientes_o_mas)]
             rows.append({'barrio': name, 'comuna': (summary.get(name) or {}).get('comuna'),
                          'avisos': len(own), 'coincidencias': len(found),
@@ -235,7 +283,7 @@ def create_app(demo_path=None, real_path=None, entorno_dir=None, raw_dir=None, w
         for name in capas:
             if name not in cercania.CAPAS:
                 raise HTTPException(422, f"Sin distancias para la capa {name}. Opciones: {', '.join(cercania.CAPAS)}.")
-        own = [i for i in store_for(modo, operacion).listings() if i['neighborhood'] == barrio]
+        own = [i for i in read(store_for(modo, operacion), 'listings') if i['neighborhood'] == barrio]
         found = [i for i in own if matches(i, presupuesto, superficie, ambientes, moneda, ambientes_o_mas)]
         found.sort(key=lambda i: (i['price'], -i['covered_area']))
         # Referencia: todos los avisos vigentes del barrio en la moneda, no solo los que encajan con el filtro.
@@ -451,7 +499,7 @@ def create_app(demo_path=None, real_path=None, entorno_dir=None, raw_dir=None, w
         store = store_for(modo, operacion)
         listing = None
         if inmueble is not None:
-            listing = next((i for i in store.listings() if i['id'] == inmueble and i['neighborhood'] == barrio), None)
+            listing = next((i for i in read(store, 'listings') if i['id'] == inmueble and i['neighborhood'] == barrio), None)
             if listing is None:
                 raise HTTPException(404, 'El inmueble no pertenece al catálogo y barrio seleccionados.')
         paths = concentracion.source_paths(raw_dir)
@@ -462,9 +510,11 @@ def create_app(demo_path=None, real_path=None, entorno_dir=None, raw_dir=None, w
             paths = (path,)
         signature = tuple((str(p), p.stat().st_mtime_ns, p.stat().st_size) for p in paths)
         try:
-            if cache.get('concentracion_signature') != signature:
-                index = concentracion.CrimeIndex(paths)
-                cache.update(concentracion_signature=signature, concentracion_index=index)
+            # El índice tarda varios segundos en armarse: con el candado, el precalentado y un pedido no lo arman dos veces.
+            with index_lock:
+                if cache.get('concentracion_signature') != signature:
+                    index = concentracion.load_index(paths, crime_index_file)
+                    cache.update(concentracion_signature=signature, concentracion_index=index)
             data = layers()
             if data is None:
                 return {'disponible': False, 'motivo': 'Las capas no se generaron.'}
@@ -582,6 +632,17 @@ def create_app(demo_path=None, real_path=None, entorno_dir=None, raw_dir=None, w
                                     {'enviado': False, 'motivo': 'Make no recibió el alta. Probá de nuevo más tarde.'})
         return result
 
+    def warm_up():
+        """Carga las capas y arma el índice de delitos antes del primer pedido (el índice tarda unos 8 s)."""
+        try:
+            if layers() is not None:
+                proximity_index()
+                crime_concentration(OFFICIAL[0], None, 500, 'todos', 'todas', None, 'real', 'venta')
+        except Exception:  # noqa: BLE001 — precalentar es opcional; el pedido real informa el error
+            pass
+
+    app.state.warm_up = warm_up
+
     if (web_dir / 'index.html').exists():
         @app.get('/', include_in_schema=False)
         @app.get('/index.html', include_in_schema=False)
@@ -609,6 +670,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument('--puerto', type=int, default=8000)
     args = parser.parse_args()
+    threading.Thread(target=app.state.warm_up, name='precalentar', daemon=True).start()
     uvicorn.run(app, host='127.0.0.1', port=args.puerto)
 
 

@@ -5,6 +5,9 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from unittest import mock
+
+from precio_entorno import concentracion
 from precio_entorno.concentracion import CrimeIndex, circle, distance_m
 
 HEADER = ['id-mapa', 'fecha', 'franja', 'tipo', 'barrio', 'latitud', 'longitud', 'cantidad']
@@ -56,6 +59,19 @@ class ConcentracionTests(unittest.TestCase):
         self.assertIsNotNone(result['revision_2025'])
         self.assertFalse(result['persistencia']['disponible'])
         self.assertEqual(len(result['fuentes'][0]['sha256']), 64)
+
+    def test_saved_index_is_reused_until_a_source_changes(self):
+        path = self.file('delitos_2024.csv', [self.event('a', count=2)])
+        saved = self.root / 'local' / 'indice.pickle'
+        first = concentracion.load_index([path], saved)
+        self.assertTrue(saved.exists())
+        with mock.patch.object(concentracion, 'csv_rows', side_effect=AssertionError('no debía releer los CSV')):
+            again = concentracion.load_index([path], saved)
+        self.assertEqual(again.events, first.events)
+        self.file('delitos_2024.csv', [self.event('a', count=2), self.event('b', count=5, kind='Hurto')])
+        self.assertEqual(len(concentracion.load_index([path], saved).events), 2)
+        saved.write_bytes(b'no es un indice')  # un archivo roto se vuelve a armar, no rompe el pedido
+        self.assertEqual(len(concentracion.load_index([path], saved).events), 2)
 
     def persistent_rows(self, year):
         # Cobertura mensual observada por ciudad, sin inferirla de la zona del aviso.

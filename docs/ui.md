@@ -1,5 +1,7 @@
 # Propuesta de interfaz
 
+Para implementar cambios visuales, consultá el [sistema visual vigente de Lüga](../design-system/luga/MASTER.md) y sus variables en `web/styles.css`. Las propuestas y bocetos siguientes conservan el contexto del diseño inicial.
+
 Diseño hecho con la skill `frontend-design`. Se eligió el frontend web propio: la página está en `web/` y la sirve `python -m precio_entorno.api`.
 
 ## Cambios respecto del primer plan

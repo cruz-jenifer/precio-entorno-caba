@@ -11,3 +11,4 @@ data/processed/*
 storage/
 .vercel-build/
 .vercel/
+artifacts/ui-audit/

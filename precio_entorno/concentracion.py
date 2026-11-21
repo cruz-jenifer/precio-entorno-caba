@@ -5,11 +5,15 @@ La persistencia es una regla exploratoria reproducible, no un test estadístico.
 """
 
 import math
+import os
+import pickle
+import sys
 from collections import Counter, defaultdict
 from dataclasses import dataclass
 from hashlib import sha256
 from pathlib import Path
 
+from . import importing
 from .importing import BARRIOS, crime_date, csv_rows, key, number, usable_pin, value
 
 RADIOS = (250, 500, 1000)
@@ -55,6 +59,38 @@ class Event:
     @property
     def cell(self):
         return math.floor(self.lon / DLON), math.floor(self.lat / DLAT)
+
+
+def load_index(paths, cache_file=None):
+    """CrimeIndex de los CSV, guardado en `cache_file` para no volver a leerlos en cada arranque.
+
+    Leer los dos CSV anuales (37 MB) lleva unos 8 s; el índice guardado se carga en medio segundo. Se vuelve a
+    armar si cambia un CSV (nombre, fecha o tamaño) o el código que los interpreta. El archivo es local y lo escribe
+    esta misma función: no se comparte ni se versiona (data/local/ está fuera de Git).
+    """
+    paths = tuple(Path(p) for p in paths)
+    code = sha256(b''.join(Path(m.__file__).read_bytes() for m in (sys.modules[__name__], importing))).hexdigest()
+    signature = (code, tuple((p.name, p.stat().st_mtime_ns, p.stat().st_size) for p in paths))
+    if cache_file is not None:
+        try:
+            with open(cache_file, 'rb') as stream:
+                if pickle.load(stream) == signature:  # la firma va primero: no se lee el índice si no sirve
+                    return pickle.load(stream)
+        except (OSError, EOFError, pickle.UnpicklingError, AttributeError, ImportError, TypeError, ValueError):
+            pass
+    index = CrimeIndex(paths)
+    if cache_file is not None:
+        cache_file = Path(cache_file)
+        partial = cache_file.with_name(cache_file.name + '.parcial')
+        try:
+            cache_file.parent.mkdir(parents=True, exist_ok=True)
+            with open(partial, 'wb') as stream:
+                pickle.dump(signature, stream, protocol=pickle.HIGHEST_PROTOCOL)
+                pickle.dump(index, stream, protocol=pickle.HIGHEST_PROTOCOL)
+            os.replace(partial, cache_file)
+        except OSError:
+            partial.unlink(missing_ok=True)
+    return index
 
 
 def source_paths(folder):

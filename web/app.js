@@ -1645,10 +1645,12 @@ function margenesLibres() {
   const alto = mapa.getContainer().clientHeight;
   const barra = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--barra-real')) || 60;
   const hoja = document.querySelector('#panel')?.getBoundingClientRect();
+  const controles = document.querySelector('.mapa-arriba')?.getBoundingClientRect().height || 44;
+  const top = Math.min(barra + 30, alto * 0.35);
   if (celular()) {
-    return { top: barra + 30, bottom: Math.round(alto - (hoja?.top ?? alto * 0.54)) + 70, left: 24, right: 24 };
+    return { top, bottom: Math.max(24, Math.min(alto - top - 80, Math.round(alto - (hoja?.top ?? alto * 0.72)) + controles + 24)), left: 24, right: 24 };
   }
-  return { top: barra + 40, bottom: 90, left: Math.round((hoja?.right ?? 460) + 24), right: 70 };
+  return { top, bottom: Math.max(24, Math.min(alto - top - 80, controles + 32)), left: Math.round((hoja?.right ?? 460) + 24), right: 70 };
 }
 
 function encuadrar(nombre, inmediato = false) {
@@ -1809,20 +1811,21 @@ function chipCapa(c) {
 }
 
 function filaCapas() {
-  const extra = MAS_CAPAS.flatMap(([, claves]) => claves).filter((k) => estado.capas.has(k));
-  return [...PREFERENCIAS.map((p) => p.clave), ...extra].map((k) => CAPAS.find((c) => c.clave === k));
+  return CAPAS;
 }
 
 function renderChips() {
   const cantidad = estado.capas.size;
   const herramientas = $('#abrir-mapa');
-  if (herramientas) herramientas.textContent = `Capas y leyenda${estado.seleccionado ? ` (${cantidad})` : ''}`;
+  if (herramientas) herramientas.textContent = `Filtros y leyenda${estado.seleccionado ? ` (${cantidad})` : ''}`;
   const centrar = $('#centrar-mapa');
   if (centrar) centrar.textContent = estado.seleccionado ? 'Centrar barrio' : 'Ver CABA';
   const resumen = $('#estado-capas');
   if (resumen) resumen.textContent = estado.seleccionado
     ? `${estado.seleccionado} · ${cantidad} ${plural(cantidad, 'capa activada', 'capas activadas')}. Los puntos de los avisos se muestran por separado.`
     : 'Elegí un barrio en la lista o en el mapa para activar sus capas.';
+  const resumenMapa = $('#estado-capas-mapa');
+  if (resumenMapa) resumenMapa.textContent = estado.seleccionado ? `${estado.seleccionado}: ${cantidad} capas activadas.` : '';
   for (const id of ['capas-preferidas', 'apagar-capas']) {
     const boton = $(`#${id}`);
     if (boton) boton.disabled = !estado.seleccionado;
@@ -1831,24 +1834,9 @@ function renderChips() {
   $('#mapa-pista').hidden = Boolean(estado.seleccionado);
   if (!estado.seleccionado) {
     $('#mapa-pista').textContent = 'Elegí un barrio para ver subte, plazas, ruido y más en el mapa.';
-    abrirCajonCapas(false);
     return;
   }
   $('#capas').innerHTML = filaCapas().map(chipCapa).join('');
-  const prendidas = MAS_CAPAS.flatMap(([, claves]) => claves).filter((k) => estado.capas.has(k)).length;
-  $('#mas-capas').innerHTML = `<span class="chip-mas-flecha" aria-hidden="true">‹</span>Más capas${
-    prendidas ? ` <span class="chip-mas-cuenta">${prendidas}</span>` : ''}`;
-  $('#cajon-capas').innerHTML = `<div class="cajon-cabeza"><h3>Más capas</h3>
-    <button class="boton-texto" type="button" data-cerrar-cajon>Cerrar</button></div>
-    ${MAS_CAPAS.map(([grupo, claves]) => `<h4>${esc(grupo)}</h4><div class="cajon-chips">${
-      claves.map((k) => chipCapa(CAPAS.find((c) => c.clave === k))).join('')}</div>`).join('')}`;
-}
-
-function abrirCajonCapas(abrir) {
-  const cajon = $('#cajon-capas');
-  cajon.hidden = !abrir;
-  cajon.classList.toggle('abierto', abrir);
-  $('#mas-capas').setAttribute('aria-expanded', String(abrir));
 }
 
 function renderControles() {
@@ -2082,8 +2070,8 @@ async function seleccionar(nombre, { historial = true } = {}) {
   if (nombre && mapa?.getSource('barrios')) mapa.setFeatureState({ source: 'barrios', id: nombre }, { sel: true });
   estado.capas = nombre ? capasIniciales() : new Set();
   pintarCoropletas();
-  encuadrar(nombre);
   renderChips();
+  encuadrar(nombre);
   renderPanel();
   $('#contenido').scrollTop = 0;
   $('#titulo-vista')?.focus({ preventScroll: true });
@@ -2239,6 +2227,9 @@ function plegarPanel(expandir) {
   panel.classList.toggle('expandido', expandir);
   $('#panel-asa').setAttribute('aria-expanded', expandir);
   $('#panel-asa').textContent = expandir ? 'Ver mapa' : 'Ver lista';
+  if (!expandir && mapa && estado.formas) setTimeout(() => {
+    if (!panel.classList.contains('expandido')) encuadrar(estado.seleccionado);
+  }, reducido ? 0 : 230);
 }
 
 function conectarPreferencias() {
@@ -2570,17 +2561,8 @@ function conectarEventos() {
       importa.hidden = true;
       abrirImporta.setAttribute('aria-expanded', 'false');
     }
-    // Un chip del cajón se redibuja al tocarlo: si el elemento ya no está en la página, el clic fue adentro.
-    if (!$('#cajon-capas').hidden && e.target.isConnected && !e.target.closest('#cajon-capas, #mas-capas')) {
-      abrirCajonCapas(false);
-    }
   });
   document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && !$('#cajon-capas').hidden) {
-      abrirCajonCapas(false);
-      $('#mas-capas').focus();
-      return;
-    }
     if (e.key === 'Escape' && estado.colectivo && importa.hidden && !document.querySelector('dialog[open]')) {
       quitarColectivo();
       return;
@@ -2818,7 +2800,6 @@ function conectarEventos() {
   $('#contenido').addEventListener('mouseleave', () => marcarHover(null, 'lista'));
 
   const clicCapa = (e) => {
-    if (e.target.closest('[data-cerrar-cajon]')) { abrirCajonCapas(false); $('#mas-capas').focus(); return; }
     const chip = e.target.closest('[data-capa]');
     if (!chip) return;
     alternarCapa(chip.dataset.capa);
@@ -2829,12 +2810,6 @@ function conectarEventos() {
     $(`#${e.currentTarget.id} [data-capa="${chip.dataset.capa}"]`)?.focus({ preventScroll: true });
   };
   $('#capas').addEventListener('click', clicCapa);
-  $('#cajon-capas').addEventListener('click', clicCapa);
-  $('#mas-capas').addEventListener('click', () => {
-    const abrir = $('#cajon-capas').hidden;
-    abrirCajonCapas(abrir);
-    if (abrir) $('#cajon-capas [data-capa]')?.focus();
-  });
   $('#capa-controles').addEventListener('change', (e) => {
     const control = e.target.dataset.control;
     if (control === 'nivel') cambiarNivel(e.target.value);
@@ -3124,6 +3099,10 @@ function seguirAltoBarra() {
     if (alto > 0) document.documentElement.style.setProperty('--barra-real', `${Math.round(alto)}px`);
   };
   new ResizeObserver(fijar).observe(barra);
+  const herramientas = document.querySelector('.mapa-arriba');
+  if (herramientas) new ResizeObserver(() => {
+    document.documentElement.style.setProperty('--alto-herramientas', `${Math.ceil(herramientas.getBoundingClientRect().height)}px`);
+  }).observe(herramientas);
   fijar();
 }
 

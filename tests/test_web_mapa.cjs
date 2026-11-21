@@ -28,6 +28,14 @@ test('la leyenda general identifica conteos, ausencia de coincidencias y el alca
   assert.ok(html().includes('barrio oficial'));
 });
 
+test('todas las capas se pueden descubrir sin activar primero las adicionales', () => {
+  const { run } = runtime();
+  const claves = run('filaCapas().map(c=>c.clave)');
+  assert.equal(claves.length, 16);
+  assert.equal(new Set(claves).size, 16);
+  for (const clave of ['subte','ruido','escuelas','delitos','colectivos','rampas']) assert.ok(claves.includes(clave));
+});
+
 test('la leyenda distingue una capa pendiente, no disponible y sin elementos', () => {
   const { run, html } = runtime();
   run("estado.seleccionado='Almagro';estado.capas=new Set(['verdes']);renderLeyenda()");

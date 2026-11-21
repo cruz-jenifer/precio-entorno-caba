@@ -127,8 +127,13 @@
       <div id="mapa" class="mapa-lienzo"></div>
       <div class="mapa-arriba">
         <p class="mapa-pista" id="mapa-pista">Elegí un barrio para ver subte, plazas, ruido y más en el mapa.</p>
+        <div class="capas-fila" id="capas-fila" hidden>
+          <p class="capas-titulo">Personalizá el mapa <span class="capas-ayuda">· Deslizá para ver todas las capas</span></p>
+          <div class="capas" id="capas" role="group" aria-label="Capas del mapa"></div>
+          <p class="solo-lectura" id="estado-capas-mapa" role="status" aria-atomic="true"></p>
+        </div>
         <div class="mapa-herramientas" role="group" aria-label="Controles del mapa">
-          <button class="chip" id="abrir-mapa" type="button" aria-haspopup="dialog">Capas y leyenda</button>
+          <button class="chip" id="abrir-mapa" type="button" aria-haspopup="dialog">Filtros y leyenda</button>
           <button class="chip" id="centrar-mapa" type="button">Ver CABA</button>
         </div>
       </div>
@@ -137,14 +142,9 @@
   </main>
 
   <dialog class="dialogo dialogo-mapa" id="dialogo-mapa" aria-labelledby="titulo-mapa">
-    <div class="dialogo-cabeza"><h2 id="titulo-mapa">Capas y leyenda</h2><button class="boton-texto" type="button" data-cerrar>Ver mapa</button></div>
+    <div class="dialogo-cabeza"><h2 id="titulo-mapa">Filtros y leyenda</h2><button class="boton-texto" type="button" data-cerrar>Ver mapa</button></div>
     <p id="estado-capas" role="status" aria-atomic="true"></p>
     <p class="fuente">Las capas agregan contexto al mapa; no cambian los avisos que encajan con tu búsqueda. Cada capa se puede activar o apagar.</p>
-    <div class="capas-fila" id="capas-fila" hidden>
-      <div class="capas" id="capas" role="group" aria-label="Capas del mapa"></div>
-      <button class="chip chip-mas" type="button" id="mas-capas" aria-expanded="false" aria-controls="cajon-capas"></button>
-    </div>
-    <div class="cajon-capas" id="cajon-capas" role="group" aria-label="Más capas del mapa" hidden></div>
     <div class="acciones-capas"><button class="boton-texto" id="capas-preferidas" type="button">Usar mis preferencias</button><button class="boton-texto" id="apagar-capas" type="button">Apagar capas de entorno</button></div>
     <section aria-label="Filtros de las capas activas"><div class="capa-controles" id="capa-controles"></div></section>
     <div id="leyenda-dialogo"></div>

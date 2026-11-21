@@ -1,0 +1,118 @@
+{
+  "modelo_version": "1d4013afcf906e8c",
+  "entrenado_utc": "2026-11-18T22:33:41.983314+00:00",
+  "capturas_entrenamiento": [
+    "2026-11-07",
+    "2026-11-09"
+  ],
+  "capturas_evaluadas": [
+    "2026-11-13",
+    "2026-11-20"
+  ],
+  "exclusiones": {
+    "inmobiliarias_13a17": {
+      "avisos_validos": 569,
+      "mismo_id": 131,
+      "mismo_inmueble_probable": 27,
+      "evaluados": 411
+    },
+    "zonaprop_20261120": {
+      "avisos_validos": 1480,
+      "mismo_id": 16,
+      "mismo_inmueble_probable": 112,
+      "evaluados": 1352
+    }
+  },
+  "todos": {
+    "avisos": 1763,
+    "mediana_usd_m2_publicado": 2632.0,
+    "modelo": {
+      "mae": 528.7,
+      "rmse": 663.2,
+      "r2": 0.192,
+      "dentro_20_pct": 53.8
+    },
+    "linea_de_base": {
+      "mae": 581.0,
+      "rmse": 730.9,
+      "r2": 0.018,
+      "dentro_20_pct": 52.4
+    },
+    "mejora_mae_pct": 9.0,
+    "mejora_mae_ic95_usd_m2": [
+      37.0,
+      67.7
+    ],
+    "sesgo_mediano_modelo_usd_m2": -122.0,
+    "pct_avisos_subestimados": 56.7
+  },
+  "niveles_linea_de_base": {
+    "barrio_y_ambientes": 1752,
+    "barrio": 11
+  },
+  "segmentos": {
+    "inmobiliarias_13a17": {
+      "descripcion": "Inmobiliarias autorizadas 13 a 17/11 · 40 barrios",
+      "mediana_variables_faltantes": 11.0,
+      "avisos": 411,
+      "mediana_usd_m2_publicado": 2751.0,
+      "modelo": {
+        "mae": 558.5,
+        "rmse": 786.2,
+        "r2": 0.321,
+        "dentro_20_pct": 59.9
+      },
+      "linea_de_base": {
+        "mae": 610.4,
+        "rmse": 875.4,
+        "r2": 0.159,
+        "dentro_20_pct": 57.4
+      },
+      "mejora_mae_pct": 8.5,
+      "mejora_mae_ic95_usd_m2": [
+        15.9,
+        86.5
+      ],
+      "sesgo_mediano_modelo_usd_m2": -139.0,
+      "pct_avisos_subestimados": 57.4
+    },
+    "zonaprop_20261120": {
+      "descripcion": "Zonaprop 20/11 · Caballito y Almagro, 2 amb., hasta USD 165.000",
+      "mediana_variables_faltantes": 11.0,
+      "avisos": 1352,
+      "mediana_usd_m2_publicado": 2602.0,
+      "modelo": {
+        "mae": 519.7,
+        "rmse": 621.0,
+        "r2": 0.089,
+        "dentro_20_pct": 52.0
+      },
+      "linea_de_base": {
+        "mae": 572.1,
+        "rmse": 680.9,
+        "r2": -0.095,
+        "dentro_20_pct": 50.8
+      },
+      "mejora_mae_pct": 9.2,
+      "mejora_mae_ic95_usd_m2": [
+        35.9,
+        68.7
+      ],
+      "sesgo_mediano_modelo_usd_m2": -114.0,
+      "pct_avisos_subestimados": 56.5
+    }
+  },
+  "prueba_original": {
+    "modelo_mae": 442.7,
+    "linea_de_base_mae": 627.3,
+    "solo_campos_importador_mae": 616.0,
+    "mismo_segmento_zonaprop": {
+      "avisos": 26,
+      "mae_modelo": 330.4,
+      "mae_linea_de_base": 722.7,
+      "mediana_usd_m2_entrenamiento": 2439.0,
+      "avisos_entrenamiento": 107
+    }
+  },
+  "nota": "Avisos publicados después del entrenamiento, sin reentrenar. Precios de publicación, no de cierre. La captura de Zonaprop es un segmento angosto y no trae rasgos de edificio ni de descripción; por eso cada segmento se informa por separado."
+}

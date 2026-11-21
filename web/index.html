@@ -14,6 +14,7 @@
   <script src="app.js" defer></script>
 </head>
 <body>
+  <a class="saltar-contenido" href="#contenido">Ir a los barrios</a>
   <header class="barra">
     <div class="barra-fila">
       <a class="marca" href="./">Lüga</a>
@@ -26,6 +27,7 @@
         </div>
       </div>
     </div>
+    <button class="filtros-movil" id="alternar-filtros" type="button" aria-expanded="false" aria-controls="filtros">Cambiar filtros</button>
     <form class="filtros" id="filtros" aria-label="Qué estás buscando">
       <div class="segmentado" role="radiogroup" aria-label="Operación">
         <button type="button" role="radio" data-operacion="venta" aria-checked="true">Comprar</button>
@@ -38,15 +40,16 @@
           <option value="USD">USD</option>
         </select>
         <span class="campo-unidad" id="moneda-fija">USD</span>
-        <input id="presupuesto" type="text" inputmode="numeric" autocomplete="off" aria-labelledby="etiqueta-presupuesto">
+        <input id="presupuesto" type="text" inputmode="numeric" autocomplete="off" aria-label="Presupuesto máximo en USD">
       </label>
       <label class="campo">
         <span class="campo-etiqueta">Desde</span>
-        <input id="superficie" type="text" inputmode="numeric" autocomplete="off" class="corto">
+        <input id="superficie" type="text" inputmode="numeric" autocomplete="off" class="corto" aria-label="Superficie cubierta mínima en metros cuadrados">
         <span class="campo-unidad">m² cubiertos</span>
       </label>
       <label class="campo">
-        <select id="ambientes">
+        <span class="campo-etiqueta">Ambientes</span>
+        <select id="ambientes" aria-label="Ambientes">
           <option value="1">1 ambiente</option>
           <option value="2" selected>2 ambientes</option>
           <option value="3">3 ambientes</option>
@@ -88,51 +91,72 @@
     // Es el mismo cálculo que seguirAltoBarra() en app.js, que después la sigue actualizando.
     (function () {
       var barra = document.querySelector('.barra');
-      var filas = [].slice.call(barra.querySelectorAll('.marca, .barra-extremo, .filtros')).map(function (n) { return n.getBoundingClientRect().bottom; });
+      var filas = [].slice.call(barra.querySelectorAll('.marca, .barra-extremo, .filtros, .filtros-movil')).map(function (n) { return n.getBoundingClientRect().bottom; });
       var alto = Math.max.apply(null, [0].concat(filas)) - barra.getBoundingClientRect().top;
       if (alto > 0) document.documentElement.style.setProperty('--barra-real', Math.round(alto) + 'px');
     })();
   </script>
 
-  <p class="franja-demo" id="franja-demo">Datos de ejemplo. Los avisos y los delitos son ficticios. El mapa y el entorno son datos abiertos reales.</p>
-
-  <dialog id="dialogo-preferencias" class="preferencias-dialogo" aria-labelledby="titulo-preferencias">
+  <dialog id="dialogo-preferencias" class="dialogo preferencias-dialogo" aria-labelledby="titulo-preferencias">
     <h2 id="titulo-preferencias">Describí tu búsqueda</h2>
     <form id="interpretar-preferencias">
       <label for="texto-preferencias">¿Qué estás buscando?</label>
       <textarea id="texto-preferencias" maxlength="2000" rows="3" required
         placeholder="Comprar en Almagro, hasta 120 mil dólares, dos ambientes o más"></textarea>
-      <button type="submit">Interpretar</button>
+      <button class="boton-primario" type="submit">Interpretar</button>
     </form>
     <p id="estado-preferencias" role="status"></p>
     <form id="revisar-preferencias" hidden>
       <h3>Revisá los filtros</h3>
       <div id="campos-preferencias" class="preferencias-campos"></div>
       <ul id="avisos-preferencias"></ul>
-      <button type="submit">Aplicar filtros</button>
+      <button class="boton-primario" type="submit">Aplicar filtros</button>
     </form>
-    <button id="cancelar-preferencias" type="button">Cancelar</button>
+    <button class="boton-texto" id="cancelar-preferencias" type="button">Cancelar</button>
   </dialog>
 
   <main class="vista">
+    <p class="solo-lectura" id="estado-resultados" role="status" aria-atomic="true"></p>
     <section class="panel" id="panel" aria-label="Barrios">
       <button class="panel-asa" id="panel-asa" type="button" aria-expanded="false">Ver lista</button>
-      <div class="panel-contenido" id="contenido" aria-live="polite"></div>
+      <p class="franja-demo" id="franja-demo">Datos de ejemplo. Los avisos y los delitos son ficticios. El mapa y el entorno son datos abiertos reales.</p>
+      <div class="panel-contenido" id="contenido" tabindex="-1"></div>
+      <div class="comparacion-pie" id="comparacion-pie" hidden></div>
     </section>
     <section class="mapa" aria-label="Mapa de CABA">
       <div id="mapa" class="mapa-lienzo"></div>
       <div class="mapa-arriba">
         <p class="mapa-pista" id="mapa-pista">Elegí un barrio para ver subte, plazas, ruido y más en el mapa.</p>
-        <div class="capas-fila" id="capas-fila" hidden>
-          <div class="capas" id="capas" role="group" aria-label="Capas del mapa"></div>
-          <button class="chip chip-mas" type="button" id="mas-capas" aria-expanded="false" aria-controls="cajon-capas"></button>
+        <div class="mapa-herramientas" role="group" aria-label="Controles del mapa">
+          <button class="chip" id="abrir-mapa" type="button" aria-haspopup="dialog">Capas y leyenda</button>
+          <button class="chip" id="centrar-mapa" type="button">Ver CABA</button>
         </div>
-        <div class="capa-controles" id="capa-controles"></div>
       </div>
-      <div class="cajon-capas" id="cajon-capas" role="group" aria-label="Más capas del mapa" hidden></div>
-      <div class="leyenda" id="leyenda" aria-live="polite"></div>
+      <div id="leyenda-mapa"><div class="leyenda" id="leyenda"></div></div>
     </section>
   </main>
+
+  <dialog class="dialogo dialogo-mapa" id="dialogo-mapa" aria-labelledby="titulo-mapa">
+    <div class="dialogo-cabeza"><h2 id="titulo-mapa">Capas y leyenda</h2><button class="boton-texto" type="button" data-cerrar>Ver mapa</button></div>
+    <p id="estado-capas" role="status" aria-atomic="true"></p>
+    <p class="fuente">Las capas agregan contexto al mapa; no cambian los avisos que encajan con tu búsqueda. Cada capa se puede activar o apagar.</p>
+    <div class="capas-fila" id="capas-fila" hidden>
+      <div class="capas" id="capas" role="group" aria-label="Capas del mapa"></div>
+      <button class="chip chip-mas" type="button" id="mas-capas" aria-expanded="false" aria-controls="cajon-capas"></button>
+    </div>
+    <div class="cajon-capas" id="cajon-capas" role="group" aria-label="Más capas del mapa" hidden></div>
+    <div class="acciones-capas"><button class="boton-texto" id="capas-preferidas" type="button">Usar mis preferencias</button><button class="boton-texto" id="apagar-capas" type="button">Apagar capas de entorno</button></div>
+    <section aria-label="Filtros de las capas activas"><div class="capa-controles" id="capa-controles"></div></section>
+    <div id="leyenda-dialogo"></div>
+  </dialog>
+
+  <dialog class="dialogo dialogo-comparacion" id="dialogo-comparacion" aria-labelledby="titulo-comparacion">
+    <div class="dialogo-cabeza">
+      <h2 id="titulo-comparacion">Compará tus barrios</h2>
+      <button class="boton-texto" type="button" data-cerrar>Cerrar</button>
+    </div>
+    <div id="comparacion-contenido"></div>
+  </dialog>
 
   <dialog class="dialogo" id="dialogo-alertas" aria-labelledby="titulo-alertas">
     <div class="dialogo-cabeza">

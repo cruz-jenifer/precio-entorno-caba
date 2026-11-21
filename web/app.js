@@ -39,6 +39,7 @@ const COLOR = { verdes: '#5E7D4F', riesgo: '#1E88E5', escuela: '#1E2A32', cesac:
   ascensor: '#1E2A32', ciclovias: '#00838F', ecobici: '#004F56', bibliotecas: '#AD1457', rampas: '#B26B00' };
 const RUIDO = [[50, '#FFFFCC'], [55, '#FFEDA0'], [60, '#FED976'], [65, '#FEB24C'], [70, '#FD8D3C'], [75, '#F03B20'], [80, '#BD0026']];
 const DELITOS = ['#D3DBE3', '#A9B8C8', '#7E93AB', '#55708E', '#2E4560'];
+const ESCALA_BARRIOS = ['#F4F2F8', '#E2DAF3', '#7A62C4'];
 const ESTILO = 'https://basemaps.cartocdn.com/gl/voyager-gl-style/style.json';
 const NOTA_AVISOS = 'Punto que publica la fuente, sin precisión declarada: puede marcar el edificio o una referencia cercana. '
   + 'Hueco si cae a entre 150 y 500 m del barrio del aviso. Más lejos, no se dibuja. Un punto más grande reúne varios avisos.';
@@ -300,6 +301,8 @@ const estado = {
   pedidoDelitos: 0,
   info: null,
   barrios: [],
+  comparando: new Set(),
+  ordenBarrios: 'avisos',
   formas: null,
   seleccionado: null,
   colectivo: null, // { linea, datos } de la línea de colectivo dibujada en el mapa
@@ -439,14 +442,94 @@ function insignias(lineas, clase = 'insignia') {
     title="Línea ${esc(l)}">${esc(l)}</span>`).join('');
 }
 
+function preferenciasComparacion() {
+  const claves = EXPLORADOR ? explorador().capas : [...estado.prefs];
+  return CAPAS_MAPA.filter((p) => claves.includes(p.clave));
+}
+
+function datoComparacion(clave, e) {
+  if (!e) return 'Sin datos de entorno';
+  const faltante = 'Sin dato';
+  const valor = (v, unidad) => v == null ? faltante : `${numero.format(v)} ${unidad}`;
+  switch (clave) {
+    case 'subte': return e.subte_lineas == null ? faltante : e.subte_lineas.length
+      ? `Líneas ${enumerar(e.subte_lineas)} · ${valor(e.subte_estaciones, plural(e.subte_estaciones, 'estación', 'estaciones'))}` : 'Sin estaciones de subte';
+    case 'verdes': return e.verdes_cantidad == null || e.verdes_ha == null ? faltante
+      : `${numero.format(e.verdes_cantidad)} ${plural(e.verdes_cantidad, 'espacio', 'espacios')} · ${decimal.format(e.verdes_ha)} ha`;
+    case 'escuelas': {
+      const nivel = e.escuelas?.[estado.nivel];
+      return nivel == null ? faltante : `${numero.format((nivel.Estatal || 0) + (nivel.Privada || 0))} de nivel ${estado.nivel}`;
+    }
+    case 'salud': return e.cesac == null || e.hospitales == null ? faltante : `${e.cesac} CeSAC · ${e.hospitales} hospitales`;
+    case 'ruido': return e.ruido?.diurno?.alto == null ? 'Sin cobertura suficiente'
+      : `${porcentaje(e.ruido.diurno.alto)} % de celdas con 70 dBA o más de día`;
+    case 'riesgo': return e.riesgo_hidrico == null ? faltante : `${porcentaje(e.riesgo_hidrico)} % del área en prevención`;
+    case 'recreacion': return e.recreacion == null ? faltante : `${totalRecreacion(e.recreacion)} lugares en OpenStreetMap`;
+    case 'colectivos': return e.colectivos == null ? faltante : `${e.colectivos.length} líneas · recorridos de 2019`;
+    case 'ciclovias': return e.ciclovias_km == null ? faltante : `${decimal.format(e.ciclovias_km)} km de ciclovías`;
+    case 'ecobici': return valor(e.ecobici, 'estaciones');
+    case 'bibliotecas': return valor(e.bibliotecas, 'bibliotecas');
+    case 'clubes': return valor(e.clubes, 'clubes y polideportivos');
+    case 'gimnasios': return valor(e.gimnasios, 'gimnasios en OpenStreetMap');
+    default: return faltante;
+  }
+}
+
+function renderComparacion() {
+  const barrios = [...estado.comparando].map((nombre) => estado.barrios.find((b) => b.barrio === nombre)).filter(Boolean);
+  const prefs = preferenciasComparacion();
+  const fila = (nombre, valores) => `<tr><th scope="row">${esc(nombre)}</th>${valores.map((v) => `<td>${v}</td>`).join('')}</tr>`;
+  return `<p class="busqueda-resumen">${contextoAlerta()} · ${textoBusquedaAlerta()}.</p>
+    <p class="nota">Los mismos criterios para cada barrio. Cada dato se muestra por separado, sin un puntaje general.</p>
+    <p class="fuente">En celular, desplazá la tabla para ver los barrios; el nombre de cada criterio queda fijo.</p>
+    <div class="comparacion-tabla" role="region" aria-label="Comparación de barrios según tus preferencias" tabindex="0">
+      <table><caption class="solo-lectura">Avisos, precios publicados y preferencias por barrio oficial</caption>
+      <thead><tr><th scope="col">Tu búsqueda</th>${barrios.map((b) => `<th scope="col">${esc(b.barrio)}</th>`).join('')}</tr></thead>
+      <tbody>
+      ${fila('Avisos que encajan', barrios.map((b) => `<strong>${b.coincidencias}</strong> de ${b.avisos} en ${esc(estado.moneda)}`))}
+      ${fila('Mediana publicada de los que encajan', barrios.map((b) => b.mediana == null ? 'Sin avisos que encajen' : dinero(b.mediana, estado.moneda)))}
+      ${prefs.map((p) => fila(p.nombre, barrios.map((b) => esc(datoComparacion(p.clave, b.entorno))))).join('')}
+      ${fila('Seguir con este barrio', barrios.map((b) => `<button class="boton-comparar" type="button" data-elegir-comparado="${esc(b.barrio)}">Ver ${esc(b.barrio)}</button>`))}
+      </tbody></table>
+    </div>
+    ${!prefs.length ? '<p class="nota">No elegiste preferencias de entorno. Podés sumarlas desde «Lo que me importa».</p>' : ''}
+    <p class="fuente">Precios de publicación, no tasaciones ni precios de cierre. Las medianas corresponden a los avisos que encajan en cada barrio; pueden describir propiedades distintas.</p>
+    ${estado.modo === 'demo' ? '<p class="franja-comparacion">Avisos ficticios de ejemplo. El entorno usa datos abiertos reales.</p>' : ''}
+    <details class="comparacion-notas"><summary>Cómo leer los datos y consultar fuentes</summary>
+      <p>Datos agregados por barrio oficial. Los conteos de lugares no miden cercanía a un departamento ni calidad del servicio.</p>
+      ${prefs.map((p) => `<p><strong>${esc(p.nombre)}.</strong> ${esc(NOTAS[p.clave] || '')}</p>`).join('')}
+      <button class="boton-texto" type="button" data-fuentes-comparacion>Ver fuentes y períodos</button>
+    </details>`;
+}
+
+function actualizarComparador() {
+  const n = estado.comparando.size;
+  const pie = $('#comparacion-pie');
+  if (pie) {
+    pie.hidden = !n || Boolean(estado.seleccionado);
+    pie.innerHTML = `<span>${n} de 3 barrios elegidos</span><button class="boton-comparar" type="button"${n < 2 ? ' disabled' : ''}>${n < 2 ? 'Elegí otro barrio' : `Comparar ${n} barrios`}</button>`;
+  }
+  const boton = $('#abrir-comparacion');
+  if (!boton) return;
+  boton.disabled = n < 2;
+  boton.textContent = `Comparar (${n}/3)`;
+  $('#resumen-comparacion').textContent = n ? `${n} ${plural(n, 'barrio elegido', 'barrios elegidos')}: ${[...estado.comparando].join(', ')}.` : 'Elegí 2 o 3 barrios para comparar.';
+  document.querySelectorAll('[data-comparar]').forEach((input) => {
+    input.checked = estado.comparando.has(input.dataset.comparar);
+    input.disabled = n >= 3 && !input.checked;
+  });
+}
+
 function renderLista() {
-  const con = estado.barrios.filter((b) => b.coincidencias > 0);
+  const con = estado.barrios.filter((b) => b.coincidencias > 0).sort((a, b) =>
+    (estado.ordenBarrios === 'precio' ? a.mediana - b.mediana
+      : estado.ordenBarrios === 'nombre' ? 0 : b.coincidencias - a.coincidencias) || a.barrio.localeCompare(b.barrio, 'es'));
   const sin = estado.barrios.filter((b) => !b.coincidencias);
   const total = estado.barrios.reduce((s, b) => s + b.avisos, 0);
   const encajan = con.reduce((s, b) => s + b.coincidencias, 0);
   // Portada con SB7: quien busca es el protagonista y Lüga lo guía. Las cifras salen de los datos cargados.
   const acciones = `<div class="acciones-portada">
-      <button class="boton-primario" type="button" id="activar-alerta">Activar una alerta</button>
+      <button class="boton-texto" type="button" id="activar-alerta">Crear una alerta por barrio</button>
       <button class="boton-texto" type="button" data-fuentes>Ver de dónde salen los datos</button>
     </div>`;
   // Idea central (Made to Stick): elegí el barrio antes que el departamento. Todo lo concreto sale de los datos
@@ -476,23 +559,22 @@ function renderLista() {
     : 'Mirá qué hay a la vuelta de cada barrio: subte, plazas, ruido y delitos registrados';
   const portada = con.length
     ? `<header class="portada">
-      <h1 class="titulo-lista">Elegí el barrio antes que el departamento</h1>
-      <p class="portada-sub">${sub}</p>
-      <p class="portada-guia">${guia}</p>
-      <ol class="plan" aria-label="Cómo funciona">
-        <li>Poné tu presupuesto y ves en qué barrios hay avisos para vos</li>
-        <li>${paso2}</li>
-        <li>Te avisamos cuando aparece un aviso nuevo que encaja, sin volver a buscar</li>
-      </ol>
-      ${acciones}
-      <p class="portada-pie">${numero.format(encajan)} de ${numero.format(total)} avisos en ${estado.moneda} encajan con tu búsqueda.
-        Precios publicados, no tasaciones. Sin una alerta, los avisos que te servían pueden irse antes de que los veas.</p>
+      <p class="recorrido-etapa">Comparación de barrios</p>
+      <h1 class="titulo-lista" id="titulo-vista" tabindex="-1">Elegí dónde buscar</h1>
+      <p class="portada-sub"><strong>${con.length} ${plural(con.length, 'barrio', 'barrios')}</strong> con ${numero.format(encajan)} avisos que encajan.</p>
+      <p class="busqueda-resumen">${estado.operacion === 'venta' ? 'Comprar' : 'Alquilar'} · ${textoBusquedaAlerta()}.</p>
+      <p class="portada-guia">Elegí un barrio para revisar el entorno y los avisos. Después podés guardar tu búsqueda y recibir alertas.</p>
+      <details class="como-seguir"><summary>Cómo funciona y qué datos usamos</summary>
+        <p>${guia}</p><p>${sub}</p><p>${paso2}.</p>
+        <p>${numero.format(encajan)} de ${numero.format(total)} avisos en ${estado.moneda}. Precios publicados, no tasaciones.</p>
+        ${acciones}
+      </details>
     </header>`
     : `<header class="portada">
-      <h1 class="titulo-lista">Ningún aviso encaja con estos filtros</h1>
+      <h1 class="titulo-lista" id="titulo-vista" tabindex="-1">Ningún aviso encaja con estos filtros</h1>
       <p class="portada-sub">Probá subir el presupuesto, bajar la superficie mínima o cambiar los ambientes.
         También podés activar una alerta y te avisamos cuando aparezca algo.</p>
-      ${acciones}
+      <p class="busqueda-resumen">${textoBusquedaAlerta()}.</p>${acciones}
     </header>`;
   const eligiendo = estado.eligiendoAlerta
     ? `<p class="eligiendo-alerta" role="status">${estado.interes
@@ -506,18 +588,31 @@ function renderLista() {
       <span class="fila-cuenta">${b.coincidencias} ${plural(b.coincidencias, 'aviso', 'avisos')}<small>de ${b.avisos}</small></span>
       <span class="fila-mediana">Mediana ${dinero(b.mediana, estado.moneda)}</span>
       <span></span>
-      ${b.entorno ? `<span class="fila-entorno">${insignias(b.entorno.subte_lineas, 'insignia insignia-chica')}<span>${esc(lineaEntorno(b.entorno))}</span></span>` : ''}
+      <span class="fila-criterios">${preferenciasComparacion().map((p) => `<span><strong>${esc(p.nombre)}</strong><span>${esc(datoComparacion(p.clave, b.entorno))}</span></span>`).join('')}</span>
       ${prensaFila(b.barrio)}
-    </button></li>`).join('');
+    </button><label class="elegir-comparacion"><input type="checkbox" data-comparar="${esc(b.barrio)}" aria-label="Comparar ${esc(b.barrio)}" aria-describedby="resumen-comparacion">Comparar ${esc(b.barrio)}</label></li>`).join('');
   const compactos = sin.map((b) => `<li><button type="button" data-barrio="${esc(b.barrio)}">${esc(b.barrio)} · ${b.avisos}</button></li>`).join('');
   $('#contenido').innerHTML = `
     ${portada}
-    ${renderRadarLista()}
+    ${con.length || estado.comparando.size ? `<section class="comparador" aria-label="Elegir barrios para comparar">
+      <p class="comparador-preferencias">${preferenciasComparacion().length ? `Tus prioridades: ${esc(preferenciasComparacion().map((p) => p.nombre).join(' · '))}.` : 'Elegí qué te importa del entorno.'}
+        <button class="boton-texto" type="button" data-abrir-importa>Cambiar</button></p>
+      <label class="orden-barrios">Ordenar por <select id="orden-barrios">
+        <option value="avisos"${estado.ordenBarrios === 'avisos' ? ' selected' : ''}>Más avisos que encajan</option>
+        <option value="precio"${estado.ordenBarrios === 'precio' ? ' selected' : ''}>Menor mediana publicada</option>
+        <option value="nombre"${estado.ordenBarrios === 'nombre' ? ' selected' : ''}>Nombre del barrio</option>
+      </select></label>
+      <p class="fuente" id="resumen-comparacion" role="status" aria-atomic="true"></p>
+      <div class="comparador-acciones"><button class="boton-comparar" id="abrir-comparacion" type="button" disabled>Comparar (0/3)</button>
+        <button class="boton-texto" id="limpiar-comparacion" type="button">Limpiar selección</button></div>
+    </section>` : ''}
     ${eligiendo}
     ${con.length ? `<ul class="barrios">${filas}</ul>` : ''}
     ${sin.length ? `<details class="sin-coincidencias"${con.length && !estado.eligiendoAlerta ? '' : ' open'}>
       <summary>${sin.length} ${plural(sin.length, 'barrio', 'barrios')} sin avisos que encajen</summary>
-      <ul class="lista-compacta">${compactos}</ul></details>` : ''}`;
+      <ul class="lista-compacta">${compactos}</ul></details>` : ''}
+    ${renderRadarLista()}`;
+  actualizarComparador();
 }
 
 /* Panel: ficha del barrio */
@@ -583,6 +678,14 @@ function renderPiezas(e) {
 function renderFicha() {
   const b = estado.barrios.find((x) => x.barrio === estado.seleccionado);
   if (!b) return;
+  const contexto = `${estado.modo}|${estado.operacion}|${b.barrio}|${textoBusquedaAlerta()}`;
+  const formularioAnterior = $('#form-alerta');
+  const conservar = formularioAnterior?.dataset.contexto === contexto;
+  if (conservar && $('#crear-alerta')?.getAttribute('aria-busy') === 'true') return;
+  const borrador = conservar ? { email: $('#mail-alerta')?.value || '', consentimiento: $('#consentimiento-alerta')?.checked,
+    mensaje: $('#estado-alerta')?.innerHTML || '', clase: $('#estado-alerta')?.className || 'estado',
+    invalido: $('#mail-alerta')?.getAttribute('aria-invalid') } : null;
+  const focoAnterior = conservar && formularioAnterior.contains(document.activeElement) ? document.activeElement.id : '';
   const e = b.entorno;
   const alquiler = estado.operacion === 'alquiler';
   const visibles = estado.verTodos ? estado.avisos : estado.avisos.slice(0, 25);
@@ -610,19 +713,22 @@ function renderFicha() {
   const alerta = `${interes ? `<p class="nota interes-tanda" role="status">Te estás anotando en la primera tanda de
       «${esc(interes.nombre)}» (${precioNivel(interes)}). Dejá tu mail: te escribimos cuando abra, y recién ahí decidís si pagás.
       <button class="boton-texto" type="button" data-quitar-interes>No anotarme</button></p>` : ''}
-      <p class="nota">Te avisamos cuando aparezcan avisos nuevos en ${esc(b.barrio)} que encajen con tu búsqueda
-      (${textoBusquedaAlerta()}).</p>
+      <h2>Guardá tu búsqueda en ${esc(b.barrio)}</h2>
+      <div class="alerta-resumen"><strong>${estado.operacion === 'venta' ? 'Comprar' : 'Alquilar'} · ${esc(b.barrio)}</strong>
+        <p>${textoBusquedaAlerta()}.</p>
+        <span>${estado.modo === 'demo' ? 'Datos de ejemplo · avisos ficticios' : 'Datos reales · precios de publicación'}</span></div>
+      <p class="nota">Los avisos nuevos que encajen aparecerán en Mis alertas. Los que ya están publicados no generan una alerta.</p>
       ${estado.modo === 'real' ? `<div class="alerta-mail">
         <label class="campo campo-mail"><span class="campo-etiqueta">Mail</span>
           <input type="email" id="mail-alerta" autocomplete="email" inputmode="email" maxlength="254"
             pattern="[^@\\s&lt;&gt;&quot;]+@[^@\\s&lt;&gt;&quot;]+\\.[A-Za-z]{2,}" title="Una dirección como nombre@dominio.com"
-            placeholder="Opcional, para recibir avisos nuevos"></label>
+            aria-describedby="ayuda-mail estado-alerta" placeholder="nombre@dominio.com"></label>
         <label class="consentimiento" id="consentimiento-campo" hidden>
           <input type="checkbox" id="consentimiento-alerta">
           Acepto que usen este mail solo para mandarme los avisos nuevos de esta búsqueda.</label>
-        <p class="fuente">Cada correo trae un enlace para darte de baja.</p>
-      </div>` : ''}
-      <button class="boton-primario" type="button" id="crear-alerta">Crear alerta para ${esc(b.barrio)}</button>`;
+        <p class="fuente" id="ayuda-mail">El mail es opcional. Sin mail, consultá los avisos nuevos en Mis alertas. Si lo dejás, también los recibís por correo, con un enlace para darte de baja.</p>
+      </div>` : '<p class="nota">Esta alerta es de ejemplo: usa avisos ficticios y no envía correos.</p>'}
+      <button class="boton-primario" type="submit" id="crear-alerta">Crear alerta para ${esc(b.barrio)}</button>`;
   const panel = (clave, contenido) => `<div class="pestana-panel" role="tabpanel" id="panel-${clave}"
     aria-labelledby="pestana-${clave}"${estado.pestana === clave ? '' : ' hidden'}>${contenido}</div>`;
   const pestanas = PESTANAS.map(([clave, nombre]) => `<button type="button" role="tab" id="pestana-${clave}"
@@ -632,7 +738,7 @@ function renderFicha() {
     <article class="ficha">
       <header class="ficha-cabeza">
         <button class="boton-texto volver" type="button" id="volver">Todos los barrios</button>
-        <h1 class="titulo-barrio">${esc(b.barrio)}</h1>
+        <h1 class="titulo-barrio" id="titulo-vista" tabindex="-1">${esc(b.barrio)}</h1>
         ${e ? `<p class="ficha-sub">${e.subte_lineas.length ? `<span class="insignias">${insignias(e.subte_lineas)}</span>` : ''}
           <span>${e.subte_lineas.length ? `${e.subte_estaciones} ${plural(e.subte_estaciones, 'estación', 'estaciones')} de subte, ` : 'Sin subte, '}comuna ${e.comuna},
           ${numero.format(Math.round(e.area_ha))} ha</span></p>` : ''}
@@ -641,16 +747,16 @@ function renderFicha() {
           ${plural(b.avisos, 'publicado', 'publicados')} en el barrio. Precios publicados, no tasaciones.</span></p>`
           : '<p class="ficha-resumen">Ningún aviso encaja con tu búsqueda por ahora. Podés crear la alerta igual.</p>'}
         <button class="boton-texto ir-alerta" type="button" data-ir-alerta>Crear alerta para ${esc(b.barrio)}</button>
-        <nav class="pestanas" role="tablist" aria-label="Secciones del barrio">${pestanas}</nav>
       </header>
+      <nav class="pestanas" role="tablist" aria-label="Secciones del barrio">${pestanas}</nav>
       ${panel('entorno', `${renderAnalisisDelitos()}${renderPiezas(e)}${renderColectivos(e)}${renderSegunNecesidades()}
         ${renderParecidos(b.barrio)}${renderLugares(b.barrio)}${renderRadarFicha(b.barrio)}`)}
       ${panel('avisos', `${estado.errorAvisos?.barrio === b.barrio ? bloqueError(estado.errorAvisos.mensaje, 'avisos') : b.coincidencias ? `
         ${extra.length ? `<p class="fuente">Deslizá la tabla hacia la derecha para ver ${enumerar(extra.map((c) => `«${c.titulo}»`))}.</p>` : ''}
-        <table class="avisos">
+        <div class="tabla-desplazable" role="region" aria-label="Avisos que encajan; desplazá para ver todas las columnas" tabindex="0"><table class="avisos">
           <thead><tr><th>Precio publicado</th><th>Frente a parecidos</th><th>Cubierta</th><th>Amb.</th><th>Cocheras</th>${alquiler ? '<th>Expensas</th>' : ''}${extra.map((c) => `<th>${esc(c.titulo)}</th>`).join('')}<th><span hidden>Enlace</span></th><th>Mapa</th></tr></thead>
           <tbody>${filas}</tbody>
-        </table>
+        </table></div>
         ${estado.avisos.length > visibles.length ? `<p class="fuente">Se muestran los ${visibles.length} más baratos de ${estado.avisos.length}. <button class="boton-texto" type="button" id="ver-todos">Ver todos</button></p>` : ''}
         <p class="fuente">${estado.modo === 'demo' ? 'Avisos ficticios de ejemplo.' : 'Precios de publicación del catálogo autorizado, no tasaciones ni precios de cierre.'}
           ${estado.modo === 'real' ? `${ubicados} de ${estado.avisos.length} ${plural(estado.avisos.length, 'aviso tiene', 'avisos tienen')} un punto en el mapa, publicado por la fuente sin precisión declarada.` : ''}</p>
@@ -670,8 +776,19 @@ function renderFicha() {
           <button type="submit" class="boton-texto">Buscar cocheras</button>
         </form><div id="resultado-cocheras" role="status"></div>
         <p class="fuente">Con «Mi ubicación actual», el navegador pide permiso al buscar. La ubicación se usa solo para esa consulta y no se guarda.</p>` : ''}`)}
-      ${panel('alerta', `${alerta}<p class="estado" id="estado-alerta" role="status"></p>`)}
+      ${panel('alerta', `<form id="form-alerta" data-contexto="${esc(contexto)}" novalidate>${alerta}<p class="estado" id="estado-alerta" role="status" aria-atomic="true"></p></form>`)}
     </article>`;
+  if (borrador) {
+    $('#estado-alerta').innerHTML = borrador.mensaje;
+    $('#estado-alerta').className = borrador.clase;
+    if ($('#mail-alerta')) {
+      $('#mail-alerta').value = borrador.email;
+      if (borrador.invalido) $('#mail-alerta').setAttribute('aria-invalid', borrador.invalido);
+      $('#consentimiento-alerta').checked = Boolean(borrador.consentimiento);
+      actualizarAlerta();
+    }
+    if (focoAnterior) document.getElementById(focoAnterior)?.focus({ preventScroll: true });
+  }
 }
 
 function renderColectivos(e) {
@@ -1128,9 +1245,21 @@ async function cargarRadar() {
 }
 
 function renderPanel() {
+  const foco = $('#contenido').contains(document.activeElement) ? document.activeElement.id : '';
   if (estado.seleccionado) renderFicha();
   else renderLista();
+  if (estado.seleccionado) actualizarComparador();
+  if (foco) document.getElementById(foco)?.focus({ preventScroll: true });
   pintarAvisos();
+  const salida = $('#estado-resultados');
+  if (salida) {
+    const con = estado.barrios.filter((b) => b.coincidencias > 0);
+    const barrio = estado.barrios.find((b) => b.barrio === estado.seleccionado);
+    const mensaje = barrio ? `${barrio.barrio}: ${barrio.coincidencias} avisos que encajan.`
+      : `${con.length} barrios con ${con.reduce((s, b) => s + b.coincidencias, 0)} avisos que encajan.`;
+    const resumen = `${mensaje} ${contextoAlerta()}. ${textoBusquedaAlerta()}.`;
+    if (salida.textContent !== resumen) salida.textContent = resumen;
+  }
 }
 
 /* Mapa */
@@ -1258,7 +1387,7 @@ async function prepararMapa() {
     id: 'barrios-relleno', type: 'fill', source: 'barrios',
     paint: {
       'fill-color': ['interpolate', ['linear'], ['coalesce', ['feature-state', 'r'], 0],
-        0, '#F4F2F8', 0.001, '#E2DAF3', 1, '#7A62C4'],
+        0, ESCALA_BARRIOS[0], 0.001, ESCALA_BARRIOS[1], 1, ESCALA_BARRIOS[2]],
       'fill-opacity': 0.62,
     },
   }, simbolo);
@@ -1523,7 +1652,7 @@ function margenesLibres() {
 }
 
 function encuadrar(nombre, inmediato = false) {
-  if (!estado.formas) return;
+  if (!estado.formas || !mapa) return;
   const duracion = reducido || inmediato ? 0 : 700;
   mapa.fitBounds(nombre ? limites(nombre) : limitesCiudad(), { padding: margenesLibres(), duration: duracion });
 }
@@ -1685,6 +1814,19 @@ function filaCapas() {
 }
 
 function renderChips() {
+  const cantidad = estado.capas.size;
+  const herramientas = $('#abrir-mapa');
+  if (herramientas) herramientas.textContent = `Capas y leyenda${estado.seleccionado ? ` (${cantidad})` : ''}`;
+  const centrar = $('#centrar-mapa');
+  if (centrar) centrar.textContent = estado.seleccionado ? 'Centrar barrio' : 'Ver CABA';
+  const resumen = $('#estado-capas');
+  if (resumen) resumen.textContent = estado.seleccionado
+    ? `${estado.seleccionado} · ${cantidad} ${plural(cantidad, 'capa activada', 'capas activadas')}. Los puntos de los avisos se muestran por separado.`
+    : 'Elegí un barrio en la lista o en el mapa para activar sus capas.';
+  for (const id of ['capas-preferidas', 'apagar-capas']) {
+    const boton = $(`#${id}`);
+    if (boton) boton.disabled = !estado.seleccionado;
+  }
   $('#capas-fila').hidden = !estado.seleccionado;
   $('#mapa-pista').hidden = Boolean(estado.seleccionado);
   if (!estado.seleccionado) {
@@ -1710,6 +1852,8 @@ function abrirCajonCapas(abrir) {
 }
 
 function renderControles() {
+  const controlActivo = document.activeElement?.dataset?.control;
+  const ruidoActivo = document.activeElement?.dataset?.ruido;
   const partes = [];
   if (estado.seleccionado && estado.capas.has('escuelas')) {
     partes.push(`<label class="control-flotante">Escuelas de nivel
@@ -1719,8 +1863,8 @@ function renderControles() {
   if (estado.seleccionado && estado.capas.has('ruido')) {
     partes.push(`<div class="control-flotante">Ruido
       <div class="segmentado segmentado-chico" role="radiogroup" aria-label="Momento del día">
-        <button type="button" role="radio" data-ruido="diurno" aria-checked="${estado.ruido === 'diurno'}">De día</button>
-        <button type="button" role="radio" data-ruido="nocturno" aria-checked="${estado.ruido === 'nocturno'}">De noche</button>
+        <button type="button" role="radio" data-ruido="diurno" tabindex="${estado.ruido === 'diurno' ? 0 : -1}" aria-checked="${estado.ruido === 'diurno'}">De día</button>
+        <button type="button" role="radio" data-ruido="nocturno" tabindex="${estado.ruido === 'nocturno' ? 0 : -1}" aria-checked="${estado.ruido === 'nocturno'}">De noche</button>
       </div></div>`);
   }
   if (estado.seleccionado && estado.capas.has('delitos') && estado.delitosDatos) {
@@ -1742,6 +1886,8 @@ function renderControles() {
       <button class="boton-texto" type="button" data-quitar-colectivo>Quitar recorrido</button></div>`);
   }
   $('#capa-controles').innerHTML = partes.join('');
+  if (controlActivo) $(`[data-control="${controlActivo}"]`)?.focus({ preventScroll: true });
+  if (ruidoActivo) $(`[data-ruido="${ruidoActivo}"]`)?.focus({ preventScroll: true });
 }
 
 function muestra(color, etiqueta) {
@@ -1753,8 +1899,11 @@ function renderLeyenda() {
   if (!estado.seleccionado) {
     const maximo = Math.max(0, ...estado.barrios.map((b) => b.coincidencias));
     leyenda.innerHTML = maximo ? `<h3>Avisos que encajan por barrio</h3>
-      <div class="gradiente" style="background:linear-gradient(90deg,#D3DAD5,#33434E)"></div>
-      <div class="gradiente-extremos"><span>1</span><span>${maximo}</span></div>` : '';
+      <div class="gradiente" style="background:linear-gradient(90deg,${ESCALA_BARRIOS[1]},${ESCALA_BARRIOS[2]})"></div>
+      <div class="gradiente-extremos"><span>1 aviso</span><span>${maximo} ${plural(maximo, 'aviso', 'avisos')}</span></div>
+      <ul class="leyenda-items">${muestra(ESCALA_BARRIOS[0], 'Sin avisos que encajen')}</ul>
+      <p class="fuente">Cantidad por barrio oficial con tus filtros actuales. Un tono más oscuro indica más avisos, no un mejor barrio.</p>`
+      : '<p class="nota">Ningún barrio tiene avisos que encajen con estos filtros.</p>';
     return;
   }
   const bloques = [];
@@ -1770,6 +1919,15 @@ function renderLeyenda() {
   }
   for (const c of CAPAS) {
     if (!estado.capas.has(c.clave)) continue;
+    if (c.clave !== 'delitos') {
+      const capa = estado.capasDatos[claveCapa(c.clave)];
+      if (!capa || capa.disponible === false || capa.features?.length === 0) {
+        bloques.push(`<h3>${esc(c.nombre)}</h3><p>${!capa ? 'Datos pendientes de carga.' : capa.disponible === false
+          ? 'Capa sin datos disponibles.' : 'Sin elementos registrados en esta capa para la zona consultada.'}</p>`);
+        notas.push(`<li><strong>${esc(c.nombre)}.</strong> ${esc(NOTAS[c.clave])}</li>`);
+        continue;
+      }
+    }
     let items = [];
     if (c.clave === 'subte') {
       const lineas = [...new Set((estado.capasDatos[claveCapa('subte')]?.features || []).map((f) => f.properties.line))].sort();
@@ -1814,23 +1972,27 @@ function renderLeyenda() {
       items.push(`<li class="leyenda-nota">Solo se marcan las calles del barrio con ${umbral} dBA o más.</li>`);
     } else if (c.clave === 'delitos') {
       const d = estado.delitosDatos;
-      if (!d?.disponible) continue;
+      if (!d?.disponible) {
+        bloques.push(`<h3>Delitos registrados</h3><p>${esc(d?.motivo || 'Datos pendientes de carga.')}</p>`);
+        continue;
+      }
       items = estado.delitos.anio === 'persistencia'
         ? [muestra(DELITOS[4], 'Zonas del barrio con concentración alta en más de un año')]
         : [muestra(DELITOS[4], `Zonas del barrio con más hechos registrados en ${estado.delitos.anio}`
           + (d.celdas.corte ? ` (${d.celdas.corte} o más por celda)` : ''))];
       if (d.inmueble) items.push(muestra('#6A4FB3', `Pin del aviso · círculos 250, 500 y 1.000 m`));
+      items.push(`<li class="leyenda-nota">${estado.delitos.anio === 'persistencia' ? `Años ${esc((d.anios || []).join(', '))}` : `Año ${esc(estado.delitos.anio)}`} · registros por celda de 200 m, dentro del barrio.</li>`);
     }
     const titulo = c.clave === 'ruido' ? `Ruido ${estado.ruido === 'diurno' ? 'de día' : 'de noche'}` : c.nombre;
     bloques.push(`<h3>${esc(titulo)}</h3>${items.length ? `<ul class="leyenda-items">${items.join('')}</ul>` : ''}`);
     notas.push(`<li><strong>${esc(titulo)}.</strong> ${esc(NOTAS[c.clave])}</li>`);
   }
   leyenda.innerHTML = bloques.length
-    ? `<details class="leyenda-caja"${estado.leyendaCerrada ? '' : ' open'}><summary>Leyenda</summary>
+    ? `<details class="leyenda-caja"${estado.leyendaCerrada ? '' : ' open'}><summary>Leyenda · ${esc(estado.seleccionado)}</summary>
       ${bloques.join('')}<details class="leyenda-mas"${estado.leyendaAbierta ? ' open' : ''}><summary>Cómo leer el mapa</summary>
       <ul class="leyenda-notas">${notas.join('')}</ul>
       <button class="boton-texto" type="button" data-fuentes>Ver fuentes</button></details></details>`
-    : '';
+    : '<p class="nota">No hay capas de entorno activas. Elegí una para ver sus colores y símbolos.</p>';
   leyenda.querySelector('.leyenda-mas')?.addEventListener('toggle', (e) => { estado.leyendaAbierta = e.target.open; });
   leyenda.querySelector('.leyenda-caja')?.addEventListener('toggle', (e) => {
     if (e.target.classList.contains('leyenda-caja')) estado.leyendaCerrada = !e.target.open;
@@ -1877,12 +2039,37 @@ function elegirBarrioAlerta() {
   ($('#contenido .barrios .fila') || $('#contenido .lista-compacta [data-barrio]'))?.focus({ preventScroll: true });
 }
 
-async function seleccionar(nombre) {
+let ultimaLista = null;
+
+function vistaActual() {
+  return { barrio: estado.seleccionado, pestana: estado.pestana, scroll: $('#contenido').scrollTop,
+    expandido: $('#panel').classList.contains('expandido'), foco: document.activeElement?.dataset?.barrio || '' };
+}
+
+function recordarVista(nueva = false, ajustes = {}) {
+  if (!window.history) return;
+  window.history[nueva ? 'pushState' : 'replaceState'](
+    { ...window.history.state, lugaVista: { ...vistaActual(), ...ajustes } }, '');
+}
+
+function restaurarPosicion(vista) {
+  if (!vista) return;
+  if (celular()) plegarPanel(vista.expandido);
+  $('#contenido').scrollTop = vista.scroll || 0;
+  if (vista.foco) [...document.querySelectorAll('[data-barrio]')]
+    .find((b) => b.dataset.barrio === vista.foco)?.focus({ preventScroll: true });
+}
+
+async function seleccionar(nombre, { historial = true } = {}) {
+  const cambia = nombre !== estado.seleccionado;
+  if (cambia && !estado.seleccionado) ultimaLista = vistaActual();
+  if (cambia && historial) recordarVista();
   if (estado.seleccionado && mapa?.getSource('barrios')) {
     mapa.setFeatureState({ source: 'barrios', id: estado.seleccionado }, { sel: false });
   }
   estado.seleccionado = nombre;
   estado.pestana = nombre && estado.eligiendoAlerta ? 'alerta' : 'entorno';
+  if (cambia && historial) recordarVista(true, { scroll: 0, foco: '' });
   estado.eligiendoAlerta = false;
   estado.verTodos = false;
   estado.avisos = [];
@@ -1899,7 +2086,8 @@ async function seleccionar(nombre) {
   renderChips();
   renderPanel();
   $('#contenido').scrollTop = 0;
-  if (celular()) plegarPanel(false);
+  $('#titulo-vista')?.focus({ preventScroll: true });
+  if (celular()) plegarPanel(estado.pestana === 'alerta');
   estado.parecidos = { barrio: null, datos: null, error: '' };
   cargarParecidos();
   try {
@@ -1913,6 +2101,7 @@ async function seleccionar(nombre) {
     }
   }
   await actualizarCapas();
+  if (!nombre && estado.seleccionado === null) restaurarPosicion(ultimaLista);
 }
 
 // Pone el error arriba del panel y deja debajo lo que ya se estaba viendo (la lista o la ficha anteriores).
@@ -1945,13 +2134,19 @@ function recargar() {
 /* Barra de filtros */
 
 function sincronizarControles() {
-  document.querySelectorAll('[data-operacion]').forEach((b) => b.setAttribute('aria-checked', b.dataset.operacion === estado.operacion));
-  document.querySelectorAll('[data-modo]').forEach((b) => b.setAttribute('aria-checked', b.dataset.modo === estado.modo));
+  for (const [atributo, valor] of [['operacion', estado.operacion], ['modo', estado.modo]]) {
+    document.querySelectorAll(`[data-${atributo}]`).forEach((b) => {
+      const activo = b.dataset[atributo] === valor;
+      b.setAttribute('aria-checked', activo);
+      b.tabIndex = activo ? 0 : -1;
+    });
+  }
   const alquiler = estado.operacion === 'alquiler';
   $('#moneda').hidden = !alquiler;
   $('#moneda-fija').hidden = alquiler;
   $('#moneda').value = estado.moneda;
   $('#etiqueta-presupuesto').textContent = alquiler ? 'Hasta por mes' : 'Hasta';
+  $('#presupuesto').setAttribute('aria-label', `Presupuesto máximo${alquiler ? ' por mes' : ''} en ${estado.moneda}`);
   $('#presupuesto').value = numero.format(estado.presupuesto);
   $('#superficie').value = estado.superficie;
   const ambientes = $('#ambientes');
@@ -2178,6 +2373,120 @@ function conectarPreferencias() {
 
 function conectarEventos() {
   conectarPreferencias();
+  const dialogoMapa = $('#dialogo-mapa');
+  const ubicarLeyenda = () => {
+    const destino = $(dialogoMapa.open || celular() ? '#leyenda-dialogo' : '#leyenda-mapa');
+    if ($('#leyenda').parentElement !== destino) destino.append($('#leyenda'));
+  };
+  ubicarLeyenda();
+  window.addEventListener('resize', ubicarLeyenda);
+  dialogoMapa.addEventListener('close', ubicarLeyenda);
+  $('#abrir-mapa').addEventListener('click', () => {
+    estado.leyendaCerrada = false;
+    renderLeyenda();
+    dialogoMapa.showModal();
+    ubicarLeyenda();
+  });
+  $('#centrar-mapa').addEventListener('click', () => encuadrar(estado.seleccionado));
+  $('#capas-preferidas').addEventListener('click', () => {
+    estado.capas = capasIniciales();
+    renderChips();
+    actualizarCapas();
+  });
+  $('#apagar-capas').addEventListener('click', () => {
+    estado.capas.clear();
+    renderChips();
+    actualizarCapas();
+  });
+  const dialogoComparacion = $('#dialogo-comparacion');
+  const abrirComparacion = () => {
+    $('#comparacion-contenido').innerHTML = renderComparacion();
+    dialogoComparacion.showModal();
+  };
+  $('#comparacion-pie').addEventListener('click', (e) => {
+    if (e.target.closest('button') && estado.comparando.size >= 2) abrirComparacion();
+  });
+  $('#contenido').addEventListener('change', (e) => {
+    if (e.target.matches('[data-comparar]')) {
+      const barrio = e.target.dataset.comparar;
+      if (e.target.checked && estado.comparando.size < 3) estado.comparando.add(barrio);
+      else estado.comparando.delete(barrio);
+      actualizarComparador();
+    }
+    if (e.target.id === 'orden-barrios') {
+      estado.ordenBarrios = e.target.value;
+      renderLista();
+      $('#orden-barrios').focus({ preventScroll: true });
+    }
+  });
+  $('#contenido').addEventListener('click', (e) => {
+    if (e.target.closest('#abrir-comparacion')) {
+      abrirComparacion();
+    }
+    if (e.target.closest('#limpiar-comparacion')) {
+      estado.comparando.clear();
+      actualizarComparador();
+    }
+  });
+  dialogoComparacion.addEventListener('click', (e) => {
+    const elegido = e.target.closest('[data-elegir-comparado]');
+    if (elegido) {
+      dialogoComparacion.close();
+      seleccionar(elegido.dataset.elegirComparado);
+    }
+    if (e.target.closest('[data-fuentes-comparacion]')) {
+      dialogoComparacion.close();
+      abrirFuentes();
+    }
+  });
+  recordarVista();
+  let navegacion = 0;
+  window.addEventListener('popstate', async (e) => {
+    const turno = ++navegacion;
+    const vista = e.state?.lugaVista || { barrio: null, pestana: 'entorno', scroll: 0 };
+    await seleccionar(vista.barrio, { historial: false });
+    if (turno !== navegacion || estado.seleccionado !== vista.barrio) return;
+    estado.pestana = PESTANAS.some(([clave]) => clave === vista.pestana) ? vista.pestana : 'entorno';
+    renderPanel();
+    restaurarPosicion(vista);
+  });
+  document.addEventListener('keydown', (e) => {
+    const radio = e.target.closest('[role="radio"]');
+    if (!radio || !['ArrowRight', 'ArrowLeft', 'ArrowDown', 'ArrowUp', 'Home', 'End'].includes(e.key)) return;
+    const radios = [...radio.closest('[role="radiogroup"]').querySelectorAll('[role="radio"]')];
+    const i = radios.indexOf(radio);
+    const j = e.key === 'Home' ? 0 : e.key === 'End' ? radios.length - 1
+      : (i + (['ArrowRight', 'ArrowDown'].includes(e.key) ? 1 : -1) + radios.length) % radios.length;
+    e.preventDefault();
+    radios[j].focus();
+    radios[j].click();
+  });
+  const alternarFiltros = $('#alternar-filtros');
+  const cerrarFiltros = () => {
+    $('.barra').classList.remove('filtros-abiertos');
+    alternarFiltros.setAttribute('aria-expanded', 'false');
+    alternarFiltros.textContent = 'Cambiar filtros';
+    $('#importa').hidden = true;
+    $('#abrir-importa').setAttribute('aria-expanded', 'false');
+  };
+  alternarFiltros.addEventListener('click', () => {
+    const abrir = alternarFiltros.getAttribute('aria-expanded') !== 'true';
+    if (!abrir) { cerrarFiltros(); return; }
+    $('.barra').classList.toggle('filtros-abiertos', abrir);
+    alternarFiltros.setAttribute('aria-expanded', abrir);
+    alternarFiltros.textContent = 'Listo, ver barrios';
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && celular() && alternarFiltros.getAttribute('aria-expanded') === 'true' && $('#importa').hidden) {
+      cerrarFiltros();
+      alternarFiltros.focus();
+    }
+  });
+  $('#contenido').addEventListener('submit', (e) => {
+    if (e.target.id !== 'form-alerta') return;
+    e.preventDefault();
+    crearAlerta($('#crear-alerta'));
+  });
   // «Probar de nuevo» en cualquier bloque de error vuelve a pedir lo que falló.
   const REINTENTOS = {
     inicio: () => cargarInicio(),
@@ -2303,6 +2612,7 @@ function conectarEventos() {
   // Pestañas de la ficha: se muestran y ocultan sin volver a dibujar, así no se pierde lo que se escribió.
   const elegirPestana = (clave, foco = false) => {
     estado.pestana = clave;
+    if (celular()) plegarPanel(true);
     document.querySelectorAll('[data-pestana]').forEach((t) => {
       const activa = t.dataset.pestana === clave;
       t.setAttribute('aria-selected', activa);
@@ -2310,6 +2620,11 @@ function conectarEventos() {
       if (activa && foco) t.focus();
     });
     document.querySelectorAll('.pestana-panel').forEach((panel) => { panel.hidden = panel.id !== `panel-${clave}`; });
+    const contenido = $('#contenido');
+    const cabeza = $('#contenido .ficha-cabeza');
+    contenido.scrollTop += cabeza.getBoundingClientRect().bottom - contenido.getBoundingClientRect().top
+      + parseFloat(getComputedStyle(cabeza).marginBottom);
+    recordarVista();
   };
   $('#contenido').addEventListener('click', (e) => {
     const tab = e.target.closest('[data-pestana]');
@@ -2321,7 +2636,10 @@ function conectarEventos() {
     if (e.target.closest('[data-ver-alertas]')) abrirAlertas();
   });
   // Con mail, la casilla de consentimiento aparece y el botón espera a que se marque.
-  $('#contenido').addEventListener('input', (e) => { if (e.target.matches('#mail-alerta, #consentimiento-alerta')) actualizarAlerta(); });
+  $('#contenido').addEventListener('input', (e) => {
+    if (e.target.matches('#mail-alerta')) e.target.removeAttribute('aria-invalid');
+    if (e.target.matches('#mail-alerta, #consentimiento-alerta')) actualizarAlerta();
+  });
   $('#contenido').addEventListener('change', (e) => { if (e.target.matches('#consentimiento-alerta')) actualizarAlerta(); });
   $('#contenido').addEventListener('keydown', (e) => {
     const tab = e.target.closest('[data-pestana]');
@@ -2356,9 +2674,14 @@ function conectarEventos() {
   $('#contenido').addEventListener('click', (e) => {
     if (!e.target.closest('[data-abrir-importa]')) return;
     e.stopPropagation();
+    if (celular()) {
+      $('.barra').classList.add('filtros-abiertos');
+      $('#alternar-filtros').setAttribute('aria-expanded', 'true');
+      $('#alternar-filtros').textContent = 'Listo, ver barrios';
+    }
     $('#importa').hidden = false;
     $('#abrir-importa').setAttribute('aria-expanded', 'true');
-    $('#necesidades input')?.focus();
+    ($('#necesidades:not([hidden]) input') || $('#preferencias input'))?.focus();
   });
 
   let consultaEstacionamientos = 0;
@@ -2483,7 +2806,6 @@ function conectarEventos() {
     if (fila) { seleccionar(fila.dataset.barrio); return; }
     if (e.target.closest('#volver')) { seleccionar(null); return; }
     if (e.target.closest('[data-fuentes]')) { abrirFuentes(); return; }
-    if (e.target.closest('#crear-alerta')) crearAlerta(e.target.closest('#crear-alerta'));
     if (e.target.closest('#ver-todos')) { estado.verTodos = true; renderFicha(); }
   });
   $('#contenido').addEventListener('toggle', (e) => {
@@ -2504,7 +2826,7 @@ function conectarEventos() {
     renderPanel();
     actualizarCapas();
     // El cajón se vuelve a dibujar: el foco sigue en la misma capa para poder seguir con el teclado.
-    if (e.currentTarget.id === 'cajon-capas') $(`#cajon-capas [data-capa="${chip.dataset.capa}"]`)?.focus();
+    $(`#${e.currentTarget.id} [data-capa="${chip.dataset.capa}"]`)?.focus({ preventScroll: true });
   };
   $('#capas').addEventListener('click', clicCapa);
   $('#cajon-capas').addEventListener('click', clicCapa);
@@ -2522,9 +2844,18 @@ function conectarEventos() {
     if (e.target.closest('[data-quitar-colectivo]')) { quitarColectivo(); return; }
     if (e.target.closest('[data-quitar-inmueble]')) { estado.delitos.inmueble = ''; actualizarCapas(); encuadrar(estado.seleccionado); }
     const boton = e.target.closest('[data-ruido]');
-    if (boton && boton.dataset.ruido !== estado.ruido) { estado.ruido = boton.dataset.ruido; actualizarCapas(); }
+    if (boton && boton.dataset.ruido !== estado.ruido) {
+      estado.ruido = boton.dataset.ruido;
+      renderControles();
+      actualizarCapas();
+    }
   });
-  $('#leyenda').addEventListener('click', (e) => { if (e.target.closest('[data-fuentes]')) abrirFuentes(); });
+  $('#leyenda').addEventListener('click', (e) => {
+    if (e.target.closest('[data-fuentes]')) {
+      if (dialogoMapa.open) dialogoMapa.close();
+      abrirFuentes();
+    }
+  });
 
   $('#abrir-precios').addEventListener('click', abrirPrecios);
   $('#dialogo-precios').addEventListener('click', (e) => {
@@ -2578,12 +2909,14 @@ function actualizarAlerta() {
 }
 
 async function crearAlerta(boton) {
+  if (boton.disabled || boton.getAttribute('aria-busy') === 'true') return;
   const salida = $('#estado-alerta');
   const campoMail = $('#mail-alerta');
   const email = campoMail ? campoMail.value.trim() : '';
   if (campoMail && email && !campoMail.checkValidity()) {
     salida.className = 'estado error';
     salida.textContent = 'Revisá el mail: tiene que ser una dirección como nombre@dominio.com.';
+    campoMail.setAttribute('aria-invalid', 'true');
     campoMail.focus();
     return;
   }
@@ -2594,6 +2927,7 @@ async function crearAlerta(boton) {
   if (interes && !email) {
     salida.className = 'estado error';
     salida.textContent = 'Para anotarte en la primera tanda, dejá tu mail. Si no, borrá la anotación con «No anotarme».';
+    campoMail.setAttribute('aria-invalid', 'true');
     campoMail.focus();
     return;
   }
@@ -2616,13 +2950,14 @@ async function crearAlerta(boton) {
     const anotado = interes && correo && correo.enviado
       ? ` Quedaste anotado en la primera tanda de «${esc(nivelInteres().nombre)}»: te escribimos cuando abra.` : '';
     const local = creada
-      ? `Alerta creada para ${barrio}: ${contextoAlerta()}. Cuando entre un aviso nuevo que encaje, aparece en Mis alertas.`
+      ? `Búsqueda guardada. Alerta creada para ${barrio}: ${contextoAlerta()}. Cuando entre un aviso nuevo que encaje, aparece en Mis alertas.`
       : `Ya tenías una alerta para ${barrio} con estos mismos filtros (${contextoAlerta()}).`;
     salida.className = correo && !correo.enviado ? 'estado error' : 'estado ok';
     salida.innerHTML = `${!correo ? local
       : correo.enviado ? `${local} También te vamos a escribir a ${esc(email)}.${anotado}`
         : `${local} No se activó el aviso por correo: ${esc(correo.motivo)}`}
       <button class="boton-texto" type="button" data-ver-alertas>Ver mis alertas</button>`;
+    salida.scrollIntoView({ block: 'nearest' });
     if (correo && correo.enviado) {
       campoMail.value = '';
       $('#consentimiento-alerta').checked = false;
@@ -2634,6 +2969,7 @@ async function crearAlerta(boton) {
   } catch (error) {
     salida.className = 'estado error';
     salida.textContent = `No se creó la alerta: ${error.message}`;
+    salida.scrollIntoView({ block: 'nearest' });
   } finally {
     boton.removeAttribute('aria-busy');
     boton.textContent = textoBoton;
@@ -2783,7 +3119,7 @@ function seguirAltoBarra() {
   const barra = document.querySelector('.barra');
   if (!barra || typeof ResizeObserver === 'undefined') return;
   const fijar = () => {
-    const filas = [...barra.querySelectorAll('.marca, .barra-extremo, .filtros')].map((n) => n.getBoundingClientRect());
+    const filas = [...barra.querySelectorAll('.marca, .barra-extremo, .filtros, .filtros-movil')].map((n) => n.getBoundingClientRect());
     const alto = Math.max(0, ...filas.map((r) => r.bottom)) - barra.getBoundingClientRect().top;
     if (alto > 0) document.documentElement.style.setProperty('--barra-real', `${Math.round(alto)}px`);
   };
@@ -2806,6 +3142,7 @@ async function iniciar() {
   renderNecesidades();
   sincronizarControles();
   conectarEventos();
+  if (celular()) plegarPanel(true);
   renderChips();
   await cargarInicio();
   try {

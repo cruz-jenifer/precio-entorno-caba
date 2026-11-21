@@ -7,10 +7,13 @@
   <meta name="description" content="Para quienes buscan casa en CABA sin conocer todos los barrios: te mostramos dónde te alcanza y qué hay alrededor, y te avisamos cuando aparece algo nuevo.">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <!-- Mapa base: el estilo, las teselas y las tipografías vienen de estos dos hosts. -->
+  <link rel="preconnect" href="https://basemaps.cartocdn.com" crossorigin>
+  <link rel="preconnect" href="https://tiles.basemaps.cartocdn.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,100..900&display=swap" rel="stylesheet">
   <link href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet">
   <link href="styles.css" rel="stylesheet">
-  <!-- app.js pinta la lista primero; MapLibre se pide después (cargarMapLibre) para no competir por la red. -->
+  <!-- app.js pinta la lista primero; MapLibre se descarga en paralelo con prioridad baja (precargarMapa). -->
   <script src="app.js" defer></script>
 </head>
 <body>

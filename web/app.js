@@ -816,7 +816,7 @@ async function elegirColectivo(linea) {
     if (estado.colectivo?.linea !== linea) return;
     datos.properties.tooltip = `Línea ${linea} · Recorrido del GTFS de 2019 · Tocá para quitarlo`;
     estado.colectivo.datos = datos;
-    mapa?.getSource('colectivo')?.setData({ type: 'FeatureCollection', features: [datos] });
+    ponerDatos('colectivo', { type: 'FeatureCollection', features: [datos] });
     const coords = datos.geometry.coordinates.flat();
     const lons = coords.map((c) => c[0]);
     const lats = coords.map((c) => c[1]);
@@ -834,7 +834,7 @@ async function elegirColectivo(linea) {
 function quitarColectivo() {
   if (!estado.colectivo) return;
   estado.colectivo = null;
-  mapa?.getSource('colectivo')?.setData(VACIO);
+  ponerDatos('colectivo', VACIO);
   popup?.remove();
   renderPanel();
   renderControles();
@@ -1264,9 +1264,9 @@ function renderPanel() {
 
 /* Mapa */
 
-// MapLibre pesa unos 210 KB comprimido: se pide recién después de pintar la lista, para que no compita por la red
-// con lo que hace falta para el primer pantallazo. Hasta que llega, `mapa`, `popup` y `popupAviso` valen null y
-// las funciones del mapa no hacen nada; prepararMapa() pinta todo al final.
+// MapLibre pesa unos 210 KB comprimido: se descarga en paralelo con la lista (precargarMapa) y el mapa se crea
+// recién después de pintarla, para que no compita con el primer pantallazo. Hasta entonces, `mapa`, `popup` y
+// `popupAviso` valen null y las funciones del mapa no hacen nada; prepararMapa() pinta todo al final.
 const MAPLIBRE_JS = 'https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js';
 let mapa = null;
 let mapaListo = null;
@@ -1295,6 +1295,8 @@ function crearMapa() {
     dragRotate: false,
     pitchWithRotate: false,
     attributionControl: { compact: true },
+    // Sin el fundido de etiquetas: el mapa no queda redibujando 300 ms después de cada movimiento.
+    fadeDuration: 0,
   });
   mapa.touchZoomRotate.disableRotation();
   mapa.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right');
@@ -1363,9 +1365,24 @@ function imagenPin(relleno, borde) {
   c.fill();
   return c.getImageData(0, 0, lienzo.width, lienzo.height);
 }
+// La descarga de MapLibre y de las formas arranca junto con la lista (iniciar): el script entra con prioridad baja
+// y no demora los datos de los barrios, pero ya está en el navegador cuando la lista termina de pintarse.
+let precargaMapa = null;
+function precargarMapa() {
+  if (!precargaMapa) {
+    precargaMapa = { formas: api('/api/mapa/barrios'), libreria: cargarMapLibre() };
+    // Si fallan, el error se informa en prepararMapa(); acá se evita el aviso de promesa sin atender y se
+    // permite volver a pedirlas.
+    const olvidar = () => { precargaMapa = null; };
+    precargaMapa.formas.catch(olvidar);
+    precargaMapa.libreria.catch(olvidar);
+  }
+  return precargaMapa;
+}
+
 async function prepararMapa() {
-  const pedidoFormas = api('/api/mapa/barrios');
-  await cargarMapLibre();
+  const { formas: pedidoFormas, libreria } = precargarMapa();
+  await libreria;
   crearMapa();
   const [formas] = await Promise.all([pedidoFormas, mapaListo]);
   estado.formas = formas;
@@ -1379,7 +1396,9 @@ async function prepararMapa() {
   const simbolo = mapa.getStyle().layers.find((capa) => capa.type === 'symbol')?.id;
   mapa.addSource('barrios', { type: 'geojson', data: formas, promoteId: 'barrio' });
   for (const id of ['delitos', 'radios', 'inmueble', 'colectivo', ...CAPAS_MAPA.map((c) => c.clave), 'avisos']) {
-    mapa.addSource(id, { type: 'geojson', data: VACIO });
+    // Teselas hasta zoom 16 (por defecto, 18): más cerca se agranda la última, con precisión de centímetros. Cortar
+    // las capas grandes (rampas, verdes, garajes) en dos niveles menos es lo que más se nota al acercarse.
+    mapa.addSource(id, { type: 'geojson', data: VACIO, maxzoom: 16 });
   }
   const sel = ['boolean', ['feature-state', 'sel'], false];
   const hover = ['boolean', ['feature-state', 'hover'], false];
@@ -1482,23 +1501,40 @@ async function prepararMapa() {
     if (!movimiento) requestAnimationFrame(() => { const e = movimiento; movimiento = null; alMoverMouse(e); });
     movimiento = evento;
   });
+  // Una sola consulta por cuadro con todas las capas (antes eran tres). MapLibre devuelve primero lo que está más
+  // arriba, así que el pin, el elemento y el barrio salen de la misma lista.
+  const capasHover = ['avisos', ...conTexto, 'barrios-relleno'];
+  const conTextoSet = new Set(conTexto);
+  let textoPopup = null;
+  let offsetPopup = null;
+  const mostrarPopup = (lngLat, texto, offset) => {
+    if (offsetPopup !== offset) { popup.setOffset(offset); offsetPopup = offset; }
+    popup.setLngLat(lngLat);
+    if (textoPopup !== texto) { popup.setHTML(esc(texto)); textoPopup = texto; }
+    if (!popup.isOpen()) popup.addTo(mapa);
+  };
+  const ocultarPopup = () => { if (popup.isOpen()) popup.remove(); };
+  popup.on('close', () => { textoPopup = null; });
+  let cursor = '';
+  const ponerCursor = (valor) => { if (cursor !== valor) { cursor = valor; mapa.getCanvas().style.cursor = valor; } };
   const alMoverMouse = (evento) => {
-    if (!evento) return;
-    const barrio = mapa.queryRenderedFeatures(evento.point, { layers: ['barrios-relleno'] })[0];
+    // Mientras se arrastra o se hace zoom, consultar el mapa en cada cuadro compite con el dibujo.
+    if (!evento || mapa.isMoving()) return;
+    const debajo = mapa.queryRenderedFeatures(evento.point, { layers: capasHover });
+    const barrio = debajo.find((f) => f.layer.id === 'barrios-relleno');
     marcarHover(barrio ? barrio.id : null, 'mapa');
-    const pin = mapa.queryRenderedFeatures(evento.point, { layers: ['avisos'] })[0];
+    const pin = debajo[0]?.layer.id === 'avisos' ? debajo[0] : null;
     if (pin) {
-      mapa.getCanvas().style.cursor = 'pointer';
-      if (estado.pinAbierto === pin.properties.clave) popup?.remove();
-      else popup.setOffset(OFFSET_PIN).setLngLat(pin.geometry.coordinates).setHTML(esc(textoPin(pin.properties.clave))).addTo(mapa);
+      ponerCursor('pointer');
+      if (estado.pinAbierto === pin.properties.clave) ocultarPopup();
+      else mostrarPopup(pin.geometry.coordinates, textoPin(pin.properties.clave), OFFSET_PIN);
       return;
     }
-    popup.setOffset(10);
-    const elemento = mapa.queryRenderedFeatures(evento.point, { layers: conTexto })[0];
+    const elemento = debajo.find((f) => conTextoSet.has(f.layer.id));
     const texto = elemento ? textoElemento(elemento) : (barrio && !estado.seleccionado ? textoBarrio(barrio.id) : null);
-    mapa.getCanvas().style.cursor = barrio || elemento ? 'pointer' : '';
-    if (texto) popup.setLngLat(evento.lngLat).setHTML(esc(texto)).addTo(mapa);
-    else popup?.remove();
+    ponerCursor(barrio || elemento ? 'pointer' : '');
+    if (texto) mostrarPopup(evento.lngLat, texto, 10);
+    else ocultarPopup();
   };
   mapa.on('mouseout', () => { popup?.remove(); marcarHover(null, 'mapa'); });
   mapa.on('click', (evento) => {
@@ -1519,7 +1555,7 @@ async function prepararMapa() {
     }
     const elemento = mapa.queryRenderedFeatures(evento.point, { layers: conTexto })[0];
     if (elemento) {
-      popup.setLngLat(evento.lngLat).setHTML(esc(textoElemento(elemento))).addTo(mapa);
+      mostrarPopup(evento.lngLat, textoElemento(elemento), 10);
       return;
     }
     const barrio = mapa.queryRenderedFeatures(evento.point, { layers: ['barrios-relleno'] })[0];
@@ -1534,7 +1570,10 @@ function claveUbicacion(a) {
   return `${a.lat.toFixed(6)},${a.lon.toFixed(6)}`;
 }
 
+// estado.avisos siempre se reemplaza entero (nunca se modifica en el lugar): los grupos se calculan una vez por lista.
+let gruposCalculados = { avisos: null, grupos: new Map() };
 function gruposAvisos() {
+  if (gruposCalculados.avisos === estado.avisos) return gruposCalculados.grupos;
   const grupos = new Map();
   for (const a of estado.avisos) {
     if (!a.ubicacion) continue;
@@ -1542,17 +1581,24 @@ function gruposAvisos() {
     if (!grupos.has(clave)) grupos.set(clave, []);
     grupos.get(clave).push(a);
   }
+  gruposCalculados = { avisos: estado.avisos, grupos };
   return grupos;
 }
 
+// renderPanel() llama a esto en cada cambio del panel; los pines se reenvían al mapa solo si cambió la lista.
+let pinesPintados;
 function pintarAvisos() {
   const fuente = mapa?.getSource('avisos');
   if (!fuente) return;
   const grupos = estado.seleccionado ? gruposAvisos() : new Map();
-  fuente.setData({ type: 'FeatureCollection', features: [...grupos].map(([clave, lista]) => ({
-    type: 'Feature', geometry: { type: 'Point', coordinates: [lista[0].lon, lista[0].lat] },
-    properties: { clave, cantidad: lista.length, aproximada: lista.every((a) => a.ubicacion === 'aproximada') },
-  })) });
+  const firma = estado.seleccionado ? estado.avisos : null;
+  if (pinesPintados !== firma) {
+    pinesPintados = firma;
+    fuente.setData({ type: 'FeatureCollection', features: [...grupos].map(([clave, lista]) => ({
+      type: 'Feature', geometry: { type: 'Point', coordinates: [lista[0].lon, lista[0].lat] },
+      properties: { clave, cantidad: lista.length, aproximada: lista.every((a) => a.ubicacion === 'aproximada') },
+    })) });
+  }
   if (estado.pinAbierto && !grupos.has(estado.pinAbierto)) popupAviso?.remove();
 }
 
@@ -1670,6 +1716,27 @@ function encuadrarPin(pin) {
 
 /* Capas del barrio elegido */
 
+/* Mandar un GeoJSON al mapa obliga a MapLibre a volver a cortarlo en teselas en su worker: con los garajes de toda la
+   ciudad o las rampas son cientos de miles de vértices. Antes, prender una capa reenviaba todas las demás; ahora solo
+   se manda la fuente cuyo contenido cambió (mismo objeto = mismos datos). */
+const datosFuente = new Map();
+let ultimoUmbralRuido = null;
+function ponerDatos(id, datos) {
+  const fuente = mapa?.getSource(id);
+  if (!fuente || datosFuente.get(id) === datos) return;
+  datosFuente.set(id, datos);
+  fuente.setData(datos);
+}
+
+let inmuebleMarcado = null;
+function puntoInmueble({ lon, lat }) {
+  if (inmuebleMarcado?.lon !== lon || inmuebleMarcado?.lat !== lat) {
+    inmuebleMarcado = { lon, lat, datos: { type: 'FeatureCollection', features: [{ type: 'Feature',
+      geometry: { type: 'Point', coordinates: [lon, lat] }, properties: {} }] } };
+  }
+  return inmuebleMarcado.datos;
+}
+
 function claveCapa(clave) {
   // Los garajes cubren toda la ciudad: se piden una vez, sin importar el barrio.
   return [CAPAS_CIUDAD.has(clave) ? 'CABA' : estado.seleccionado, clave, clave === 'escuelas' ? estado.nivel : '', clave === 'ruido' ? estado.ruido : ''].join('|');
@@ -1679,7 +1746,7 @@ async function actualizarCapas() {
   const barrio = estado.seleccionado;
   const fijas = CAPAS_MAPA.map((c) => c.clave);
   if (!barrio) {
-    fijas.concat('delitos', 'radios', 'inmueble', 'colectivo').forEach((id) => mapa?.getSource(id)?.setData(VACIO));
+    fijas.concat('delitos', 'radios', 'inmueble', 'colectivo').forEach((id) => ponerDatos(id, VACIO));
     estado.colectivo = null;
     renderControles();
     renderLeyenda();
@@ -1699,14 +1766,17 @@ async function actualizarCapas() {
     mostrarAvisoMapa(`No se pudieron cargar las capas del mapa. ${error.message}`, 'capas');
   }
   if (barrio !== estado.seleccionado) return;
-  for (const c of fijas) mapa?.getSource(c)?.setData(estado.capas.has(c) ? estado.capasDatos[claveCapa(c)] || VACIO : VACIO);
-  if (mapa?.getLayer('ruido')) mapa.setFilter('ruido', ['>=', ['get', 'tipico'], estado.ruido === 'diurno' ? 70 : 65]);
+  for (const c of fijas) ponerDatos(c, estado.capas.has(c) ? estado.capasDatos[claveCapa(c)] || VACIO : VACIO);
+  const umbralRuido = estado.ruido === 'diurno' ? 70 : 65;
+  if (mapa?.getLayer('ruido') && umbralRuido !== ultimoUmbralRuido) {
+    ultimoUmbralRuido = umbralRuido;
+    mapa.setFilter('ruido', ['>=', ['get', 'tipico'], umbralRuido]);
+  }
   const delitos = estado.capas.has('delitos') && estado.delitosDatos?.disponible ? estado.delitosDatos.celdas : VACIO;
-  mapa?.getSource('delitos')?.setData(delitos);
+  ponerDatos('delitos', delitos);
   const d = estado.capas.has('delitos') && estado.delitosDatos?.disponible ? estado.delitosDatos : null;
-  mapa?.getSource('radios')?.setData(d?.radios || VACIO);
-  mapa?.getSource('inmueble')?.setData(d?.inmueble ? { type: 'FeatureCollection', features: [{ type: 'Feature',
-    geometry: { type: 'Point', coordinates: [d.inmueble.lon, d.inmueble.lat] }, properties: {} }] } : VACIO);
+  ponerDatos('radios', d?.radios || VACIO);
+  ponerDatos('inmueble', d?.inmueble ? puntoInmueble(d.inmueble) : VACIO);
   renderControles();
   renderLeyenda();
   renderPanel();
@@ -2204,7 +2274,7 @@ async function cambiarContexto() {
   estado.delitosDatos = null;
   estado.delitos = { anio: '', tipo: 'todos', franja: 'todas', radio: '500', inmueble: '' };
   estado.avisos = [];
-  for (const id of ['delitos', 'radios', 'inmueble']) mapa?.getSource(id)?.setData(VACIO);
+  for (const id of ['delitos', 'radios', 'inmueble']) ponerDatos(id, VACIO);
   renderPanel();
   sincronizarControles();
   guardar();
@@ -3123,6 +3193,7 @@ async function iniciar() {
   conectarEventos();
   if (celular()) plegarPanel(true);
   renderChips();
+  precargarMapa();
   await cargarInicio();
   try {
     await prepararMapa();

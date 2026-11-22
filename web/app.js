@@ -2438,6 +2438,11 @@ function conectarEventos() {
   const ubicarLeyenda = () => {
     const destino = $(dialogoMapa.open || celular() ? '#leyenda-dialogo' : '#leyenda-mapa');
     if ($('#leyenda').parentElement !== destino) destino.append($('#leyenda'));
+    // Nivel de escuelas, día/noche del ruido y filtros de delitos quedan sobre el mapa, junto a las capas que
+    // filtran; con el diálogo abierto se mudan a él. Los eventos están en el contenedor y viajan con él.
+    const controles = $('#capa-controles');
+    const lugar = $(dialogoMapa.open ? '#controles-dialogo' : '.mapa-arriba');
+    if (controles.parentElement !== lugar) lugar.prepend(controles);
   };
   ubicarLeyenda();
   window.addEventListener('resize', ubicarLeyenda);

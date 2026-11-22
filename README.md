@@ -1,6 +1,6 @@
 # Lüga
 
-El [Colab integral](notebooks/capstone_integral_colab.ipynb) reúne teoría, datos, EDA, ANOVA, cinco modelos, evaluación e inferencia en 47 celdas. Ver [archivos, modos de ejecución y guía para abrirlo](docs/colab-integral.md).
+El [Colab integral con resultados ejecutados](notebooks/capstone_integral_colab.ipynb) incluye tablas, nueve figuras, conclusiones de los cinco modelos y el anexo de evaluación temporal. Se puede leer sin ejecutar ni subir datos. [Abrir en Google Colab](https://colab.research.google.com/github/montesquieu891/precio-entorno-caba/blob/main/notebooks/capstone_integral_colab.ipynb). Ver [modos de ejecución y guía](docs/colab-integral.md).
 
 Prototipo local de búsqueda inmobiliaria. Una persona ingresa sus preferencias, compara barrios, guarda una búsqueda y recibe una alerta cuando aparece un aviso que coincide. Los delitos registrados se muestran como contexto y se analizan por separado para el capstone.
 

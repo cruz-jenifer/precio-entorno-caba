@@ -1,5 +1,7 @@
 """Genera el Colab integral a partir de la memoria y los módulos auditados."""
 
+import hashlib
+import json
 import re
 from pathlib import Path
 
@@ -56,7 +58,7 @@ El modo de lectura reutiliza predicciones externas verificadas por hash: **no si
 
 ### Índice
 
-1. Entorno y trazabilidad · 2. Contrato de datos · 3. Calidad y cobertura · 4. Distribuciones y geografía · 5. Contexto y asociaciones · 6. ANOVA · 7. Cinco modelos · 8. Validación anidada · 9. Comparación y errores · 10. Interpretación · 11. Explorador de búsquedas · 12. Modelo exportable · 13. Negocio y costos · 14. Confirmación futura · 15. Exportación y referencias.
+1. Entorno y trazabilidad · 2. Contrato de datos · 3. Calidad y cobertura · 4. Distribuciones y geografía · 5. Contexto y asociaciones · 6. ANOVA · 7. Cinco modelos · 8. Validación anidada · 9. Comparación y errores · 10. Interpretación · 11. Explorador de búsquedas · 12. Modelo exportable · 13. Negocio y costos · 14. Confirmación futura · 15. Exportación · Anexo A. Validación temporal del HGB operativo · Referencias.
 """, 'portada')
 
 md("""
@@ -736,7 +738,9 @@ md(r"""
 
 **Con evidencia en este corte:** cinco familias comparadas en las mismas particiones, preprocesamiento dentro de entrenamiento, referencias simples, errores externos, incertidumbre condicional, convergencia numérica y diferencias barriales exploratorias.
 
-**Pendiente de confirmación:** desempeño en una captura futura; independencia por edificio o microzona; disponibilidad de atributos a la fecha real de predicción; utilidad de las alertas; ahorro del cliente; costo de inferencia desplegada en Apify; actualización remota de Make/Sheets/Looker.
+**Evidencia complementaria:** el Anexo A documenta la evaluación temporal del HGB operativo con capturas del 13 al 20/11/2026. Es otro artefacto y otro protocolo; no valida temporalmente al ganador de este benchmark.
+
+**Pendiente de confirmación:** desempeño del ganador del benchmark en una captura futura; independencia por edificio o microzona; disponibilidad de atributos a la fecha real de predicción; utilidad de las alertas; ahorro del cliente; costo de inferencia desplegada en Apify; actualización remota de Make/Sheets/Looker.
 
 El protocolo siguiente convierte esos pendientes en una prueba concreta. Los límites de aceptación se acuerdan antes de observar la nueva muestra; no se eligen retrospectivamente para aprobar el modelo.
 """, 'cierre-texto')
@@ -785,6 +789,84 @@ if EN_COLAB and DESCARGAR_AL_FINAL:
     from google.colab import files
     files.download(str(ZIP_SALIDA))
 """, 'exportacion')
+
+# El anexo incorpora evidencia agregada ya ejecutada; no entrena ni extrae datos.
+TEMPORAL_PATH = ROOT / 'reports/validacion_temporal.json'
+temporal_bytes = TEMPORAL_PATH.read_bytes()
+temporal = json.loads(temporal_bytes)
+
+def temporal_number(value, decimals=1):
+    return f'{value:,.{decimals}f}'.replace(',', 'X').replace('.', ',').replace('X', '.')
+
+temporal_rows = []
+for key, label in [('inmobiliarias_13a17', 'Inmobiliarias, 13–17/11 · 40 barrios'),
+                   ('zonaprop_20261120', 'Zonaprop, 20/11 · Caballito y Almagro'),
+                   (None, '**Total**')]:
+    block = temporal['segmentos'][key] if key else temporal['todos']
+    model, base = block['modelo'], block['linea_de_base']
+    temporal_rows.append('| ' + ' | '.join([
+        label, temporal_number(block['avisos'], 0), temporal_number(model['mae']),
+        temporal_number(base['mae']), temporal_number(block['mejora_mae_pct']) + ' %',
+        temporal_number(model['rmse']), temporal_number(model['r2'], 3),
+        temporal_number(model['dentro_20_pct']) + ' %',
+    ]) + ' |')
+
+md("""
+## Anexo A · Validación temporal del HGB operativo · 20/11/2026
+
+### Pregunta y alcance
+
+¿El modelo operativo conserva una ventaja sobre la mediana de comparables cuando se aplica a avisos de capturas posteriores a las del entrenamiento?
+
+Este anexo presenta **resultados históricos ya ejecutados**, incorporados desde `reports/validacion_temporal.json`. Puede leerse sin ejecutar el cuaderno. Cambiar `REENTRENAR` no vuelve a ejecutar esta evaluación: esa opción controla únicamente el benchmark integral. No se realizaron nuevas extracciones para incorporar el anexo.
+
+**Son dos experimentos diferentes.** El benchmark principal compara cinco familias sobre log(USD/m²), con validación anidada por grupos. Aquí se evalúa el HGB operativo, con pérdida absoluta sobre USD/m², 300 iteraciones y rasgos adicionales de edificio y descripción. Su versión es `VERSION_MODELO`. Los 402,6 USD/m² del ganador del benchmark no son su error histórico: el HGB operativo obtuvo 442,7 USD/m² en su propia prueba histórica y 528,7 en esta evaluación temporal. Tampoco es una comparación temporal de las cinco familias.
+
+### Datos y procedimiento
+
+- Entrenamiento: catálogo autorizado capturado del **7 al 9 de noviembre de 2026**.
+- Evaluación: capturas de inmobiliarias autorizadas del **13 al 17 de noviembre**, y Zonaprop del **20 de noviembre**. Zonaprop comprende Caballito y Almagro, 2 ambientes y hasta USD 165.000; no representa todo CABA.
+- Se aplicó el modelo guardado sin reentrenarlo ni ajustar sus parámetros con la muestra evaluada. Se conservaron el pipeline de variables y las capas de puntos de interés del entrenamiento.
+- De 2.049 avisos válidos se excluyeron 147 por ID conocido y 139 por posible coincidencia con un inmueble del entrenamiento. Quedaron **1.763 avisos**. La regla aproximada usa barrio, ambientes, superficie y precio redondeados; no garantiza independencia por edificio ni detecta todos los duplicados.
+- La referencia es la mediana de USD/m² de entrenamiento por barrio y ambientes, con respaldo barrial y global cuando faltan comparables. No usa precios de la muestra nueva para ajustar la referencia.
+
+La fecha de entrenamiento registrada es `FECHA_MODELO`: parte de las capturas evaluadas es anterior al ajuste final, aunque posterior a la captura de entrenamiento. Es una evaluación retrospectiva entre capturas, no una prueba prospectiva completa con atributos congelados antes de publicar los nuevos avisos. La disponibilidad de los atributos a cada fecha sigue requiriendo control.
+
+### Resultados observados
+
+MAE y RMSE están expresados en USD por m² cubierto. La última columna mide la proporción con error absoluto relativo al precio publicado no mayor al 20 %; no es recall ni precisión de clasificación.
+
+| Muestra | Avisos | MAE HGB | MAE comparables | Reducción del MAE | RMSE HGB | R² HGB | Dentro de ±20 % |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+TABLA_TEMPORAL
+
+### Interpretación y límites
+
+- **El HGB operativo reduce el MAE un 9 %** frente a los comparables en esta muestra: 528,7 frente a 581,0 USD/m². Esto evalúa referencias de precios publicados; no acredita oportunidades reales ni ahorro de tiempo.
+- La ventaja es menor que en su propia prueba histórica (29,4 %), y el MAE pasa de 442,7 a 528,7 USD/m². Cambian simultáneamente las fechas, la composición y la disponibilidad de atributos; no puede atribuirse toda la diferencia al paso del tiempo.
+- La mediana de variables numéricas faltantes es **11 por aviso** en ambos segmentos. No se debe atribuir el desempeño de los datos enriquecidos a lotes que no tienen esos campos.
+- La mediana de predicción menos precio publicado es **−122 USD/m²**; el modelo subestima el 56,7 % de los avisos. El R² total es 0,192 y depende de la dispersión y composición de esta muestra; no es directamente comparable con el R² del benchmark.
+- El intervalo bootstrap del 95 % para la reducción absoluta de MAE es **[37,0; 67,7] USD/m²**, con 2.000 remuestreos por aviso sobre predicciones fijas. No incorpora reentrenamiento, selección de modelos ni dependencia entre avisos de un mismo edificio, y no es un intervalo de precio individual.
+- Los siguientes pasos son evaluar también al ganador del benchmark con otra captura reservada, controlar atributos disponibles a su fecha y medir utilidad con la inmobiliaria. Estos resultados no permiten afirmar cuál de las cinco familias generaliza mejor temporalmente.
+
+### Procedencia y reproducción
+
+Evidencia agregada: `reports/validacion_temporal.json`. Implementación: `precio_entorno/validacion_temporal.py`. Interpretación ampliada: sección «Validación temporal · 20/11/2026» de `docs/entrega-inferencia.md`.
+
+SHA-256 del reporte incorporado: `HASH_TEMPORAL`.
+
+El anexo es autocontenido. Para recalcular la evaluación original se necesitan el repositorio local, el artefacto operativo correspondiente y las capturas autorizadas; no basta con el bundle del benchmark. Desde la raíz del proyecto, con esos insumos disponibles:
+
+```powershell
+python -m precio_entorno.validacion_temporal
+```
+
+El comando usa archivos locales y no inicia una extracción. Las predicciones individuales permanecen fuera de Git. Todos los importes corresponden a precios de publicación, no tasaciones ni precios de cierre.
+""".replace('VERSION_MODELO', temporal['modelo_version'])
+   .replace('FECHA_MODELO', temporal['entrenado_utc'])
+   .replace('TABLA_TEMPORAL', '\n'.join(temporal_rows))
+   .replace('HASH_TEMPORAL', hashlib.sha256(temporal_bytes).hexdigest()), 'anexo-validacion-temporal')
+
 
 md(r"""
 ## Referencias y guía de lectura

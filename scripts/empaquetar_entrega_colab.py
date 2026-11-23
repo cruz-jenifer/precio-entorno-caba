@@ -22,6 +22,7 @@ def main():
         'capstone_integral_entrenado.ipynb': trained,
         'capstone_bundle.zip': BASE / 'capstone_bundle.zip',
         'salidas_capstone.zip': BASE / 'workspace/salidas_capstone.zip',
+        'validacion_temporal.json': ROOT / 'reports/validacion_temporal.json',
     }
     readme = '''# Lüga · Entrega Colab integral
 
@@ -35,6 +36,9 @@ REENTRENAR=True repite los 505 ajustes del benchmark; puede tardar varios minuto
 
 capstone_integral_entrenado.ipynb conserva la ejecución completa con resultados y figuras.
 salidas_capstone.zip contiene tablas, figuras, modelo reajustado y manifiesto.
+El Anexo A del notebook documenta la evaluación temporal histórica del HGB operativo.
+validacion_temporal.json es su evidencia agregada original; el anexo registra su hash.
+REENTRENAR no recalcula el anexo ni convierte esa evaluación en una prueba del ganador del benchmark.
 
 El cuaderno usa precios publicados de venta en USD; no tasaciones ni precios de cierre.
 El catálogo histórico es real y autorizado. Conservar sus condiciones de acceso al compartirlo.

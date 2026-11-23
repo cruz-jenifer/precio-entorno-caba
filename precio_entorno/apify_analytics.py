@@ -1,15 +1,19 @@
 """Sube, construye y prueba el Actor «precio-entorno-analytics» por la API de Apify, sin el CLI.
 
     python -m precio_entorno.apify_analytics subir --account 2
-    python -m precio_entorno.apify_analytics subir-modelo --account 2
     python -m precio_entorno.apify_analytics probar --account 2
     python -m precio_entorno.apify_analytics gasto
 
 `subir` crea el Actor (privado) si no existe, reemplaza su código por los archivos de
 `actores/analytics/.actor/`, el paquete `precio_entorno/analytics/` y los módulos compartidos que
-usa, y lo construye. No sube nada de entrenamiento. `subir-modelo` guarda el modelo ya entrenado
-(`data/processed/inferencia/modelo.joblib` y su `evaluacion.json`) en el almacén con nombre
-`precio-entorno-modelo`, de donde lo lee el Actor; el binario no va a Git. `probar` corre ETL,
+usa, y lo construye. No sube nada de entrenamiento. En la carpeta del Actor van además, ya hechos:
+
+- `modelo/`: el modelo entrenado (`data/processed/inferencia/modelo.joblib`) y su `evaluacion.json`,
+  con la huella verificada. El binario no va a Git.
+- `referencias/delitos_barrio.json`: el resumen por barrio de `data/raw/delitos_2025.csv`, con el
+  SHA-256 del archivo oficial verificado.
+
+Así el Actor no descarga nada ni carga el modelo desde un almacén. `probar` corre ETL,
 EDA e inferencia con `run-sync`, igual que Make, y guarda las salidas en
 `data/processed/pipeline-apify/`. Antes de cada operación paga se controla que la cuenta quede
 debajo del tope de USD 5. El token nunca se imprime.
@@ -34,7 +38,7 @@ ACTOR_DIR = ROOT / 'actores/analytics/.actor'
 # Módulos compartidos que usa el Actor, además de todo `precio_entorno/analytics/`.
 SHARED_MODULES = ['__init__.py', 'importing.py', 'descripcion.py', 'eda_delitos.py']
 MODEL_DIR = ROOT / 'data/processed/inferencia'
-MODEL_STORE = 'precio-entorno-modelo'
+CRIMES = ROOT / 'data/raw/delitos_2025.csv'
 ACCOUNT_CAP_USD = 5.0
 MARGIN_USD = 0.05  # Lo que puede costar una construcción o una prueba de ETL, EDA e inferencia.
 RAW = ROOT / 'data/raw/venta-consolidada-20261108/avisos.json'
@@ -66,6 +70,7 @@ class Apify:
 
 
 def source_files():
+    """Código del Actor: su carpeta `.actor/`, el paquete de Analytics y los módulos compartidos."""
     files = [{'name': f'.actor/{p.name}', 'format': 'TEXT', 'content': p.read_text(encoding='utf-8')}
              for p in sorted(ACTOR_DIR.iterdir()) if p.is_file()]
     modules = [ROOT / 'precio_entorno' / m for m in SHARED_MODULES]
@@ -75,26 +80,23 @@ def source_files():
     return files
 
 
-def upload_model(api, folder=MODEL_DIR):
-    """Guarda el modelo entrenado y su evaluación en el almacén con nombre que lee el Actor."""
-    check_budget(api)
-    model = (folder / 'modelo.joblib').read_bytes()
-    report = json.loads((folder / 'evaluacion.json').read_text(encoding='utf-8'))
-    if hashlib.sha256(model).hexdigest() != report.get('artefacto_sha256'):
+def artifact_files(model_dir=MODEL_DIR, crimes=CRIMES):
+    """Lo que el Actor necesita ya hecho en su carpeta: el modelo entrenado y el resumen de delitos."""
+    from precio_entorno.analytics import ETL, inference
+
+    model = (model_dir / inference.MODEL_FILE).read_bytes()
+    report_text = (model_dir / inference.REPORT_FILE).read_text(encoding='utf-8')
+    if hashlib.sha256(model).hexdigest() != json.loads(report_text).get('artefacto_sha256'):
         raise SystemExit('La huella de modelo.joblib no coincide con evaluacion.json: no se sube nada.')
-    store = model_store(api)
-    api.call('PUT', f'key-value-stores/{store["id"]}/records/modelo.joblib', raw=model,
-             content_type='application/octet-stream', timeout=120)
-    api.call('PUT', f'key-value-stores/{store["id"]}/records/evaluacion', body=report)
-    print(f'Modelo {report.get("version")} ({len(model):,} bytes, scikit-learn {report.get("sklearn")}) '
-          f'en el almacén «{MODEL_STORE}».')
-    print(f'Para Make, en la inferencia: "almacenModelo": "{store["id"]}"')
-
-
-def model_store(api):
-    """Almacén con nombre del modelo, creado con el token de la cuenta. El Actor corre con permisos
-    limitados y solo lo puede leer si llega en la entrada `almacenModelo`."""
-    return api.json('POST', 'key-value-stores', params={'name': MODEL_STORE})
+    summary = ETL.crimes_summary(crimes)
+    if summary['calidad']['sha256'] != ETL.CRIMES_SHA256:
+        raise SystemExit(f'{crimes} no es el archivo oficial esperado (SHA-256 distinto): no se sube nada.')
+    return [
+        {'name': f'modelo/{inference.MODEL_FILE}', 'format': 'BASE64', 'content': base64.b64encode(model).decode()},
+        {'name': f'modelo/{inference.REPORT_FILE}', 'format': 'TEXT', 'content': report_text},
+        {'name': ETL.PACKAGED_CRIMES.relative_to(ROOT).as_posix(), 'format': 'TEXT',
+         'content': json.dumps(summary, ensure_ascii=False, indent=1)},
+    ]
 
 
 def check_budget(api):
@@ -115,7 +117,7 @@ def find_actor(api):
 def upload(api):
     check_budget(api)
     version = {'versionNumber': VERSION, 'sourceType': 'SOURCE_FILES', 'buildTag': 'latest',
-               'sourceFiles': source_files()}
+               'sourceFiles': source_files() + artifact_files()}
     actor = find_actor(api)
     if actor is None:
         actor = api.json('POST', 'acts', body={
@@ -163,7 +165,7 @@ def probe(api, out):
     tabs = [d['range'] for d in json.loads(body)['data']]
     print(f'EDA: {len(body):,} bytes ({kind}) en {time.monotonic() - start:.0f} s · pestañas {tabs}')
     start = time.monotonic()
-    body, kind = run_sync(api, actor['id'], {'operacion': 'inferencia', 'almacenModelo': model_store(api)['id'],
+    body, kind = run_sync(api, actor['id'], {'operacion': 'inferencia',
                                              'contenidoBase64': base64.b64encode(csv_bytes).decode()})
     (out / 'sheets_predicciones_body.json').write_bytes(body)
     rows = len(json.loads(body)['data'][0]['values']) - 1
@@ -175,15 +177,13 @@ def probe(api, out):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument('accion', choices=('subir', 'subir-modelo', 'probar', 'gasto'))
+    parser.add_argument('accion', choices=('subir', 'probar', 'gasto'))
     parser.add_argument('--account', type=int, required=True, help='Cuenta de Apify según el orden del .env')
     parser.add_argument('--salida', type=Path, default=ROOT / 'data/processed/pipeline-apify')
     args = parser.parse_args()
     api = Apify(apify_token(args.account))
     if args.accion == 'subir':
         upload(api)
-    elif args.accion == 'subir-modelo':
-        upload_model(api)
     elif args.accion == 'probar':
         probe(api, args.salida)
     else:

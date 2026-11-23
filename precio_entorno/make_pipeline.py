@@ -4,15 +4,15 @@
 
 1. Google Drive › Download a file: `01_crudo/avisos_venta_crudo.json`.
 2. HTTP › Apify `run-sync` del Actor `precio-entorno-analytics` con `operacion: etl`: devuelve el
-   CSV limpio. El Actor baja el Mapa del Delito del portal oficial.
+   CSV limpio. Los delitos por barrio vienen resumidos dentro del Actor; no descarga nada.
 3. Google Drive › Upload a file: `02_limpio/dataset_limpio_AAAA-MM-DD_HHmm.csv` (un único CSV).
 4. Google Drive › Download a file: ese mismo CSV, para que el EDA lea lo que quedó en Drive.
 5. HTTP › Apify `run-sync` con `operacion: eda`: devuelve las tablas como cuerpo de Sheets.
 6. Google Sheets › Make an API call `values:batchClear` y 7. `values:batchUpdate` sobre la
    planilla «Tablas del dashboard» (una pestaña por tabla), que lee Looker Studio.
 8. HTTP › Apify `run-sync` con `operacion: inferencia` sobre el mismo CSV: el Actor usa el modelo
-   ya entrenado (no entrena) y devuelve la referencia de publicación de cada aviso. El almacén del
-   modelo va en `almacenModelo`, porque el Actor corre con permisos limitados.
+   ya entrenado que trae en su carpeta (no entrena) y devuelve la referencia de publicación de cada
+   aviso.
 9. Google Sheets › Make an API call `values:batchUpdate` en la pestaña `predicciones`.
 
 El token de Apify va en el encabezado del módulo HTTP dentro de Make: se lee del .env al crear el
@@ -25,7 +25,7 @@ import argparse
 import json
 
 from precio_entorno.analytics.tooling_business import PREDICTIONS_SHEET, clear_body
-from precio_entorno.apify_analytics import NAME as ACTOR_NAME, Apify, model_store
+from precio_entorno.apify_analytics import NAME as ACTOR_NAME
 from precio_entorno.make_escenarios import TEAM, blueprint, call, last_error, module, scenarios
 from precio_entorno.run_pilot import apify_token
 
@@ -70,7 +70,7 @@ def sheets_call(id_, path, body, x):
         parameters={'__IMTCONN__': CONN['sheets']})
 
 
-def pipeline_blueprint(token, user, model_store_id):
+def pipeline_blueprint(token, user):
     url = f'https://api.apify.com/v2/acts/{user}~{ACTOR_NAME}/run-sync?timeout=280'
     clear = {'ranges': clear_body()['ranges'] + [PREDICTIONS_SHEET]}
     return blueprint(SCENARIO, [
@@ -85,8 +85,7 @@ def pipeline_blueprint(token, user, model_store_id):
         apify(5, url, token, '{"operacion":"eda","contenidoBase64":"{{base64(toString(4.data))}}"}', 1200),
         sheets_call(6, 'values:batchClear', json.dumps(clear), 1500),
         sheets_call(7, 'values:batchUpdate', '{{toString(5.data)}}', 1800),
-        apify(8, url, token, '{"operacion":"inferencia","almacenModelo":"' + model_store_id + '",'
-                             '"contenidoBase64":"{{base64(toString(4.data))}}"}', 2100),
+        apify(8, url, token, '{"operacion":"inferencia","contenidoBase64":"{{base64(toString(4.data))}}"}', 2100),
         sheets_call(9, 'values:batchUpdate', '{{toString(8.data)}}', 2400),
     ], instant=False)
 
@@ -99,7 +98,7 @@ def main():
     existing = scenarios().get(SCENARIO)
     if args.accion == 'crear':
         token = apify_token(args.account)
-        bp = pipeline_blueprint(token, APIFY_USER[args.account], model_store(Apify(token))['id'])
+        bp = pipeline_blueprint(token, APIFY_USER[args.account])
         if existing:
             call('PATCH', f"scenarios/{existing['id']}", {'confirmed': 'true'},
                  {'blueprint': json.dumps(bp, ensure_ascii=False)})

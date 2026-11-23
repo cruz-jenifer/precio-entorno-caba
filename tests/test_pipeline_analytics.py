@@ -62,6 +62,24 @@ class PipelineAnalyticsTests(unittest.TestCase):
         self.assertEqual(row['periodo_delitos'], '2025-03-02 a 2025-03-06')
         self.assertEqual(row['unidad_delitos'], 'barrio')
 
+    def test_packaged_crime_summary_gives_the_same_clean_csv_as_the_official_file(self):
+        # El Actor no descarga el Mapa del Delito: usa el resumen por barrio guardado en su carpeta.
+        from precio_entorno.analytics.ETL import crimes_summary, load_crimes_summary
+        summary = crimes_summary(self.crimes)
+        packaged = Path(self.crimes).with_name('delitos_barrio.json')
+        packaged.write_text(json.dumps(summary, ensure_ascii=False), encoding='utf-8')
+        from_file, report_file = etl(self.raw, 'avisos.json', self.crimes)
+        from_summary, report_summary = etl(self.raw, 'avisos.json', load_crimes_summary(packaged))
+        self.assertEqual(to_csv(from_file), to_csv(from_summary))
+        self.assertEqual(report_file['delitos'], report_summary['delitos'])
+        self.assertEqual({b['barrio'] for b in summary['barrios']}, {'Caballito', 'Almagro'})
+        self.assertNotIn('Robo', json.dumps(summary))       # Solo totales por barrio, sin hechos individuales.
+
+    def test_missing_packaged_crime_summary_fails_clearly(self):
+        from precio_entorno.analytics.ETL import load_crimes_summary
+        with self.assertRaisesRegex(FileNotFoundError, 'apify_analytics subir'):
+            load_crimes_summary(Path(self.crimes).with_name('no-existe.json'))
+
     def test_eda_tables_from_clean_csv_and_sheets_body(self):
         clean, report = etl(self.raw, 'avisos.json', self.crimes)
         tables = eda(read_clean(to_csv(clean).encode()), report)

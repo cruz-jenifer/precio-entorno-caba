@@ -75,7 +75,13 @@ El intervalo sale de 2.000 remuestreos por aviso de la diferencia de errores abs
 - **El modelo subestima.** La mediana del error es −122 USD/m², y el 56,7 % de los avisos queda por debajo de su precio publicado.
   - En las inmobiliarias no hay suba de precios por barrio: la mediana barrio a barrio cambió −0,8 % en los 20 barrios con 5 avisos nuevos o más.
   - En el segmento de Zonaprop, la mediana pasó de 2.439 USD/m² en el entrenamiento (107 avisos) a 2.602 (1.352 avisos), con superficies parecidas (41 y 43 m²). Puede deberse a que esa captura trae los avisos más nuevos primero, que suelen pedir más, y a que el entrenamiento tenía pocos avisos de ese segmento.
-- **El R² no es comparable con el de la prueba original:** dentro de un segmento angosto hay poca variación de precios para explicar.
+- **El R² no es comparable con el de la prueba original:** dentro de un segmento angosto hay poca variación de precios para explicar. R² compara el error cuadrático con la varianza de los precios de la muestra evaluada, así que el desvío del USD/m² publicado se puede deducir de las métricas guardadas como RMSE / √(1 − R²):
+  - Prueba original: desvío ≈ 1.320 USD/m², RMSE 737,9, R² 0,689.
+  - Avisos posteriores, todos: desvío ≈ 738, RMSE 663,2, R² 0,192.
+  - Inmobiliarias autorizadas: desvío ≈ 954, RMSE 786,2, R² 0,321.
+  - Zonaprop, Caballito y Almagro: desvío ≈ 651, RMSE 621,0, R² 0,089.
+  - El RMSE del modelo hasta baja un poco, pero los precios de la muestra nueva varían cerca de un 44 % menos. El 77 % de los avisos pertenece al segmento angosto de Zonaprop.
+  - La línea de base muestra lo mismo: su R² pasa de 0,416 en la prueba original a 0,018 en los avisos posteriores y a −0,095 en Zonaprop. La caída del R² es sobre todo un efecto de la muestra. El deterioro real del modelo es el del MAE: de 442,7 a 528,7 USD/m², con una ventaja sobre la línea de base que baja del 29,4 % al 9 %.
 - **Ese segmento en la prueba original:** había 26 avisos, con MAE 330,4 del modelo y 722,7 de la línea de base. Es una muestra demasiado chica para una conclusión estable.
 
 **Qué cambia.** El error para defender con avisos nuevos es del orden de 530 USD/m², no 443. La lista priorizada sigue siendo mejor que ordenar por la mediana del barrio. Un reentrenamiento con capturas recientes debería corregir la subestimación, pero conviene limitar el peso del segmento de Zonaprop, para no sesgar el modelo hacia Caballito y Almagro, y guardar otra captura posterior como prueba.
@@ -98,7 +104,7 @@ Desde la raíz del proyecto, usando el Python con `requirements.txt` instalado:
 $env:OMP_NUM_THREADS='2'
 python -m precio_entorno.inferencia entrenar --edificio data/raw/zonaprop-venta-20261108-edificio/avisos.json data/raw/inmobiliarias-20261109-edificio/avisos.json data/raw/zonaprop-venta-20261108-descripcion-completa/avisos.json data/raw/rasgos-inmobiliarias-20261115/avisos.json
 python -m precio_entorno.pipeline_analytics inferencia data/processed/pipeline/dataset_limpio.csv
-python -m precio_entorno.apify_analytics subir-modelo --account 2
+python -m precio_entorno.apify_analytics subir --account 2
 python -m streamlit run app.py
 python -m unittest discover -s tests -v
 ```

@@ -1,6 +1,6 @@
 # Experimento concierge: ¿alguien paga por que sigan su búsqueda?
 
-**Fecha:** 20 de noviembre de 2026. Experimento diseñado con la skill `lean-startup`, a partir de [jtbd.md](jtbd.md) y del [pricing de búsqueda personal](pricing-busqueda-personal.md). Todavía no se hizo.
+**Fecha:** 20 de noviembre de 2026. Experimento diseñado a partir de [jtbd.md](jtbd.md) y del [pricing de búsqueda personal](pricing-busqueda-personal.md). Todavía no se hizo.
 
 ## 1. La lista de funciones deseadas
 

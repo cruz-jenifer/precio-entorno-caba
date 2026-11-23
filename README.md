@@ -48,9 +48,126 @@ flowchart LR
 | Salida | `etl`: CSV limpio sin nulls. `eda`: seis tablas para Sheets. `inferencia`: referencia de publicación de cada aviso y la lista para revisar primero |
 | Modelo | HistGradientBoosting ya entrenado, guardado en la carpeta del Actor (`modelo/`). El Actor no entrena: verifica la huella y la versión de scikit-learn, y predice |
 | Delitos | Resumen por barrio del Mapa del Delito 2025, también en su carpeta (`referencias/`), armado desde el archivo oficial verificado |
-| Costo | Prueba del 23/11/2026: ETL 13 s, EDA 11 s e inferencia 11 s, unos USD 0,0025 las tres corridas |
+| Costo | Prueba del 23/11/2026: ETL, EDA e inferencia, unos USD 0,0055 las tres corridas. Detalle de la inferencia en [Costo de una corrida de inferencia](#costo-de-una-corrida-de-inferencia) |
+| Cómo correrlo | `python -m precio_entorno.apify_analytics subir --account 2` lo sube y construye; `probar` corre las tres etapas como Make. En Make: **Run once** en el escenario |
 
 El detalle de cada módulo, el código del Actor y cómo publicarlo están en [Pipeline Analytics con Make, Apify y Looker Studio](#pipeline-analytics-con-make-apify-y-looker-studio) y en [docs/pipeline-analytics.md](docs/pipeline-analytics.md).
+
+## Estructura del repositorio
+
+```text
+precio-entorno-caba/
+├── actores/analytics/.actor/      # Actor de Apify: actor.json, input_schema.json, Dockerfile, requirements.txt
+├── precio_entorno/                # Paquete de Python
+│   ├── analytics/                 # Código del Actor: main.py, ETL.py, preprocessing.py, EDA.py,
+│   │                              #   inference.py, tooling_business.py
+│   ├── inferencia.py              # Entrenamiento del modelo operativo (no entra al Actor)
+│   ├── benchmark_inmobiliario.py  # Comparación de cinco familias de modelos
+│   ├── apify_analytics.py         # Sube, construye y prueba el Actor
+│   ├── make_pipeline.py           # Crea o actualiza el escenario de Make
+│   ├── api.py                     # Servidor de la interfaz web
+│   └── ...                        # Importación, alertas, entorno, radar, ANOVA
+├── .actor/                        # Actor de alertas: captura de inmobiliarias autorizadas
+├── web/                           # Interfaz web con el mapa (HTML, JS y CSS)
+├── app.py                         # App de Streamlit para importar datos y probar la actualización
+├── notebooks/                     # Colab integral, benchmark y EDA
+├── data/
+│   ├── fixtures/                  # Datos ficticios para la demo y las pruebas
+│   ├── raw/                       # Capturas autorizadas y Mapa del Delito (fuera de Git)
+│   └── processed/                 # Salidas, modelo entrenado y capas del mapa (fuera de Git)
+├── docs/                          # Metodología, entregas, negocio y capturas (docs/img/)
+├── reports/                       # Resultados del benchmark y de la validación temporal
+├── scripts/                       # Tareas programadas, Colab y despliegue
+└── tests/                         # 308 pruebas: python -m unittest discover -s tests -v
+```
+
+## Funciones del pipeline
+
+| Etapa | Función | Entrada | Salida | Qué hace |
+| --- | --- | --- | --- | --- |
+| Entrada | [`preprocessing.read_input`](precio_entorno/analytics/preprocessing.py) | Entrada del Actor | Operación y archivo en bytes | Valida la operación y decodifica `contenidoBase64`. Rechaza cualquier otra fuente |
+| ETL | [`ETL.etl`](precio_entorno/analytics/ETL.py) | Avisos crudos (JSON o CSV) y delitos por barrio | CSV limpio (25 columnas, sin nulls) y reporte de calidad | Valida avisos, deja la captura más reciente, marca posibles duplicados entre fuentes, imputa y marca nulls, suma delitos por barrio |
+| ETL | [`ETL.crimes_summary`](precio_entorno/analytics/ETL.py) | `delitos_2025.csv` oficial | Resumen por barrio (JSON) | Corre fuera del Actor al subirlo: totales por barrio y SHA-256 del archivo |
+| EDA | [`EDA.eda`](precio_entorno/analytics/EDA.py) | CSV limpio | Seis tablas | Resumen, barrios, ambientes, fuentes, distribución y correlaciones para el dashboard |
+| Preprocessing | [`preprocessing.model_frame`](precio_entorno/analytics/preprocessing.py) | CSV limpio | Avisos en USD con los nombres del modelo | Renombra, deja solo venta en USD y devuelve como faltantes las imputaciones del dashboard. No ajusta nada |
+| Inferencia | [`inference.load`](precio_entorno/analytics/inference.py) | Carpeta `modelo/` del Actor | Modelo listo para predecir | Verifica SHA-256 y versión de scikit-learn antes de cargar |
+| Inferencia | [`inference.predict_clean`](precio_entorno/analytics/inference.py) | CSV limpio y modelo | Referencia por aviso | Una sola pasada por el pipeline guardado: referencia en USD/m² y en USD |
+| Negocio | [`tooling_business.compare_with_reference`](precio_entorno/analytics/tooling_business.py) | Avisos y referencias | Tabla ordenada con lectura | Diferencia % y lectura (debajo, cerca o encima, con umbral de ±20 %) |
+| Negocio | [`tooling_business.to_review`](precio_entorno/analytics/tooling_business.py) | Tabla con lectura | Lista para revisar primero | Los avisos debajo de la referencia, del más bajo al menos |
+| Salida | [`tooling_business.sheets_body`](precio_entorno/analytics/tooling_business.py) y `predictions_body` | Tablas | Cuerpo de `values:batchUpdate` | Lo que Make escribe en Google Sheets |
+
+**Modelo seleccionado: HistGradientBoosting.** Se compararon cinco familias con validación anidada por grupos sobre 3.806 avisos de 48 barrios ([memoria matemática](docs/memoria-matematica.md), [resultados auditados](reports/benchmark-auditado/resultados.md)):
+
+| Modelo | MAE (USD/m²) | R² | MdAPE |
+| --- | ---: | ---: | ---: |
+| **HistGradientBoosting** | **402,6** | **0,736** | **11,8 %** |
+| Random Forest | 418,3 | 0,706 | 12,1 % |
+| MLP | 443,9 | 0,696 | 13,1 % |
+| KNN | 467,7 | 0,614 | 13,1 % |
+| Ridge | 524,5 | 0,521 | 15,5 % |
+| Mediana de comparables (referencia) | 585,6 | 0,407 | 17,1 % |
+
+Por qué: tuvo el menor error en las tres métricas, maneja de forma nativa los faltantes y las categorías (barrio, inmobiliaria), y entrena en segundos. Random Forest quedó cerca, con más error y casi el doble de tiempo por pliegue (12,2 s contra 6,9 s); MLP y KNN tuvieron más error; Ridge, lineal, no capta las interacciones entre superficie, ubicación y barrio. El modelo que usa el Actor es un HGB operativo (pérdida absoluta, 300 iteraciones, tasa 0,05, 21 variables numéricas y 2 categóricas), entrenado fuera del Actor con `python -m precio_entorno.inferencia entrenar`.
+
+## Contrato del actor de inferencia
+
+Entrada (`operacion: "inferencia"`):
+
+| Campo | Dirección | Tipo | Descripción |
+| --- | --- | --- | --- |
+| `operacion` | entrada | string | `"inferencia"` (también acepta `etl` y `eda`) |
+| `contenidoBase64` | entrada | string (base64) | CSV limpio del ETL. Columnas obligatorias: `id`, `barrio`, `superficie_cubierta_m2`, `ambientes`. Usa `moneda`, `latitud`, `longitud`, `superficie_total_m2` y `fuente` si vienen. Solo entra venta en USD |
+
+Salida (una fila por aviso en `OUTPUT` y `predicciones.csv`; el dataset guarda solo los que conviene revisar primero):
+
+| Campo | Dirección | Tipo | Descripción |
+| --- | --- | --- | --- |
+| `id`, `barrio`, `ambientes`, `superficie_cubierta_m2`, `precio`, `precio_m2_usd`, `url` | salida | string / número | Datos del aviso, tal como llegaron |
+| `referencia_publicacion_usd_m2` | salida | float | Referencia de publicación del modelo, en USD/m² |
+| `referencia_publicacion_usd` | salida | float | La misma referencia por la superficie cubierta, en USD |
+| `diferencia_pct` | salida | float | USD/m² publicado frente a la referencia, en % |
+| `lectura` | salida | string | `debajo de la referencia` (−20 % o menos), `cerca`, `encima` (+20 % o más) o `sin lectura` |
+| `barrio_no_visto` | salida | bool | El barrio no estaba en el entrenamiento: no se da lectura |
+| `variables_numericas_faltantes` | salida | int | Cuántas de las 21 variables numéricas faltaron en el aviso |
+| `modelo_version`, `fecha_prediccion_utc` | salida | string | Versión del modelo (`1d4013afcf906e8c`) y momento de la predicción |
+
+Además, `RESUMEN_INFERENCIA` trae los conteos por lectura y el error que aplica al lote. La referencia es un precio de publicación esperado para inmuebles parecidos, no una tasación ni un precio de cierre.
+
+## Métricas
+
+**Del modelo (medidas).** Es un modelo de **regresión**: estima USD/m², así que se mide con error en USD/m² y R², no con accuracy.
+
+| Métrica | Valor | Qué significa |
+| --- | ---: | --- |
+| MAE (métrica principal) | 402,6 USD/m² | Error medio absoluto del mejor modelo del benchmark |
+| R² | 0,736 | Explica el 74 % de la variación de precios |
+| Mejora frente a la mediana de comparables | −31,2 % | 585,6 → 402,6 USD/m² |
+| Modelo operativo del Actor, prueba 80/20 | MAE 442,7 · R² 0,689 · 70,2 % dentro de ±20 % | El artefacto que corre en Apify |
+| Avisos posteriores al entrenamiento (13 al 20/11) | MAE 528,7, un 9 % mejor que comparables | [Validación temporal](docs/entrega-inferencia.md#validación-temporal--20112026): el R² baja por la menor dispersión de esa muestra |
+
+**De negocio (definidas, todavía no medidas).**
+
+| Cliente | Métrica principal | Umbral | Dónde |
+| --- | --- | --- | --- |
+| Persona que busca departamento | % de quienes reciben el correo gratis y pagan | 5 de 20 (≥ 25 %) en 7 días | [Experimento concierge](docs/experimento-concierge.md) |
+| Inmobiliaria | Minutos netos ahorrados por revisión frente a su método | ≥ 5 min (cubre una cuota de USD 39; con 10 min, ROI del 105 %) | [Pricing](docs/pricing.md), [validación](docs/validacion-inmobiliaria.md) |
+
+Lo que ya se mide del lado del producto: la inferencia deja 566 de 3.806 avisos (14,9 %) para revisar primero.
+
+## Costo de una corrida de inferencia
+
+Corrida del 23/11/2026 en Apify sobre 3.806 avisos (`6hw5tjj51UHfgm5Wg`):
+
+| | |
+| --- | --- |
+| Tiempo | 7,6 s de ejecución; 11 s de punta a punta con `run-sync` |
+| Memoria y CPU | 1.024 MB asignados (≈ 0,25 vCPU en Apify), 151 MB de pico. Sin GPU |
+| Unidades de cómputo | 0,0021 CU |
+| Costo en Apify | USD 0,0035 por corrida, con el guardado del dataset y los registros |
+| Costo por 1.000 avisos | ≈ USD 0,001 |
+| Costo del pipeline completo | ETL + EDA + inferencia ≈ USD 0,0055 por corrida; Make usa 9 operaciones de las 1.000 mensuales del plan Free |
+
+No incluye el entrenamiento, que se hace fuera del Actor (28,6 s en un equipo local), ni nuevas extracciones de avisos.
 
 ## Ejecutar en Windows
 
@@ -330,6 +447,8 @@ python -m precio_entorno.eda_delitos
 
 ## Evaluación del modelo
 
+> Resultado vigente: la comparación de cinco familias con validación anidada, en [Funciones del pipeline](#funciones-del-pipeline) (HistGradientBoosting, MAE 402,6 USD/m², R² 0,736). Esta sección y la siguiente documentan las corridas exploratorias anteriores, del 8 y el 14 de noviembre.
+
 El [pipeline del modelo](docs/modelo.md) cruza los avisos con los delitos de los 12 meses previos a cada captura, por barrio y en un radio de 500 m cuando el pin lo permite. Compara el MAE en USD/m² de la mediana de comparables, un modelo inmobiliario y el mismo modelo con entorno, con la misma partición por aviso, y lo contrasta con un placebo. Con la base ampliada del 8 de noviembre de 2026 (3.806 avisos: inmobiliarias, Clarín y Zonaprop), el cruce por barrio no muestra ningún aporte de los delitos registrados. Con pines aproximados, el pequeño aporte inicial desaparece al sumar transporte, parques, hospitales, escuelas y gastronomía cercanos. Los posibles duplicados entre fuentes comparten grupo en la partición. El mejor modelo tiene un MAE de 469 USD/m² en la validación cruzada. El detalle está en [docs/modelo.md](docs/modelo.md).
 
 ```powershell
@@ -455,14 +574,9 @@ Toma las notas de los siete días calendario anteriores, guarda cada medio por s
 
 ## Organización
 
-La [arquitectura técnica](docs/arquitectura.md) describe en detalle el stack, los módulos y sus dependencias, el esquema de la base con sus relaciones, la captura, Apify, Make, GitHub y los pendientes técnicos.
+La carpeta por carpeta está en [Estructura del repositorio](#estructura-del-repositorio). La [arquitectura técnica](docs/arquitectura.md) describe en detalle el stack, los módulos y sus dependencias, el esquema de la base con sus relaciones, la captura, Apify, Make, GitHub y los pendientes técnicos.
 
-- `app.py` contiene la interfaz local.
-- `precio_entorno/` contiene la lógica de importación, filtros, persistencia y alertas.
-- `data/fixtures/` contiene los lotes de demo y los CSV ficticios de prueba.
-- `data/raw/` y `data/processed/` reservan espacio para las dos fuentes y sus salidas.
-- `docs/` describe alcance, esquema, metodología y próximos hitos.
-- `tests/` verifica la validación, la cobertura y el recorrido de alertas.
+Las pruebas cubren la importación, las alertas, el pipeline de Analytics y las reglas del Actor:
 
 ```powershell
 .\.venv\Scripts\python.exe -m unittest discover -s tests -v

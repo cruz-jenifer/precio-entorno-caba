@@ -2,9 +2,9 @@
 
 No entrena, no reajusta y no itera por lotes: recibe el CSV limpio entero y lo pasa una vez por el
 pipeline guardado (codificador + HistGradientBoostingRegressor). El artefacto se genera fuera del
-Actor con `python -m precio_entorno.inferencia entrenar` y se sube al almacén con nombre
-`precio-entorno-modelo` con `python -m precio_entorno.apify_analytics subir-modelo`. Como el Actor
-corre con permisos limitados, ese almacén le llega en la entrada `almacenModelo` (solo lectura).
+Actor con `python -m precio_entorno.inferencia entrenar` y viaja ya hecho dentro de la carpeta del
+Actor (`modelo/modelo.joblib` y `modelo/evaluacion.json`), que arma `python -m
+precio_entorno.apify_analytics subir`. El Actor no lo crea ni lo baja de ningún almacén: lo lee de ahí.
 
 Antes de cargarlo se controla que su SHA-256 coincida con el de `evaluacion.json` y que la versión
 de scikit-learn sea la del entrenamiento. Solo se cargan artefactos propios, nunca uno subido por
@@ -15,6 +15,7 @@ import hashlib
 import io
 import json
 from datetime import datetime, timezone
+from pathlib import Path
 
 import joblib
 import pandas as pd
@@ -22,9 +23,10 @@ import sklearn
 
 from precio_entorno.analytics.preprocessing import inputs, model_frame, validate
 
-MODEL_STORE = 'precio-entorno-modelo'
-MODEL_KEY = 'modelo.joblib'
-REPORT_KEY = 'evaluacion'
+# Carpeta del modelo dentro del Actor (en la imagen, /usr/src/app/modelo).
+ACTOR_MODEL_DIR = Path(__file__).resolve().parents[2] / 'modelo'
+MODEL_FILE = 'modelo.joblib'
+REPORT_FILE = 'evaluacion.json'
 
 
 def load_bytes(model_bytes, report):
@@ -37,10 +39,14 @@ def load_bytes(model_bytes, report):
     return joblib.load(io.BytesIO(model_bytes))
 
 
-def load(folder):
-    """Carga el modelo desde una carpeta local con `modelo.joblib` y `evaluacion.json`."""
-    report = json.loads((folder / 'evaluacion.json').read_text(encoding='utf-8'))
-    return load_bytes((folder / 'modelo.joblib').read_bytes(), report)
+def load(folder=ACTOR_MODEL_DIR):
+    """Carga el modelo desde una carpeta con `modelo.joblib` y `evaluacion.json` (por defecto, la del Actor)."""
+    folder = Path(folder)
+    if not (folder / MODEL_FILE).exists() or not (folder / REPORT_FILE).exists():
+        raise FileNotFoundError(f'Falta el modelo en {folder}: el Actor se sube con '
+                                '`python -m precio_entorno.apify_analytics subir`.')
+    report = json.loads((folder / REPORT_FILE).read_text(encoding='utf-8'))
+    return load_bytes((folder / MODEL_FILE).read_bytes(), report)
 
 
 def predict(bundle, df):

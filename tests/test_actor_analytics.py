@@ -4,12 +4,15 @@ Todos los avisos son ficticios.
 """
 
 import ast
+import base64
 import hashlib
 import io
 import json
 import re
+import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 import joblib
 import pandas as pd
@@ -180,13 +183,84 @@ class ActorPackagingTests(unittest.TestCase):
                 self.assertFalse(re.search(r'GridSearchCV|GroupKFold|\.fit\(|partial_fit|batch_size|DataLoader', text))
 
     def test_main_only_does_actor_input_and_output(self):
+        # R4: main.py solo arma el Actor con el SDK e importa la lógica.
         main = PACKAGE / 'analytics/main.py'
         self.assertEqual(imports(main), {'analytics', 'analytics.EDA', 'analytics.ETL', 'analytics.inference',
                                          'analytics.preprocessing', 'analytics.tooling_business'})
         tree = ast.parse(main.read_text(encoding='utf-8'))
-        third_party = {a.name for n in ast.walk(tree) if isinstance(n, ast.Import) for a in n.names}
-        third_party |= {n.module for n in ast.walk(tree) if isinstance(n, ast.ImportFrom) and n.module}
-        self.assertFalse({'pandas', 'numpy', 'sklearn', 'joblib'} & third_party)
+        modules = {a.name for n in ast.walk(tree) if isinstance(n, ast.Import) for a in n.names}
+        modules |= {n.module for n in ast.walk(tree) if isinstance(n, ast.ImportFrom) and n.module}
+        self.assertEqual(modules - {'precio_entorno.analytics'}, {'asyncio', 'apify'})
+        functions = [n.name for n in ast.walk(tree) if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))]
+        self.assertEqual(functions, ['main'])
+        sdk = {n.func.attr for n in ast.walk(tree) if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)
+               and isinstance(n.func.value, ast.Name) and n.func.value.id == 'Actor'}
+        self.assertEqual(sdk, {'get_input', 'open_key_value_store', 'set_value', 'push_data', 'set_status_message'})
+
+    def test_actor_reads_data_only_through_the_sdk(self):
+        # R1: ningún módulo del Actor baja datos de afuera; el archivo llega solo en la entrada.
+        for path in [ROOT / f for f in as_files(closure('analytics.main'))]:
+            text = path.read_text(encoding='utf-8')
+            with self.subTest(path=path.name):
+                self.assertFalse(re.search(r'urllib\.request|urlopen|import requests|httpx|aiohttp|https?://cdn', text))
+        schema = json.loads((ROOT / 'actores/analytics/.actor/input_schema.json').read_text(encoding='utf-8'))
+        self.assertEqual(set(schema['properties']), {'operacion', 'contenidoBase64', 'nombreArchivo'})
+
+    def test_input_is_decoded_from_base64_only(self):
+        from precio_entorno.analytics.preprocessing import read_input
+        data = b'id,barrio\n1,Caballito\n'
+        encoded = base64.b64encode(data).decode()
+        self.assertEqual(read_input({'operacion': 'eda', 'contenidoBase64': encoded}), ('eda', data, 'avisos.json'))
+        wrapped = encoded[:8] + '\n' + encoded[8:]
+        self.assertEqual(read_input({'operacion': 'eda', 'contenidoBase64': wrapped})[1], data)
+        with self.assertRaisesRegex(ValueError, 'contenidoBase64'):
+            read_input({'operacion': 'eda', 'contenidoUrl': 'https://example.invalid/a.csv'})
+        with self.assertRaisesRegex(ValueError, 'base64'):
+            read_input({'operacion': 'eda', 'contenidoBase64': 'no es base64!'})
+        with self.assertRaisesRegex(ValueError, 'operacion'):
+            read_input({'operacion': 'entrenar', 'contenidoBase64': encoded})
+
+    def test_model_is_read_from_the_actor_folder_not_from_a_store(self):
+        # R3: el modelo ya existe en la carpeta del Actor; no se crea ni se baja de un almacén.
+        main = (PACKAGE / 'analytics/main.py').read_text(encoding='utf-8')
+        self.assertIn('inference.load()', main)
+        self.assertNotIn('almacenModelo', main)
+        self.assertEqual(inference.ACTOR_MODEL_DIR, ROOT / 'modelo')
+        docker = (ROOT / 'actores/analytics/.actor/Dockerfile').read_text(encoding='utf-8')
+        self.assertIn('COPY modelo ./modelo', docker)
+        self.assertIn('COPY referencias ./referencias', docker)
+        with tempfile.TemporaryDirectory() as tmp:
+            with self.assertRaisesRegex(FileNotFoundError, 'apify_analytics subir'):
+                inference.load(Path(tmp))
+
+    def test_artifacts_travel_inside_the_actor_with_checked_fingerprints(self):
+        import sklearn
+        from precio_entorno.analytics import ETL
+        with tempfile.TemporaryDirectory() as tmp:
+            folder = Path(tmp)
+            buffer = io.BytesIO()
+            joblib.dump({'numeric': [], 'version': 'x'}, buffer)
+            (folder / 'modelo.joblib').write_bytes(buffer.getvalue())
+            report = {'artefacto_sha256': hashlib.sha256(buffer.getvalue()).hexdigest(), 'sklearn': sklearn.__version__}
+            (folder / 'evaluacion.json').write_text(json.dumps(report), encoding='utf-8')
+            summary = {'barrios': [], 'calidad': {'sha256': ETL.CRIMES_SHA256, 'periodo': ['a', 'b']}}
+            with mock.patch.object(ETL, 'crimes_summary', return_value=summary):
+                files = {f['name']: f for f in apify_analytics.artifact_files(folder, folder / 'delitos.csv')}
+            self.assertEqual(set(files), {'modelo/modelo.joblib', 'modelo/evaluacion.json',
+                                          'referencias/delitos_barrio.json'})
+            self.assertEqual(files['modelo/modelo.joblib']['format'], 'BASE64')
+            # Lo que viaja se carga igual que en el Actor.
+            out = folder / 'actor/modelo'
+            out.mkdir(parents=True)
+            (out / 'modelo.joblib').write_bytes(base64.b64decode(files['modelo/modelo.joblib']['content']))
+            (out / 'evaluacion.json').write_text(files['modelo/evaluacion.json']['content'], encoding='utf-8')
+            self.assertEqual(inference.load(out)['version'], 'x')
+            with mock.patch.object(ETL, 'crimes_summary', return_value={**summary, 'calidad': {'sha256': 'otro'}}):
+                with self.assertRaisesRegex(SystemExit, 'SHA-256'):
+                    apify_analytics.artifact_files(folder, folder / 'delitos.csv')
+            (folder / 'modelo.joblib').write_bytes(buffer.getvalue() + b'alterado')
+            with self.assertRaisesRegex(SystemExit, 'huella'):
+                apify_analytics.artifact_files(folder, folder / 'delitos.csv')
 
     def test_uploaded_files_and_dockerfile_match_what_the_actor_imports(self):
         needed = as_files(closure('analytics.main')) | {'precio_entorno/__init__.py', 'precio_entorno/analytics/__init__.py'}

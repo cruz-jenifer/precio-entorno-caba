@@ -9,7 +9,7 @@ El 17/11/2026 a las 22:12 UTC se volvió a correr, con el tratamiento de nulls (
 ```mermaid
 flowchart LR
   D1["Drive · 01_crudo<br/>avisos_venta_crudo.json"] -->|Download a file| A1["Apify · ETL<br/>precio-entorno-analytics"]
-  BA["Buenos Aires Data<br/>delitos_2025.csv"] -->|el Actor lo baja| A1
+  BA["Buenos Aires Data<br/>delitos_2025.csv"] -->|resumen por barrio, dentro del Actor| A1
   A1 -->|CSV limpio| D2["Drive · 02_limpio<br/>dataset_limpio_AAAA-MM-DD_HHmm.csv"]
   D2 -->|Download a file| A2["Apify · EDA"]
   A2 -->|6 tablas| S["Sheets · 03_tablas_dashboard<br/>resumen · barrios · ambientes · fuentes · distribucion · correlaciones"]
@@ -28,7 +28,7 @@ flowchart LR
 | Planilla | [Precio y Entorno CABA - Tablas del dashboard](https://docs.google.com/spreadsheets/d/1_3s-zpZAvhCGF1nu8WlSihdXZiIwQayb6C8Qk6NWLuM/edit) | Una pestaña por tabla. Make la vacía y la vuelve a escribir en cada corrida, así Looker Studio no pierde la conexión |
 | Dashboard | [Looker Studio: Precio y Entorno CABA - Dashboard Analytics](https://lookerstudio.google.com/reporting/5057b183-22bb-4370-8c23-a47387a9d6f1) (privado, credenciales de lector) | Página 1: indicadores, top 10 de barrios por USD/m² y tabla de barrios. Página 2: histograma, USD/m² por ambientes, correlaciones, dispersión de delitos contra USD/m² y nota de fuentes. Página 4: referencias del modelo (inferencia) |
 
-**Por qué el Actor baja los delitos.** El CSV oficial pesa 17 MB y Make Free no mueve archivos de más de 5 MB. El Actor lo baja de Buenos Aires Data y verifica su SHA-256 contra el documentado en [datos.md](datos.md). El resultado queda en `delitos_sha256_esperado` del reporte. En Drive queda la copia cruda como referencia.
+**Por qué los delitos viajan dentro del Actor.** El CSV oficial pesa 17 MB y Make Free no mueve archivos de más de 5 MB. El Actor no descarga nada: los datos le llegan solo por la entrada, con el SDK. `apify_analytics subir` resume el archivo local por barrio (48 filas: delitos, robos y hurtos, % con arma y comuna, más período y calidad del archivo) después de verificar su SHA-256 contra el documentado en [datos.md](datos.md), y lo deja en la carpeta del Actor como `referencias/delitos_barrio.json`. Con el resumen, el CSV limpio sale idéntico al que daba el archivo completo (comprobado con los 3.806 avisos el 23/11/2026). El resultado de la verificación queda en `delitos_sha256_esperado` del reporte. En Drive queda la copia cruda como referencia. Para otro año de delitos, se reemplaza el archivo local y se vuelve a subir el Actor.
 
 ## Escenario de Make, módulo por módulo
 
@@ -41,14 +41,14 @@ flowchart LR
 | 5 | HTTP › Make a request (POST `run-sync`) | `{"operacion":"eda",…}` → cuerpo de `values:batchUpdate` |
 | 6 | Google Sheets › Make an API call | `values:batchClear` de las 6 pestañas del EDA y de `predicciones` |
 | 7 | Google Sheets › Make an API call | `values:batchUpdate` con las tablas |
-| 8 | HTTP › Make a request (POST `run-sync`) | `{"operacion":"inferencia","almacenModelo":…}` sobre el CSV del paso 4 → cuerpo de `values:batchUpdate` con las referencias |
+| 8 | HTTP › Make a request (POST `run-sync`) | `{"operacion":"inferencia",…}` sobre el CSV del paso 4 → cuerpo de `values:batchUpdate` con las referencias |
 | 9 | Google Sheets › Make an API call | `values:batchUpdate` en la pestaña `predicciones` |
 
 Captura del escenario: [`docs/img/make/escenario-pipeline-analytics.png`](img/make/escenario-pipeline-analytics.png).
 
 Si el Actor falla, `run-sync` responde con error y Make corta el flujo antes de tocar Drive o la planilla. Make avisa por correo los escenarios con error.
 
-**Correrlo para la demo.** En Make, abrir el escenario y tocar **Run once**. No hace falta activarlo. Tarda 1 a 2 minutos: el ETL lleva unos 70 s porque baja y valida los 17 MB de delitos. Después, en Looker Studio, usar **Actualizar datos**.
+**Correrlo para la demo.** En Make, abrir el escenario y tocar **Run once**. No hace falta activarlo. Tardaba 1 a 2 minutos, con unos 70 s del ETL para bajar y validar los 17 MB de delitos. Con el resumen dentro del Actor, ese paso ya no descarga nada; el tiempo nuevo se mide en la próxima corrida. Después, en Looker Studio, usar **Actualizar datos**.
 
 **Programarlo.** El plan Free de Make admite 2 escenarios activos, y hoy están activos «Búsquedas» y «Alertas con Apify». Para que el pipeline corra solo (por ejemplo, cada lunes) hay que desactivar otro escenario o pasar a un plan pago. Desde la API, `make_pipeline correr` necesita el escenario activo.
 
@@ -85,7 +85,7 @@ Cada tabla queda además como CSV en el almacén de la corrida en Apify. La de b
 
 **Inferencia** ([`analytics/inference.py`](../precio_entorno/analytics/inference.py) y [`analytics/tooling_business.py`](../precio_entorno/analytics/tooling_business.py)):
 
-1. Lee el modelo ya entrenado del almacén con nombre `precio-entorno-modelo` (`modelo.joblib` y `evaluacion`). El ID del almacén llega en la entrada `almacenModelo`: el Actor corre con permisos limitados y solo puede leer, sin escribir, el almacén que recibe ahí. Controla que su SHA-256 coincida con la evaluación y que scikit-learn sea la 1.7.2 del entrenamiento. No entrena ni reajusta.
+1. Lee el modelo ya entrenado de su propia carpeta (`modelo/modelo.joblib` y `modelo/evaluacion.json`), que `apify_analytics subir` arma con el artefacto de `data/processed/inferencia/`. No lo crea, no lo baja de un almacén, no entrena ni reajusta. Controla que su SHA-256 coincida con la evaluación y que scikit-learn sea la 1.7.2 del entrenamiento.
 2. Pasa el CSV limpio a las variables del modelo ([`analytics/preprocessing.py`](../precio_entorno/analytics/preprocessing.py)). Solo entra venta en USD. Las coordenadas y la superficie total que el ETL imputó para el dashboard vuelven a quedar como faltantes, igual que en el entrenamiento.
 3. Estima la referencia de publicación en USD/m² y en USD para cada aviso.
 4. Compara el USD/m² publicado con la referencia. A más de 20 % por debajo es «debajo de la referencia» (revisar primero), a más de 20 % por encima es «encima» y el resto es «cerca». El 20 % es del orden del error del modelo: el 70 % de la prueba quedó dentro de ±20 %.
@@ -154,8 +154,7 @@ Los pasos de abajo sirven para rehacerlo o ampliarlo.
 python -m precio_entorno.pipeline_analytics etl data/raw/venta-consolidada-20261108/avisos.json
 python -m precio_entorno.pipeline_analytics eda data/processed/pipeline/dataset_limpio.csv
 python -m precio_entorno.pipeline_analytics inferencia data/processed/pipeline/dataset_limpio.csv
-python -m precio_entorno.apify_analytics subir --account 2         # sube y construye el Actor
-python -m precio_entorno.apify_analytics subir-modelo --account 2  # guarda el modelo entrenado en Apify
+python -m precio_entorno.apify_analytics subir --account 2         # sube y construye el Actor, con el modelo y los delitos adentro
 python -m precio_entorno.apify_analytics probar --account 2        # ETL, EDA e inferencia en Apify, como Make
 python -m precio_entorno.make_pipeline crear                  # crea o actualiza el escenario
 ```

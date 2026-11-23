@@ -9,12 +9,12 @@ from precio_entorno.make_pipeline import pipeline_blueprint
 
 class PipelineBlueprintTests(unittest.TestCase):
     def setUp(self):
-        self.flow = {m['id']: m for m in pipeline_blueprint('token-ficticio', 'usuario', 'ALMACENFICTICIO01')['flow']}
+        self.flow = {m['id']: m for m in pipeline_blueprint('token-ficticio', 'usuario')['flow']}
 
-    def test_inference_runs_on_the_clean_csv_with_the_model_store(self):
+    def test_inference_runs_on_the_clean_csv_with_the_model_inside_the_actor(self):
         body = self.flow[8]['mapper']['jsonStringBodyContent']
         self.assertIn('"operacion":"inferencia"', body)
-        self.assertIn('"almacenModelo":"ALMACENFICTICIO01"', body)
+        self.assertNotIn('almacenModelo', body)                 # El modelo ya está en la carpeta del Actor.
         self.assertIn('{{base64(toString(4.data))}}', body)    # El mismo CSV que lee el EDA.
         self.assertEqual(self.flow[9]['mapper']['body'], '{{toString(8.data)}}')
 

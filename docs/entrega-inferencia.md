@@ -104,7 +104,7 @@ Desde la raíz del proyecto, usando el Python con `requirements.txt` instalado:
 $env:OMP_NUM_THREADS='2'
 python -m precio_entorno.inferencia entrenar --edificio data/raw/zonaprop-venta-20261108-edificio/avisos.json data/raw/inmobiliarias-20261109-edificio/avisos.json data/raw/zonaprop-venta-20261108-descripcion-completa/avisos.json data/raw/rasgos-inmobiliarias-20261115/avisos.json
 python -m precio_entorno.pipeline_analytics inferencia data/processed/pipeline/dataset_limpio.csv
-python -m precio_entorno.apify_analytics subir-modelo --account 2
+python -m precio_entorno.apify_analytics subir --account 2
 python -m streamlit run app.py
 python -m unittest discover -s tests -v
 ```

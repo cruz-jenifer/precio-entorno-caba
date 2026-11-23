@@ -5,10 +5,14 @@ no se ajusta nada, solo se renombran columnas, se filtra lo que el modelo admite
 convierten los tipos. Así los códigos de barrio no dependen del lote que llega a inferencia.
 """
 
+import base64
+import binascii
 import io
 
 import numpy as np
 import pandas as pd
+
+OPERATIONS = ('etl', 'eda', 'inferencia')
 
 # Columnas del CSV limpio del ETL → nombres de las variables del modelo.
 CLEAN_TO_MODEL = {
@@ -17,6 +21,29 @@ CLEAN_TO_MODEL = {
     'latitud': 'latitude', 'longitud': 'longitude', 'fuente': 'agency',
 }
 REQUIRED = ['id', 'neighborhood', 'covered_area', 'rooms']
+
+
+def read_input(actor_input):
+    """Entrada del Actor → (operación, archivo en bytes, nombre del archivo crudo).
+
+    El archivo llega solo por la entrada (`contenidoBase64`): el Actor no lee URLs ni otras fuentes.
+    """
+    operation = actor_input.get('operacion')
+    if operation not in OPERATIONS:
+        raise ValueError(f'operacion debe ser una de {", ".join(OPERATIONS)}.')
+    if not actor_input.get('contenidoBase64'):
+        raise ValueError('Falta contenidoBase64: el archivo entra solo por la entrada del Actor.')
+    try:
+        # Los saltos de línea que algunos codificadores agregan no son errores.
+        content = base64.b64decode(''.join(actor_input['contenidoBase64'].split()), validate=True)
+    except binascii.Error as error:
+        raise ValueError('contenidoBase64 no es base64 válido.') from error
+    return operation, content, actor_input.get('nombreArchivo') or 'avisos.json'
+
+
+def to_records(df):
+    """DataFrame → filas para el dataset, con None en lugar de NaN."""
+    return df.astype(object).where(df.notna(), None).to_dict(orient='records')
 
 
 def read_clean(content):

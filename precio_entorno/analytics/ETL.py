@@ -1,7 +1,9 @@
 """ETL: avisos crudos (JSON o CSV) + Mapa del Delito de CABA → un CSV limpio y un reporte de calidad.
 
-- **Extracción:** los avisos llegan en la entrada del Actor; el Mapa del Delito se baja del portal
-  oficial (`download`), porque pesa 17 MB, más de lo que Make Free puede mover.
+- **Extracción:** los avisos llegan en la entrada del Actor, por el SDK. El Mapa del Delito pesa 17 MB,
+  más de lo que Make Free puede mover: se resume por barrio fuera del Actor (`crimes_summary`, con el
+  archivo oficial ya verificado por SHA-256) y el resumen viaja dentro del Actor, en
+  `referencias/delitos_barrio.json`. El Actor no descarga nada.
 - **Transformación:** valida los avisos con las reglas del importador, deja una fila por aviso (la
   captura más reciente), marca posibles duplicados entre fuentes, suma los delitos registrados por
   barrio como contexto y trata los nulls (ver `docs/tratamiento-nulls.md`): el CSV limpio sale sin
@@ -12,9 +14,9 @@ Los precios son de publicación, no tasaciones. Los delitos son hechos registrad
 unidad geográfica (barrio).
 """
 
+import json
 from datetime import datetime, timezone
 from pathlib import Path
-from urllib.request import Request, urlopen
 
 import numpy as np
 import pandas as pd
@@ -23,8 +25,8 @@ from precio_entorno.eda_delitos import comuna_by_barrio, load as load_crimes
 from precio_entorno.importing import parse_listings
 
 SOURCE = 'inmobiliarias-autorizadas'
-CRIMES_URL = ('https://cdn.buenosaires.gob.ar/datosabiertos/datasets/ministerio-de-justicia-y-seguridad/'
-              'delitos/delitos_2025.csv')
+# Resumen por barrio del Mapa del Delito, dentro de la carpeta del Actor (lo arma `apify_analytics subir`).
+PACKAGED_CRIMES = Path(__file__).resolve().parents[2] / 'referencias/delitos_barrio.json'
 CRIMES_SHA256 = '1ed67c3346eb4f42635cc44bc78e00ec2b023370f1ff6df0e7f309c72a6b45df'
 CLEAN_COLUMNS = [
     'id', 'fuente', 'barrio', 'comuna', 'ambientes', 'superficie_cubierta_m2', 'superficie_total_m2',
@@ -38,18 +40,12 @@ REQUIRED = ('listing_id', 'url', 'captured_at', 'price', 'currency', 'covered_ar
 PIN_PUBLICADO, PIN_BARRIO, PIN_COMUNA = 'publicada', 'mediana_barrio', 'mediana_comuna'
 
 
-def download(url, path=None, timeout=120):
-    """Baja un archivo público. Si se da `path`, además lo escribe ahí."""
-    request = Request(url, headers={'User-Agent': 'precio-entorno-caba (capstone)'})
-    with urlopen(request, timeout=timeout) as response:
-        data = response.read()
-    if path:
-        Path(path).write_bytes(data)
-    return data
+def crimes_summary(crimes_path):
+    """Mapa del Delito (CSV oficial) → resumen por barrio, chico y serializable en JSON.
 
-
-def crimes_by_barrio(crimes_path):
-    """Hechos delictivos registrados por barrio en todo el archivo (sin siniestros viales)."""
+    Hechos delictivos registrados por barrio en todo el archivo, sin siniestros viales. Se corre fuera del
+    Actor: el resumen es lo único del archivo de delitos que el Actor necesita.
+    """
     rows, quality = load_crimes(crimes_path)
     crimes = rows[rows['delito']]
     by_barrio = pd.DataFrame({
@@ -61,8 +57,27 @@ def crimes_by_barrio(crimes_path):
     by_barrio['pct_con_arma_barrio'] = (by_barrio.pop('con_arma') / by_barrio['delitos_barrio'].where(
         by_barrio['delitos_barrio'] > 0) * 100).round(1).fillna(0.0)
     by_barrio['comuna'] = comuna_by_barrio(rows)
-    period = f'{quality["periodo"][0]} a {quality["periodo"][1]}'
-    return by_barrio, period, quality
+    barrios = [{'barrio': barrio, 'delitos_barrio': int(r['delitos_barrio']),
+                'robos_hurtos_barrio': int(r['robos_hurtos_barrio']), 'pct_con_arma_barrio': float(r['pct_con_arma_barrio']),
+                'comuna': None if pd.isna(r['comuna']) else int(r['comuna'])}
+               for barrio, r in by_barrio.sort_index().iterrows()]
+    calidad = {k: quality[k] for k in ('archivo', 'sha256', 'filas_leidas', 'filas_validas', 'periodo', 'hechos_registrados')}
+    return json.loads(json.dumps({'barrios': barrios, 'calidad': calidad}, default=str))
+
+
+def load_crimes_summary(path=PACKAGED_CRIMES):
+    """Resumen de delitos guardado en la carpeta del Actor."""
+    if not Path(path).exists():
+        raise FileNotFoundError(f'Falta {path}: el Actor se sube con `python -m precio_entorno.apify_analytics subir`.')
+    return json.loads(Path(path).read_text(encoding='utf-8'))
+
+
+def crimes_by_barrio(crimes):
+    """Resumen (o ruta al CSV oficial) → (tabla por barrio, período, calidad del archivo)."""
+    summary = crimes if isinstance(crimes, dict) else crimes_summary(crimes)
+    by_barrio = pd.DataFrame(summary['barrios']).set_index('barrio')
+    quality = summary['calidad']
+    return by_barrio, f'{quality["periodo"][0]} a {quality["periodo"][1]}', quality
 
 
 def fill_total_area(total, covered):
@@ -94,8 +109,11 @@ def fill_coordinates(lat, lon, barrio, comuna):
     return lat.round(6), lon.round(6), origin
 
 
-def etl(content, filename, crimes_path):
-    """Avisos crudos (JSON o CSV) + Mapa del Delito → (DataFrame limpio, reporte)."""
+def etl(content, filename, crimes):
+    """Avisos crudos (JSON o CSV) + delitos por barrio → (DataFrame limpio, reporte).
+
+    `crimes` es el resumen de `crimes_summary` (el Actor usa el de su carpeta) o la ruta al CSV oficial.
+    """
     listings, report = parse_listings(content, filename, SOURCE)
     if not listings:
         raise ValueError('No hay avisos válidos en el archivo.')
@@ -110,7 +128,7 @@ def etl(content, filename, crimes_path):
     many_sources = df.groupby(key)['fuente'].transform('nunique') > 1
     df['grupo_duplicado'] = np.where(many_sources, 'dup:' + key, df['id'])
 
-    by_barrio, period, crime_quality = crimes_by_barrio(crimes_path)
+    by_barrio, period, crime_quality = crimes_by_barrio(crimes)
     comuna = df['neighborhood'].map(by_barrio['comuna']).astype('Int64')
     nulls_before = {
         'superficie_total_m2': int(df['total_area_m2'].isna().sum()),
@@ -188,8 +206,12 @@ def etl(content, filename, crimes_path):
             },
             'nulls_finales': int(clean.isna().sum().sum()),
         },
-        'delitos': {k: crime_quality[k] for k in ('archivo', 'sha256', 'filas_leidas', 'filas_validas',
-                                                    'periodo', 'hechos_registrados')},
+        'delitos': dict(crime_quality),
         'delitos_sha256_esperado': crime_quality['sha256'] == CRIMES_SHA256,
         'fecha_corrida': datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC'),
     }
+
+
+def dataset_row(report):
+    """Fila del dataset de la corrida de ETL: el reporte sin el detalle del archivo de delitos."""
+    return {'operacion': 'etl', **{k: v for k, v in report.items() if k != 'delitos'}}

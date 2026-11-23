@@ -20,6 +20,38 @@ El [trabajo por hacer (JTBD)](docs/jtbd.md) describe el progreso que busca quien
 
 El [plan de crecimiento](docs/plan-de-crecimiento.md) reúne la estrategia, los precios publicados, los costos y el plan semana a semana para la web, el negocio y las formas de cobrar.
 
+## Flujo de datos: Make orquesta, Apify procesa
+
+```mermaid
+flowchart LR
+  D1["Google Drive<br/>avisos crudos"] --> M{{"Make<br/>Pipeline Analytics"}}
+  M -->|etl| A["Apify · Actor<br/>precio-entorno-analytics"]
+  A -->|CSV limpio| D2["Google Drive<br/>02_limpio"]
+  D2 --> M
+  M -->|eda · inferencia| A
+  A -->|tablas y referencias| S["Google Sheets"]
+  S --> L["Looker Studio"]
+```
+
+**Escenario de Make** «Precio y Entorno CABA - Pipeline Analytics»: 9 módulos, a pedido. Baja los avisos de Drive, llama tres veces al Actor de Apify (ETL, EDA e inferencia) y carga los resultados en la planilla que lee Looker Studio.
+
+![Escenario «Pipeline Analytics» en el editor de Make: Drive, HTTP a Apify (ETL), Drive, Drive, HTTP a Apify (EDA), Sheets, Sheets, HTTP a Apify (inferencia) y Sheets](docs/img/make/escenario-pipeline-analytics.png)
+
+**Actor de Apify** `precio-entorno-analytics`:
+
+| | |
+| --- | --- |
+| Qué es | Un solo Actor privado, en Python 3.13 con el SDK de Apify, que hace las tres etapas del análisis. Make lo llama por `run-sync` y recibe el resultado en la misma respuesta |
+| Dónde | Cuenta 2 de Apify: `peerless_anorthite~precio-entorno-analytics` (ID `enW521Ne2ayG3JKZL`) |
+| Código | [`precio_entorno/analytics/`](precio_entorno/analytics/) y su configuración en [`actores/analytics/.actor/`](actores/analytics/.actor/) |
+| Entrada | `operacion` (`etl`, `eda` o `inferencia`) y el archivo en `contenidoBase64`. Los datos entran solo por la entrada, con el SDK: no descarga nada |
+| Salida | `etl`: CSV limpio sin nulls. `eda`: seis tablas para Sheets. `inferencia`: referencia de publicación de cada aviso y la lista para revisar primero |
+| Modelo | HistGradientBoosting ya entrenado, guardado en la carpeta del Actor (`modelo/`). El Actor no entrena: verifica la huella y la versión de scikit-learn, y predice |
+| Delitos | Resumen por barrio del Mapa del Delito 2025, también en su carpeta (`referencias/`), armado desde el archivo oficial verificado |
+| Costo | Prueba del 23/11/2026: ETL 13 s, EDA 11 s e inferencia 11 s, unos USD 0,0025 las tres corridas |
+
+El detalle de cada módulo, el código del Actor y cómo publicarlo están en [Pipeline Analytics con Make, Apify y Looker Studio](#pipeline-analytics-con-make-apify-y-looker-studio) y en [docs/pipeline-analytics.md](docs/pipeline-analytics.md).
+
 ## Ejecutar en Windows
 
 Desde la carpeta `precio-entorno-caba`, en PowerShell:
@@ -362,7 +394,7 @@ Make baja de Google Drive los avisos crudos y se los pasa al Actor `precio-entor
 
 ### Escenario de Make
 
-![Escenario «Pipeline Analytics» en el editor de Make, con sus 9 módulos](docs/img/make/escenario-pipeline-analytics.png)
+La captura del editor está al principio, en [Flujo de datos](#flujo-de-datos-make-orquesta-apify-procesa).
 
 | # | Módulo | Qué hace |
 | --- | --- | --- |
@@ -389,14 +421,14 @@ El Actor es **solo de inferencia**: usa el modelo ya entrenado y nunca entrena n
 | Archivo | Qué hace |
 | --- | --- |
 | [`actores/analytics/.actor/`](actores/analytics/.actor/) | `actor.json`, `input_schema.json`, `Dockerfile` y `requirements.txt` del Actor |
-| [`analytics/main.py`](precio_entorno/analytics/main.py) | Solo la entrada y salida de Apify: lee la entrada, abre almacenes, publica en el dataset y deja OUTPUT |
-| [`analytics/ETL.py`](precio_entorno/analytics/ETL.py) | Avisos crudos + Mapa del Delito → CSV limpio sin nulls y reporte de calidad |
-| [`analytics/preprocessing.py`](precio_entorno/analytics/preprocessing.py) | Lectura del CSV limpio y paso a las variables del modelo, sin ajustar nada |
+| [`analytics/main.py`](precio_entorno/analytics/main.py) | Solo arma el Actor con el SDK: lee la entrada, publica en el dataset, guarda registros y deja el estado |
+| [`analytics/ETL.py`](precio_entorno/analytics/ETL.py) | Avisos crudos + delitos por barrio → CSV limpio sin nulls y reporte de calidad |
+| [`analytics/preprocessing.py`](precio_entorno/analytics/preprocessing.py) | Decodifica la entrada, lee el CSV limpio y lo pasa a las variables del modelo, sin ajustar nada |
 | [`analytics/EDA.py`](precio_entorno/analytics/EDA.py) | Tablas del dashboard: resumen, barrios, ambientes, fuentes, distribución y correlaciones |
 | [`analytics/inference.py`](precio_entorno/analytics/inference.py) | Carga el modelo (controla SHA-256 y versión de scikit-learn) y estima la referencia de publicación |
 | [`analytics/tooling_business.py`](precio_entorno/analytics/tooling_business.py) | Compara el USD/m² publicado con la referencia, ordena qué revisar primero y arma los cuerpos para Google Sheets |
 
-La entrada `operacion` elige la etapa: `etl`, `eda` o `inferencia`. El modelo vive en el almacén con nombre `precio-entorno-modelo` de Apify, no en Git, y llega al Actor por la entrada `almacenModelo`, con permiso de solo lectura. El Dockerfile copia solo los módulos que el Actor importa, y `tests/test_actor_analytics.py` controla que ninguno sea de entrenamiento.
+La entrada `operacion` elige la etapa: `etl`, `eda` o `inferencia`. El archivo entra solo por `contenidoBase64`, con el SDK: el Actor no descarga nada. El modelo entrenado (`modelo/`) y el resumen de delitos por barrio (`referencias/delitos_barrio.json`) viajan ya hechos en la carpeta del Actor: `subir` los arma desde `data/processed/inferencia/` y `data/raw/delitos_2025.csv` después de verificar sus huellas, y no van a Git. `main.py` solo usa el SDK (`get_input`, `push_data`, `set_value`, `set_status_message`) e importa la lógica. El Dockerfile copia solo los módulos que el Actor importa, y `tests/test_actor_analytics.py` controla las cuatro reglas: datos solo por el SDK, sin entrenamiento, modelo en la carpeta y `main.py` sin lógica.
 
 ```powershell
 python -m precio_entorno.pipeline_analytics etl data/raw/venta-consolidada-20261108/avisos.json
@@ -404,11 +436,10 @@ python -m precio_entorno.pipeline_analytics eda data/processed/pipeline/dataset_
 python -m precio_entorno.pipeline_analytics inferencia data/processed/pipeline/dataset_limpio.csv
 ```
 
-Para publicarlo en Apify (cuenta 2), primero el código y después el modelo:
+Para publicarlo en Apify (cuenta 2), con el modelo y los delitos dentro del Actor:
 
 ```powershell
 python -m precio_entorno.apify_analytics subir --account 2
-python -m precio_entorno.apify_analytics subir-modelo --account 2
 python -m precio_entorno.apify_analytics probar --account 2
 ```
 

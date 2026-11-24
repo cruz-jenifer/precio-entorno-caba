@@ -69,8 +69,7 @@ def load_index(paths, cache_file=None):
     esta misma función: no se comparte ni se versiona (data/local/ está fuera de Git).
     """
     paths = tuple(Path(p) for p in paths)
-    code = sha256(b''.join(Path(m.__file__).read_bytes() for m in (sys.modules[__name__], importing))).hexdigest()
-    signature = (code, tuple((p.name, p.stat().st_mtime_ns, p.stat().st_size) for p in paths))
+    signature = index_signature(paths)
     if cache_file is not None:
         try:
             with open(cache_file, 'rb') as stream:
@@ -89,8 +88,24 @@ def load_index(paths, cache_file=None):
                 pickle.dump(index, stream, protocol=pickle.HIGHEST_PROTOCOL)
             os.replace(partial, cache_file)
         except OSError:
-            partial.unlink(missing_ok=True)
+            # Sin disco escribible (Vercel monta el paquete como solo lectura) el índice sirve igual desde memoria.
+            # Borrar el parcial también puede fallar ahí: no tiene que tirar abajo el pedido.
+            try:
+                partial.unlink(missing_ok=True)
+            except OSError:
+                pass
     return index
+
+
+def index_signature(paths):
+    """Firma del índice: el código que interpreta los CSV y el contenido de cada CSV.
+
+    No usa la fecha de los archivos: al copiarlos al paquete de Vercel cambia, y el índice ya armado no se usaría
+    nunca. El código se compara sin los finales de línea de Windows, que Git normaliza al armar el paquete.
+    """
+    code = sha256(b''.join(Path(m.__file__).read_bytes().replace(b'\r\n', b'\n')
+                           for m in (sys.modules[__name__], importing))).hexdigest()
+    return (code, tuple((Path(p).name, Path(p).stat().st_size, sha256(Path(p).read_bytes()).hexdigest()) for p in paths))
 
 
 def source_paths(folder):

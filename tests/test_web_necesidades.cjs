@@ -167,6 +167,76 @@ test('el acceso distingue «dice que no», «no lo menciona» y «sin dato»', (
   assert.match(run('celdaAcceso({})'), /Sin dato/);
 });
 
+const HOSPITAL = { nombre: 'Hospital ficticio', lon: -58.43, lat: -34.62 };
+
+test('«Tengo que ir seguido a un lugar» suma la distancia solo con un lugar elegido', () => {
+  const sinLugar = runtime('?explorador=1', { prefs: [], necesidades: ['lugar_fijo'] });
+  assert.deepEqual(sinLugar('columnasExplorador().map((c) => c.titulo)'), []);
+  assert.ok(sinLugar('explorador()').advertencias.some((a) => a.includes('Lüga no lo recibe')));
+  const run = runtime('?explorador=1', { prefs: [], necesidades: ['lugar_fijo', 'sin_escaleras'], lugarFijo: HOSPITAL });
+  assert.deepEqual(run('columnasExplorador().map((c) => c.titulo)').slice(0, 2), ['A tu lugar fijo', 'Acceso según el aviso']);
+  // Sin el interruptor, el lugar guardado no se usa.
+  assert.equal(runtime('', { necesidades: ['lugar_fijo'], lugarFijo: HOSPITAL })('estado.lugarFijo'), null);
+});
+
+test('la distancia al lugar fijo es en línea recta y respeta la ubicación del aviso', () => {
+  const run = runtime('?explorador=1', { prefs: [], necesidades: ['lugar_fijo'], lugarFijo: HOSPITAL });
+  const norte = -34.62 + 1000 / 111320;   // 1 km al norte
+  assert.equal(run(`Math.round(metrosEntre(-58.43, -34.62, -58.43, ${norte}))`), 1000);
+  assert.equal(run(`celdaLugarFijo({ ubicacion: 'publicada', lon: -58.43, lat: ${norte} })`), '1 km');
+  assert.match(run(`celdaLugarFijo({ ubicacion: 'aproximada', lon: -58.43, lat: ${norte} })`), /1 km.*aprox\./);
+  assert.match(run('celdaLugarFijo({ ubicacion: null, lon: null, lat: null })'), /Sin ubicación/);
+});
+
+test('distancia de un punto a un barrio: 0 adentro, al borde afuera', () => {
+  const run = runtime('?explorador=1');
+  const d = 1000 / 111320;
+  const cuadrado = JSON.stringify({ type: 'Polygon', coordinates: [[[-58.44, -34.63], [-58.42, -34.63], [-58.42, -34.61], [-58.44, -34.61], [-58.44, -34.63]]] });
+  assert.equal(run(`metrosABarrio(-58.43, -34.62, ${cuadrado})`), 0);
+  assert.equal(run(`Math.round(metrosABarrio(-58.43, ${-34.61 + d}, ${cuadrado}))`), 1000);
+  const multi = JSON.stringify({ type: 'MultiPolygon', coordinates: [JSON.parse(cuadrado).coordinates] });
+  assert.equal(run(`metrosABarrio(-58.43, -34.62, ${multi})`), 0);
+  assert.equal(run('metrosABarrio(-58.43, -34.62, null)'), null);
+});
+
+test('el lugar fijo se valida, queda en el navegador y no viaja en los pedidos', () => {
+  const run = runtime('?explorador=1', { prefs: [], necesidades: ['lugar_fijo'], lugarFijo: HOSPITAL });
+  assert.equal(run("lugarValido({ nombre: 'Lejos', lon: -60, lat: -34.6 })"), null);
+  assert.equal(run("lugarValido({ nombre: 'Sin coordenadas' })"), null);
+  assert.equal(run(`lugarValido({ nombre: 'x'.repeat(300), lon: -58.43, lat: -34.62 }).nombre.length`), 120);
+  const pedido = run('consulta().toString()');
+  assert.ok(!pedido.includes('58.43') && !pedido.includes('34.62') && !pedido.includes('ficticio'));
+});
+
+test('«Necesito un lugar tranquilo» suma ruido de día y de noche, contrafrente y qué preguntar', () => {
+  const run = runtime('?explorador=1', { prefs: [], necesidades: ['tranquilo'] });
+  const r = run('explorador()');
+  assert.deepEqual(r.capas, ['ruido']);
+  assert.deepEqual(r.cercania, ['ruido']);
+  assert.deepEqual(run('columnasExplorador().map((c) => c.titulo)'), ['Ruido de día', 'Ruido de noche', 'El texto menciona']);
+  assert.ok(r.advertencias.some((a) => a.includes('doble vidrio')));
+  assert.equal(run("celdaDistancia(COLUMNAS_DISTANCIA.ruido_nocturno, { cercania: { ruido_nocturno: { dba: 62 } } })"), '62 dBA');
+  assert.equal(run("celdaDistancia(COLUMNAS_DISTANCIA.ruido_nocturno, { cercania: { ruido_nocturno: { dba: null } } })"), 'Sin celda relevada');
+});
+
+test('con la necesidad de silencio, cada barrio muestra la noche y se puede ordenar por ella', () => {
+  const entorno = (dia, noche) => ({ subte_lineas: [], ruido: { diurno: { alto: dia }, nocturno: { alto: noche } } });
+  const run = runtime('?explorador=1', { prefs: [], necesidades: ['tranquilo'] });
+  assert.equal(run(`datoComparacion('ruido', ${JSON.stringify(entorno(0.5, 0.25))})`),
+    '50 % de celdas con 70 dBA o más de día · 25 % con 65 dBA o más de noche');
+  // Sin la necesidad, el texto de siempre.
+  assert.equal(runtime('?explorador=1', { prefs: [] })(`datoComparacion('ruido', ${JSON.stringify(entorno(0.5, 0.25))})`),
+    '50 % de celdas con 70 dBA o más de día');
+  run(`estado.ordenBarrios = 'ruido'; estado.barrios = [
+    { barrio: 'Ruidoso', coincidencias: 9, avisos: 9, mediana: 1, entorno: ${JSON.stringify(entorno(0.9, 0.8))} },
+    { barrio: 'Sin dato', coincidencias: 9, avisos: 9, mediana: 1, entorno: null },
+    { barrio: 'Tranquilo', coincidencias: 1, avisos: 1, mediana: 1, entorno: ${JSON.stringify(entorno(0.3, 0.1))} }];
+    renderLista();`);
+  const html = run("document.querySelector('#contenido').innerHTML");
+  assert.ok(html.indexOf('Tranquilo') < html.indexOf('Ruidoso') && html.indexOf('Ruidoso') < html.indexOf('Sin dato'));
+  assert.match(html, /Menos ruido de noche/);
+});
+
 test('«Me muevo en bici» prende ciclovías y Ecobici; «Trabajo desde casa» suma bibliotecas', () => {
   const run = runtime('?explorador=1', { prefs: [], necesidades: ['bicicleta', 'teletrabajo'] });
   const r = run('explorador()');

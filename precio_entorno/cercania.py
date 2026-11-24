@@ -157,10 +157,13 @@ class Cercania:
         self.disponibles = {'ciclovias': bool(capas.get('ciclovias')), 'ecobici': 'ecobici' in puntos,
                             'bibliotecas': 'bibliotecas' in puntos, 'recreacion': 'recreacion' in puntos}
         ruido = capas.get('ruido') or {}
-        celdas = ruido.get('diurno', [])
         self.celda_m = ruido.get('celda_m', 100)
-        self.ruido = Puntos(metros([c[0] for c in celdas], [c[1] for c in celdas]) if celdas else [])
-        self.ruido_valor = [c[2] for c in celdas]
+        # Una grilla por período: las celdas relevadas de día y de noche no son exactamente las mismas.
+        self.ruido = {}
+        for periodo in ('diurno', 'nocturno'):
+            celdas = ruido.get(periodo, [])
+            self.ruido[periodo] = (Puntos(metros([c[0] for c in celdas], [c[1] for c in celdas]) if celdas else []),
+                                   [c[2] for c in celdas])
 
     def calcular(self, lons, lats, capas, nivel='primario'):
         """Una entrada por origen, con las claves de las capas pedidas."""
@@ -203,8 +206,9 @@ class Cercania:
                 poner('recreacion', [math.inf] * len(origen))
         if 'ruido' in capas:
             # La celda que contiene el punto: el centro más cercano a no más de media celda en cada eje.
-            _, idx = cercanos(origen, self.ruido)
-            for i, j in enumerate(idx):
-                dentro = j >= 0 and np.all(np.abs(self.ruido.xy[j] - origen[i]) <= self.celda_m / 2 + 1)
-                salida[i]['ruido_diurno'] = {'dba': self.ruido_valor[j] if dentro else None}
+            for periodo, (grilla, valores) in self.ruido.items():
+                _, idx = cercanos(origen, grilla)
+                for i, j in enumerate(idx):
+                    dentro = j >= 0 and np.all(np.abs(grilla.xy[j] - origen[i]) <= self.celda_m / 2 + 1)
+                    salida[i][f'ruido_{periodo}'] = {'dba': valores[j] if dentro else None}
         return salida

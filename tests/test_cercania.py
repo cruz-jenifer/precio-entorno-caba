@@ -29,7 +29,9 @@ CAPAS = {
     # Plaza cuadrada de 200 m cuyo borde oeste queda 300 m al este del origen.
     'verdes': {'type': 'FeatureCollection', 'features': [cuadrado(ORIGEN[0] + 300 / cercania.KX, ORIGEN[1] - 0.0005, 200)]},
     'ruido': {'celda_m': 100, 'diurno': [[ORIGEN[0], ORIGEN[1], 70, 75, 'X'],
-                                         [ESTE_500, ORIGEN[1], 55, 60, 'X']]},
+                                         [ESTE_500, ORIGEN[1], 55, 60, 'X']],
+              # De noche, otra grilla: el origen tiene celda, el punto 500 m al este no.
+              'nocturno': [[ORIGEN[0], ORIGEN[1], 62, 66, 'X']]},
 }
 
 
@@ -68,6 +70,13 @@ class CercaniaTests(unittest.TestCase):
         lejos = (ORIGEN[0] + 250 / cercania.KX, ORIGEN[1])
         valores = [r['ruido_diurno']['dba'] for r in self.calcular(['ruido'], puntos=(ORIGEN, cerca, lejos))]
         self.assertEqual(valores, [70, 70, None])
+
+    def test_night_noise_uses_its_own_grid(self):
+        este = (ESTE_500, ORIGEN[1])
+        filas = self.calcular(['ruido'], puntos=(ORIGEN, este))
+        self.assertEqual([(r['ruido_diurno']['dba'], r['ruido_nocturno']['dba']) for r in filas], [(70, 62), (55, None)])
+        sin_noche = cercania.Cercania({**CAPAS, 'ruido': {'celda_m': 100, 'diurno': CAPAS['ruido']['diurno']}})
+        self.assertEqual(sin_noche.calcular([ORIGEN[0]], [ORIGEN[1]], ['ruido'])[0]['ruido_nocturno'], {'dba': None})
 
     def test_only_requested_layers_are_returned_and_rounding_is_to_tens(self):
         self.assertEqual(set(self.calcular(['subte', 'verdes'])[0]), {'subte', 'subte_ascensor', 'plaza'})

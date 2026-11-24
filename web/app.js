@@ -282,6 +282,20 @@ function cumpleNecesidades(a) {
   return true;
 }
 
+// Cuántos avisos del barrio cumplen lo elegido, y cuántos de esos no tienen punto en el mapa.
+function resumenCumplen(avisos = estado.avisos) {
+  if (!criteriosPines().length) return null;
+  const cumplen = avisos.filter((a) => cumpleNecesidades(a));
+  return { total: avisos.length, cumplen: cumplen.length, sinPunto: cumplen.filter((a) => !a.ubicacion).length };
+}
+
+// Texto para cuando ningún aviso cumple: si está «evitar escaleras», el dato del aviso todavía es escaso.
+function textoNingunoCumple() {
+  return EXPLORADOR && estado.necesidades.has('sin_escaleras')
+    ? 'Ningún aviso que encaja lo dice por ahora. El ascensor figura en pocos avisos todavía: preguntalo al anunciante.'
+    : 'Ningún aviso que encaja cumple todo lo que elegiste. Probá con menos necesidades o en otro barrio.';
+}
+
 // El orden de la lista que vale de verdad: si la necesidad que lo habilita no está, se vuelve a «Más avisos».
 function ordenEfectivo() {
   const tranquilo = EXPLORADOR && estado.necesidades.has('tranquilo');
@@ -342,6 +356,15 @@ function columnasExplorador() {
   return extra;
 }
 
+// Una línea en la ficha con cuántos avisos cumplen lo elegido; los detalles están en la pestaña Avisos.
+function cumpleFicha() {
+  const r = estado.cargandoAvisos === estado.seleccionado ? null : resumenCumplen();
+  if (!r || !r.total) return '';
+  return r.cumplen
+    ? `<p><strong>${r.cumplen} de ${r.total}</strong> ${plural(r.cumplen, 'aviso cumple', 'avisos cumplen')} lo que elegiste. Están primeros en la pestaña Avisos${r.sinPunto ? `; ${r.sinPunto} no ${plural(r.sinPunto, 'tiene', 'tienen')} ubicación en el mapa` : ''}.</p>`
+    : `<p>${esc(textoNingunoCumple())}</p>`;
+}
+
 function renderSegunNecesidades() {
   if (!EXPLORADOR || !estado.necesidades.size) return '';
   const r = explorador();
@@ -360,6 +383,7 @@ function renderSegunNecesidades() {
       <h2 id="titulo-segun">Según lo que elegiste</h2>
       <p class="fuente">${esc(enumerar(nombres))}. <button class="boton-texto" type="button" data-abrir-importa>Cambiar</button></p>
       ${filas.length ? `<dl class="hechos">${filas.join('')}</dl>` : ''}
+      ${cumpleFicha()}
       ${distancias}
       ${r.advertencias.length ? `<ul class="segun-avisos">${r.advertencias.map((a) => `<li>${esc(a)}</li>`).join('')}</ul>` : ''}
     </section>`;
@@ -492,6 +516,8 @@ const estado = {
   seleccionado: null,
   colectivo: null, // { linea, datos } de la línea de colectivo dibujada en el mapa
   avisos: [],
+  barriosCargados: false, // hasta la primera respuesta de /api/barrios, la leyenda dice «Cargando»
+  cargandoAvisos: null,   // barrio cuyos avisos se están pidiendo: la ficha y el mapa lo avisan
   cercaniaInfo: null,
   pestana: 'entorno',
   eligiendoAlerta: false, // tras «Activar una alerta», el próximo barrio elegido abre su pestaña de alerta
@@ -892,10 +918,18 @@ function renderFicha() {
   const focoAnterior = conservar && formularioAnterior.contains(document.activeElement) ? document.activeElement.id : '';
   const e = b.entorno;
   const alquiler = estado.operacion === 'alquiler';
-  const visibles = estado.verTodos ? estado.avisos : estado.avisos.slice(0, 25);
+  // Con necesidades elegidas, los avisos que cumplen van primero (en su orden de precio) y se marcan.
+  const cumple = resumenCumplen();
+  const ordenados = cumple ? [...estado.avisos.filter((a) => cumpleNecesidades(a)), ...estado.avisos.filter((a) => !cumpleNecesidades(a))]
+    : estado.avisos;
+  const visibles = estado.verTodos ? ordenados : ordenados.slice(0, 25);
   const extra = columnasExplorador();
-  const filas = visibles.map((a) => `<tr>
-      <td>${dinero(a.precio, a.moneda)}</td>
+  const notaCumplen = !cumple ? '' : cumple.cumplen
+    ? `<p class="nota-cumplen" role="status"><strong>${cumple.cumplen} de ${cumple.total}</strong> ${plural(cumple.cumplen, 'aviso cumple', 'avisos cumplen')} lo que elegiste y ${plural(cumple.cumplen, 'va', 'van')} primero.${
+      cumple.sinPunto ? ` ${cumple.sinPunto} de ${plural(cumple.cumplen, 'ese', 'esos')} no ${plural(cumple.sinPunto, 'tiene', 'tienen')} ubicación publicada, así que no ${plural(cumple.sinPunto, 'aparece', 'aparecen')} en el mapa.` : ''}</p>`
+    : `<p class="nota-cumplen" role="status">${esc(textoNingunoCumple())}</p>`;
+  const filas = visibles.map((a) => `<tr${cumple && cumpleNecesidades(a) ? ' class="cumple"' : ''}>
+      <td>${dinero(a.precio, a.moneda)}${cumple && cumpleNecesidades(a) ? '<span class="marca-cumple">Cumple lo que elegiste</span>' : ''}</td>
       <td>${celdaComparacion(a.comparacion, a.moneda)}</td>
       <td>${a.superficie} m²</td>
       <td>${a.ambientes}</td>
@@ -955,7 +989,10 @@ function renderFicha() {
       <nav class="pestanas" role="tablist" aria-label="Secciones del barrio">${pestanas}</nav>
       ${panel('entorno', `${renderAnalisisDelitos()}${renderPiezas(e)}${renderColectivos(e)}${renderSegunNecesidades()}
         ${renderParecidos(b.barrio)}${renderLugares(b.barrio)}${renderRadarFicha(b.barrio)}`)}
-      ${panel('avisos', `${estado.errorAvisos?.barrio === b.barrio ? bloqueError(estado.errorAvisos.mensaje, 'avisos') : b.coincidencias ? `
+      ${panel('avisos', `${estado.errorAvisos?.barrio === b.barrio ? bloqueError(estado.errorAvisos.mensaje, 'avisos')
+        : estado.cargandoAvisos === b.barrio && b.coincidencias ? `<p class="nota cargando" role="status">Cargando los avisos de ${esc(b.barrio)}…</p>`
+        : b.coincidencias ? `
+        ${notaCumplen}
         ${extra.length ? `<p class="fuente">Deslizá la tabla hacia la derecha para ver ${enumerar(extra.map((c) => `«${c.titulo}»`))}.</p>` : ''}
         <div class="tabla-desplazable" role="region" aria-label="Avisos que encajan; desplazá para ver todas las columnas" tabindex="0"><table class="avisos">
           <thead><tr><th>Precio publicado</th><th>Frente a parecidos</th><th>Cubierta</th><th>Amb.</th><th>Cocheras</th>${alquiler ? '<th>Expensas</th>' : ''}${extra.map((c) => `<th>${esc(c.titulo)}</th>`).join('')}<th><span hidden>Enlace</span></th><th>Mapa</th></tr></thead>
@@ -2118,12 +2155,21 @@ function renderChips() {
     if (boton) boton.disabled = !estado.seleccionado;
   }
   $('#capas-fila').hidden = !estado.seleccionado;
-  $('#mapa-pista').hidden = Boolean(estado.seleccionado);
-  if (!estado.seleccionado) {
-    $('#mapa-pista').textContent = 'Elegí un barrio para ver subte, plazas, ruido y más en el mapa.';
-    return;
-  }
+  pistaMapa();
+  if (!estado.seleccionado) return;
   $('#capas').innerHTML = filaCapas().map(chipCapa).join('');
+}
+
+// La pista del mapa: invita a elegir un barrio, o avisa mientras se cargan los barrios o los avisos de uno.
+function pistaMapa() {
+  const pista = $('#mapa-pista');
+  if (!pista) return;
+  const texto = !estado.barriosCargados ? 'Cargando barrios y avisos…'
+    : estado.seleccionado && estado.cargandoAvisos === estado.seleccionado ? `Cargando los avisos de ${estado.seleccionado}…`
+      : estado.seleccionado ? '' : 'Elegí un barrio para ver subte, plazas, ruido y más en el mapa.';
+  pista.hidden = !texto;
+  pista.textContent = texto;
+  pista.classList.toggle('cargando', texto.startsWith('Cargando'));
 }
 
 function renderControles() {
@@ -2171,6 +2217,14 @@ function muestra(color, etiqueta) {
 
 function renderLeyenda() {
   const leyenda = $('#leyenda');
+  if (!estado.seleccionado && !estado.barriosCargados) {
+    leyenda.innerHTML = '<p class="nota cargando" role="status">Cargando barrios…</p>';
+    return;
+  }
+  if (estado.seleccionado && estado.cargandoAvisos === estado.seleccionado) {
+    leyenda.innerHTML = `<p class="nota cargando" role="status">Cargando los avisos de ${esc(estado.seleccionado)}…</p>`;
+    return;
+  }
   if (!estado.seleccionado) {
     const maximo = Math.max(0, ...estado.barrios.map((b) => b.coincidencias));
     const escala = escalaBarrios();
@@ -2212,10 +2266,13 @@ function renderLeyenda() {
     const criterios = criteriosPines();
     if (criterios.length) {
       const cumplen = conPunto.filter((a) => cumpleNecesidades(a)).length;
+      const r = resumenCumplen();
+      const fuera = r.sinPunto ? `<p class="leyenda-nota"><strong>${r.sinPunto} ${plural(r.sinPunto, 'aviso más cumple', 'avisos más cumplen')}</strong> pero no ${plural(r.sinPunto, 'tiene', 'tienen')} ubicación publicada: ${plural(r.sinPunto, 'está', 'están')} primeros en la pestaña Avisos.</p>`
+        : !r.cumplen ? `<p class="leyenda-nota">${esc(textoNingunoCumple())}</p>` : '';
       bloques.push(`<h3>Según lo que necesitás</h3><ul class="leyenda-items">
-        <li>${dibujoPin(false)}Fuerte: cumple (${cumplen} de ${conPunto.length})</li>
+        <li>${dibujoPin(false)}Fuerte: cumple (${cumplen} de ${conPunto.length} en el mapa)</li>
         <li><span class="pin-atenuado">${dibujoPin(false)}</span>Tenue: no cumple o el aviso no lo dice</li></ul>
-        <p class="leyenda-nota">Fuerte si: ${esc(criterios.join('; '))}. No se oculta ningún aviso.</p>`);
+        ${fuera}<p class="leyenda-nota">Fuerte si: ${esc(criterios.join('; '))}. No se oculta ningún aviso.</p>`);
     }
     notas.push(`<li><strong>Avisos.</strong> ${esc(NOTA_AVISOS)}</li>`);
   }
@@ -2312,6 +2369,7 @@ async function cargarEstado() {
 async function cargarBarrios() {
   const datos = await api(`/api/barrios?${consulta()}`);
   estado.barrios = datos.barrios;
+  estado.barriosCargados = true;
   pintarCoropletas();
 }
 
@@ -2325,10 +2383,19 @@ async function cargarAvisos() {
     cercania.forEach((c) => pedido.append('capas', c));
     if (cercania.includes('escuelas')) pedido.set('nivel', estado.nivel);
   }
-  const datos = await api(`/api/barrios/${encodeURIComponent(barrio)}/avisos?${pedido}`);
-  if (barrio === estado.seleccionado) {
-    estado.avisos = datos.avisos;
-    estado.cercaniaInfo = datos.cercania || null;
+  estado.cargandoAvisos = barrio;
+  pistaMapa();
+  renderLeyenda();
+  try {
+    const datos = await api(`/api/barrios/${encodeURIComponent(barrio)}/avisos?${pedido}`);
+    if (barrio === estado.seleccionado) {
+      estado.avisos = datos.avisos;
+      estado.cercaniaInfo = datos.cercania || null;
+    }
+  } finally {
+    if (estado.cargandoAvisos === barrio) estado.cargandoAvisos = null;
+    pistaMapa();
+    renderLeyenda();
   }
 }
 
@@ -2376,6 +2443,8 @@ async function seleccionar(nombre, { historial = true } = {}) {
   estado.eligiendoAlerta = false;
   estado.verTodos = false;
   estado.avisos = [];
+  // Antes de dibujar la ficha: así la pestaña Avisos y la leyenda dicen «Cargando» y no «ningún aviso».
+  estado.cargandoAvisos = nombre || null;
   estado.delitosDatos = null;
   estado.delitos.inmueble = '';
   estado.pedidoDelitos += 1;
@@ -3503,13 +3572,26 @@ function seguirAltoBarra() {
 }
 
 async function cargarInicio() {
-  $('#contenido').innerHTML = '<p class="nota">Cargando barrios…</p>';
+  $('#contenido').innerHTML = `<header class="portada" aria-busy="true">
+      <p class="recorrido-etapa">Comparación de barrios</p>
+      <h1 class="titulo-lista" id="titulo-vista" tabindex="-1">Elegí dónde buscar</h1>
+      <p class="portada-guia">Compará los barrios de CABA según tu presupuesto y lo que necesitás cerca, y después mirá los avisos.</p>
+      <p class="nota cargando" role="status">Cargando los barrios y los avisos publicados…</p>
+    </header>
+    <ul class="barrios esqueleto" aria-hidden="true">${'<li></li>'.repeat(4)}</ul>`;
+  // La lista solo necesita los barrios. El estado (catálogo, «Dónde comer») y el radar llegan cuando llegan.
+  const extras = Promise.allSettled([cargarEstado(), cargarRadar()]);
   try {
-    await Promise.all([cargarEstado(), cargarBarrios(), cargarRadar()]);
+    await cargarBarrios();
     renderPanel();
+    renderLeyenda();
+    pistaMapa();
   } catch (error) {
     $('#contenido').innerHTML = bloqueError(`No se pudieron cargar los barrios. ${error.message}`, 'inicio');
+    return;
   }
+  await extras;
+  renderPanel();
 }
 
 async function iniciar() {
@@ -3521,7 +3603,9 @@ async function iniciar() {
   if (celular()) plegarPanel(true);
   renderChips();
   precargarMapa();
-  await cargarInicio();
+  pistaMapa();
+  // Mapa y datos en paralelo: antes el mapa esperaba a que llegaran los barrios y quedaba vacío.
+  const inicio = cargarInicio();
   try {
     await prepararMapa();
     // Si la persona eligió un barrio mientras el mapa cargaba, se aplica ahora.
@@ -3535,6 +3619,9 @@ async function iniciar() {
   } catch (error) {
     mostrarAvisoMapa(`El mapa no se pudo preparar: ${error.message}`);
   }
+  await inicio;
+  pintarCoropletas();
+  renderLeyenda();
 }
 
 iniciar();

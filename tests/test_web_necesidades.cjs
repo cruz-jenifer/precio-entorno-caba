@@ -309,6 +309,38 @@ test('el mapa de barrios sigue al orden de la lista: más avisos, menos ruido de
   assert.deepEqual(conLugar('[...escalaBarrios().valores]'), [['A', 1], ['B', 0], ['C', 0]]);   // B sin forma: sin dato
 });
 
+test('los avisos que cumplen sin ubicación se cuentan en la leyenda y en la ficha', () => {
+  const run = runtime('', { prefs: [], necesidades: ['sin_escaleras'] });
+  const avisos = JSON.stringify([
+    { id: 'a', precio: 1, rasgos: { ascensor: 1 }, ubicacion: null, lat: null, lon: null },
+    { id: 'b', precio: 2, rasgos: { ascensor: 1 }, ubicacion: null, lat: null, lon: null },
+    { id: 'c', precio: 3, rasgos: { ascensor: 0 }, ubicacion: 'publicada', lat: -34.6, lon: -58.4 }]);
+  run(`estado.seleccionado = 'Almagro'; estado.avisos = ${avisos};`);
+  assert.deepEqual(run('resumenCumplen()'), { total: 3, cumplen: 2, sinPunto: 2 });
+  run('renderLeyenda()');
+  const leyenda = run("document.querySelector('#leyenda').innerHTML");
+  assert.match(leyenda, /cumple \(0 de 1 en el mapa\)/);
+  assert.match(leyenda, /2 avisos más cumplen<\/strong> pero no tienen ubicación/);
+  assert.match(run('cumpleFicha()'), /2 de 3<\/strong> avisos cumplen.*2 no tienen ubicación/);
+  // Ninguno cumple: lo dice, y con escaleras explica que el dato es escaso.
+  run(`estado.avisos = ${JSON.stringify([{ id: 'c', rasgos: { ascensor: 0 }, ubicacion: 'publicada', lat: -34.6, lon: -58.4 }])};`);
+  assert.match(run('cumpleFicha()'), /figura en pocos avisos/);
+  // Sin necesidades con criterio, no se agrega nada.
+  assert.equal(runtime('', { prefs: [], necesidades: [] })('cumpleFicha()'), '');
+});
+
+test('mientras cargan los avisos de un barrio, la leyenda y la pista del mapa lo dicen', () => {
+  const run = runtime('', { prefs: [] });
+  run("estado.barriosCargados = true; estado.seleccionado = 'Almagro'; estado.cargandoAvisos = 'Almagro'; renderLeyenda(); pistaMapa();");
+  assert.match(run("document.querySelector('#leyenda').innerHTML"), /Cargando los avisos de Almagro/);
+  assert.equal(run("document.querySelector('#mapa-pista').textContent"), 'Cargando los avisos de Almagro…');
+  assert.equal(run("document.querySelector('#mapa-pista').hidden"), false);
+  run('estado.cargandoAvisos = null; pistaMapa();');
+  assert.equal(run("document.querySelector('#mapa-pista').hidden"), true);   // con barrio elegido y sin carga, no hay pista
+  run('estado.seleccionado = null; pistaMapa();');
+  assert.match(run("document.querySelector('#mapa-pista').textContent"), /Elegí un barrio/);
+});
+
 test('«Me muevo en bici» prende ciclovías y Ecobici; «Trabajo desde casa» suma bibliotecas', () => {
   const run = runtime('?explorador=1', { prefs: [], necesidades: ['bicicleta', 'teletrabajo'] });
   const r = run('explorador()');

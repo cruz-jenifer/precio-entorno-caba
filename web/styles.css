@@ -1595,3 +1595,22 @@ form :where(label) { line-height: var(--interlineado); }
 /* Leyenda del resaltado por necesidades: pin tenue y marcador del lugar fijo. */
 .pin-atenuado { opacity: 0.3; display: inline-flex; }
 .chip-lugar-fijo { background: #FFFFFF; border: 3px solid #1E2A32; border-radius: 50%; }
+
+/* Cargas en curso y avisos que cumplen lo elegido (auditoría de usabilidad, 24/11/2026). */
+.cargando::before {
+  content: ''; display: inline-block; width: 0.75em; height: 0.75em; margin-right: 0.5em; vertical-align: -0.05em;
+  border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%;
+  animation: girar 0.8s linear infinite;
+}
+@keyframes girar { to { transform: rotate(360deg); } }
+.barrios.esqueleto li {
+  height: 5.5rem; margin: 0 0 var(--espacio-3); border-radius: var(--radio-control);
+  background: linear-gradient(90deg, #EEECEA 25%, #F6F5F3 50%, #EEECEA 75%); background-size: 200% 100%;
+  animation: brillo 1.4s ease-in-out infinite;
+}
+@keyframes brillo { to { background-position: -200% 0; } }
+@media (prefers-reduced-motion: reduce) { .cargando::before, .barrios.esqueleto li { animation: none; } }
+.nota-cumplen { margin: 0 0 var(--espacio-3); padding: var(--espacio-2) var(--espacio-3); border-radius: var(--radio-control);
+  background: #F1ECFA; font-size: var(--t-chico); }
+table.avisos tr.cumple > td:first-child { box-shadow: inset 3px 0 0 #6A4FB3; }
+.marca-cumple { display: block; color: #4C3A8C; font-size: var(--t-chico); font-weight: 600; }

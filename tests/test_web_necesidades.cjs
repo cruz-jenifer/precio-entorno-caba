@@ -341,6 +341,36 @@ test('mientras cargan los avisos de un barrio, la leyenda y la pista del mapa lo
   assert.match(run("document.querySelector('#mapa-pista').textContent"), /Elegí un barrio/);
 });
 
+test('el panel de capas muestra las encendidas y «Más capas», y se abre a pedido', () => {
+  const run = runtime('', { prefs: [] });
+  run("estado.seleccionado = 'Almagro'; estado.capas = new Set(['subte', 'salud']); renderChips();");
+  const plegado = run("document.querySelector('#capas').innerHTML");
+  assert.equal((plegado.match(/data-capa=/g) || []).length, 2);
+  assert.match(plegado, /Más capas \(16\)/);
+  run("estado.capasAbiertas = true; renderChips();");
+  const abierto = run("document.querySelector('#capas').innerHTML");
+  assert.equal((abierto.match(/data-capa=/g) || []).length, 18);
+  assert.match(abierto, /Menos capas/);
+  // Una capa que la persona apagó sigue a la vista con el panel plegado, para poder volver a prenderla.
+  run("estado.capasAbiertas = false; estado.capasTocadas.add('ruido'); renderChips();");
+  assert.match(run("document.querySelector('#capas').innerHTML"), /data-capa="ruido"/);
+});
+
+test('marcar una necesidad dice qué cambió y qué hacer', () => {
+  const run = runtime('', { prefs: [] });
+  assert.match(run("textoNecesidadMarcada('sin_escaleras')"), /Abrí un barrio para ver qué avisos cumplen/);
+  assert.match(run("textoNecesidadMarcada('tranquilo')"), /ruido de noche/);
+  assert.match(run("textoNecesidadMarcada('lugar_fijo')"), /hospitales o marcalo en el mapa/);
+  run("estado.seleccionado = 'Almagro';");
+  assert.match(run("textoNecesidadMarcada('estudio')"), /a Almagro: mirá la pestaña Avisos/);
+});
+
+test('la alerta aclara que no usa las necesidades elegidas', () => {
+  assert.equal(runtime('', { prefs: [], necesidades: [] })('notaAlertaNecesidades()'), '');
+  const nota = runtime('', { prefs: [], necesidades: ['sin_escaleras', 'tranquilo'] })('notaAlertaNecesidades()');
+  assert.match(nota, /no tiene en cuenta «Necesito evitar escaleras» y «Necesito un lugar tranquilo»/);
+});
+
 test('«Me muevo en bici» prende ciclovías y Ecobici; «Trabajo desde casa» suma bibliotecas', () => {
   const run = runtime('?explorador=1', { prefs: [], necesidades: ['bicicleta', 'teletrabajo'] });
   const r = run('explorador()');

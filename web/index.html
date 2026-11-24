@@ -24,9 +24,12 @@
       <div class="barra-extremo">
         <button class="boton-texto" id="abrir-precios" type="button">Precios</button>
         <button class="boton-texto" id="abrir-alertas" type="button">Mis alertas</button>
-        <div class="segmentado segmentado-chico" role="radiogroup" aria-label="Datos de trabajo">
-          <button type="button" role="radio" data-modo="demo" aria-checked="true">Ejemplo</button>
-          <button type="button" role="radio" data-modo="real" aria-checked="false">Reales</button>
+        <div class="modo-avisos">
+          <span class="modo-titulo" id="modo-titulo">Avisos</span>
+          <div class="segmentado segmentado-chico" role="radiogroup" aria-labelledby="modo-titulo">
+            <button type="button" role="radio" data-modo="demo" aria-checked="true" title="Avisos ficticios para probar la app">De ejemplo</button>
+            <button type="button" role="radio" data-modo="real" aria-checked="false" title="Avisos publicados en el catálogo autorizado">Reales</button>
+          </div>
         </div>
       </div>
     </div>

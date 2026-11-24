@@ -516,6 +516,8 @@ const estado = {
   seleccionado: null,
   colectivo: null, // { linea, datos } de la línea de colectivo dibujada en el mapa
   avisos: [],
+  capasAbiertas: false,   // el panel de capas muestra solo las encendidas hasta que se pide «Más capas»
+  capasTocadas: new Set(), // capas que la persona prendió o apagó: siguen a la vista con el panel plegado
   barriosCargados: false, // hasta la primera respuesta de /api/barrios, la leyenda dice «Cargando»
   cargandoAvisos: null,   // barrio cuyos avisos se están pidiendo: la ficha y el mapa lo avisan
   cercaniaInfo: null,
@@ -928,14 +930,19 @@ function renderFicha() {
     ? `<p class="nota-cumplen" role="status"><strong>${cumple.cumplen} de ${cumple.total}</strong> ${plural(cumple.cumplen, 'aviso cumple', 'avisos cumplen')} lo que elegiste y ${plural(cumple.cumplen, 'va', 'van')} primero.${
       cumple.sinPunto ? ` ${cumple.sinPunto} de ${plural(cumple.cumplen, 'ese', 'esos')} no ${plural(cumple.sinPunto, 'tiene', 'tienen')} ubicación publicada, así que no ${plural(cumple.sinPunto, 'aparece', 'aparecen')} en el mapa.` : ''}</p>`
     : `<p class="nota-cumplen" role="status">${esc(textoNingunoCumple())}</p>`;
+  const conPosicion = estado.avisos.filter((a) => a.comparacion?.posicion);
+  const debajo = conPosicion.filter((a) => a.comparacion.posicion === 'debajo').length;
+  const notaParecidos = conPosicion.length >= 5 && debajo / conPosicion.length >= 0.6
+    ? `<p class="fuente">Con tu presupuesto, ${debajo} de ${conPosicion.length} avisos quedan por debajo de sus parecidos del barrio. Para compararlos entre sí, mirá el porcentaje.</p>` : '';
+  // 9. Las columnas de lo que elegiste van al lado del precio: son las que la persona vino a mirar.
   const filas = visibles.map((a) => `<tr${cumple && cumpleNecesidades(a) ? ' class="cumple"' : ''}>
       <td>${dinero(a.precio, a.moneda)}${cumple && cumpleNecesidades(a) ? '<span class="marca-cumple">Cumple lo que elegiste</span>' : ''}</td>
+      ${extra.map((c) => `<td>${c.celda(a)}</td>`).join('')}
       <td>${celdaComparacion(a.comparacion, a.moneda)}</td>
       <td>${a.superficie} m²</td>
       <td>${a.ambientes}</td>
       <td>${a.cocheras == null ? 'No informada' : a.cocheras === 0 ? 'Sin cochera' : a.cocheras}</td>
       ${alquiler ? `<td>${a.expensas == null ? '—' : dinero(a.expensas, 'ARS')}</td>` : ''}
-      ${extra.map((c) => `<td>${c.celda(a)}</td>`).join('')}
       <td>${a.enlace ? `<a href="${esc(a.enlace)}" target="_blank" rel="noopener">Ver aviso</a>` : 'Ejemplo'}</td>
       <td>${a.pin_utilizable ? `<button class="boton-texto" type="button" data-inmueble="${esc(a.id)}">${estado.delitos.inmueble === a.id ? 'Entorno elegido' : 'Ver registros cerca'}</button>`
         : a.ubicacion ? `<button class="boton-texto" type="button" data-ubicar="${esc(a.id)}" title="Ver en el mapa">Ubicar</button>`
@@ -956,6 +963,7 @@ function renderFicha() {
         <p>${textoBusquedaAlerta()}.</p>
         <span>${estado.modo === 'demo' ? 'Datos de ejemplo · avisos ficticios' : 'Datos reales · precios de publicación'}</span></div>
       <p class="nota">Los avisos nuevos que encajen aparecerán en Mis alertas. Los que ya están publicados no generan una alerta.</p>
+      ${notaAlertaNecesidades()}
       ${estado.modo === 'real' ? `<div class="alerta-mail">
         <label class="campo campo-mail"><span class="campo-etiqueta">Mail</span>
           <input type="email" id="mail-alerta" autocomplete="email" inputmode="email" maxlength="254"
@@ -993,9 +1001,10 @@ function renderFicha() {
         : estado.cargandoAvisos === b.barrio && b.coincidencias ? `<p class="nota cargando" role="status">Cargando los avisos de ${esc(b.barrio)}…</p>`
         : b.coincidencias ? `
         ${notaCumplen}
-        ${extra.length ? `<p class="fuente">Deslizá la tabla hacia la derecha para ver ${enumerar(extra.map((c) => `«${c.titulo}»`))}.</p>` : ''}
+        ${extra.length ? '<p class="fuente">Las columnas de lo que elegiste van al lado del precio. Deslizá la tabla hacia la derecha para ver el resto.</p>' : ''}
+        ${notaParecidos}
         <div class="tabla-desplazable" role="region" aria-label="Avisos que encajan; desplazá para ver todas las columnas" tabindex="0"><table class="avisos">
-          <thead><tr><th>Precio publicado</th><th>Frente a parecidos</th><th>Cubierta</th><th>Amb.</th><th>Cocheras</th>${alquiler ? '<th>Expensas</th>' : ''}${extra.map((c) => `<th>${esc(c.titulo)}</th>`).join('')}<th><span hidden>Enlace</span></th><th>Mapa</th></tr></thead>
+          <thead><tr><th>Precio publicado</th>${extra.map((c) => `<th>${esc(c.titulo)}</th>`).join('')}<th>Frente a parecidos</th><th>Cubierta</th><th>Amb.</th><th>Cocheras</th>${alquiler ? '<th>Expensas</th>' : ''}<th><span hidden>Enlace</span></th><th>Mapa</th></tr></thead>
           <tbody>${filas}</tbody>
         </table></div>
         ${estado.avisos.length > visibles.length ? `<p class="fuente">Se muestran los ${visibles.length} más baratos de ${estado.avisos.length}. <button class="boton-texto" type="button" id="ver-todos">Ver todos</button></p>` : ''}
@@ -2157,7 +2166,14 @@ function renderChips() {
   $('#capas-fila').hidden = !estado.seleccionado;
   pistaMapa();
   if (!estado.seleccionado) return;
-  $('#capas').innerHTML = filaCapas().map(chipCapa).join('');
+  const todas = filaCapas();
+  const visibles = estado.capasAbiertas ? todas : todas.filter((c) => estado.capas.has(c.clave) || estado.capasTocadas.has(c.clave));
+  const ocultas = todas.length - visibles.length;
+  $('#capas').innerHTML = visibles.map(chipCapa).join('')
+    + (estado.capasAbiertas ? '<button class="chip chip-mas" type="button" data-mas-capas aria-expanded="true">Menos capas</button>'
+      : ocultas ? `<button class="chip chip-mas" type="button" data-mas-capas aria-expanded="false">Más capas (${ocultas})</button>` : '');
+  const ayuda = document.querySelector('.capas-ayuda');
+  if (ayuda) ayuda.hidden = !estado.capasAbiertas;
 }
 
 // La pista del mapa: invita a elegir un barrio, o avisa mientras se cargan los barrios o los avisos de uno.
@@ -2562,6 +2578,24 @@ function renderResumenNecesidades() {
     ? `En el mapa: ${nombres.length ? enumerar(nombres) : 'ninguna capa'}.`
       + (columnas.length ? ` En la tabla de avisos: ${enumerar(columnas)}.` : '') + ' No se oculta ningún aviso.'
     : 'Elegí una o más para ver capas y datos relacionados. No filtran avisos ni arman puntajes.';
+}
+
+// La alerta compara barrio, precio, superficie y ambientes. Si hay necesidades elegidas, se aclara que no las usa.
+function notaAlertaNecesidades() {
+  if (!EXPLORADOR || !estado.necesidades.size) return '';
+  const nombres = NECESIDADES.filter((n) => estado.necesidades.has(n.clave)).map((n) => `«${n.nombre}»`);
+  return `<p class="nota nota-alerta-necesidades">La alerta no tiene en cuenta ${enumerar(nombres)}. Cuando llegue un aviso nuevo, revisalo en la pestaña Avisos.</p>`;
+}
+
+// Qué cambió al marcar una necesidad: sin barrio abierto, casi todo se ve recién en la ficha.
+function textoNecesidadMarcada(clave) {
+  const n = NECESIDADES.find((x) => x.clave === clave);
+  if (!n) return '';
+  if (clave === 'tranquilo' && !estado.seleccionado) return 'El mapa ahora pinta los barrios según el ruido de noche. Abrí uno para ver sus avisos.';
+  if (clave === 'lugar_fijo' && !estado.lugarFijo) return 'Elegí el lugar en la lista de hospitales o marcalo en el mapa.';
+  if (clave === 'lugar_fijo' && !estado.seleccionado) return 'El mapa ahora pinta los barrios según la cercanía a tu lugar fijo.';
+  return estado.seleccionado ? `Sumamos «${n.nombre}» a ${estado.seleccionado}: mirá la pestaña Avisos y el mapa.`
+    : `Sumamos «${n.nombre}». Abrí un barrio para ver qué avisos cumplen.`;
 }
 
 // Selector del lugar fijo, debajo de las necesidades. Solo se ve con «Tengo que ir seguido a un lugar» marcada.
@@ -3102,6 +3136,7 @@ function conectarEventos() {
     if (e.target.checked && clave === 'tranquilo') { estado.ordenBarrios = 'ruido'; estado.ruido = 'nocturno'; }
     if (e.target.checked && clave === 'lugar_fijo' && estado.lugarFijo) estado.ordenBarrios = 'lugar';
     aplicarNecesidades();
+    if (e.target.checked) avisar(textoNecesidadMarcada(clave));
   });
   $('#restablecer-necesidades')?.addEventListener('click', () => {
     const antes = { necesidades: [...estado.necesidades], apagadas: [...estado.apagadas], prefs: [...estado.prefs] };
@@ -3265,8 +3300,15 @@ function conectarEventos() {
   $('#contenido').addEventListener('mouseleave', () => marcarHover(null, 'lista'));
 
   const clicCapa = (e) => {
+    if (e.target.closest('[data-mas-capas]')) {
+      estado.capasAbiertas = !estado.capasAbiertas;
+      renderChips();
+      $(`#${e.currentTarget.id} [data-mas-capas]`)?.focus({ preventScroll: true });
+      return;
+    }
     const chip = e.target.closest('[data-capa]');
     if (!chip) return;
+    estado.capasTocadas.add(chip.dataset.capa);
     alternarCapa(chip.dataset.capa);
     renderChips();
     renderPanel();

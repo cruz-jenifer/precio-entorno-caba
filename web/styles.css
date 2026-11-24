@@ -226,8 +226,9 @@ textarea { resize: vertical; line-height: var(--interlineado); }
 .importa-panel {
   position: absolute;
   top: calc(100% + 0.375rem);
-  left: 0;
+  right: 0;
   width: 21rem;
+  max-width: calc(100vw - 1.25rem);
   background: var(--papel);
   border: 1px solid var(--cordon);
   border-radius: var(--radio-panel);
@@ -1614,3 +1615,11 @@ form :where(label) { line-height: var(--interlineado); }
   background: #F1ECFA; font-size: var(--t-chico); }
 table.avisos tr.cumple > td:first-child { box-shadow: inset 3px 0 0 #6A4FB3; }
 .marca-cumple { display: block; color: #4C3A8C; font-size: var(--t-chico); font-weight: 600; }
+
+/* Auditoría de usabilidad, gravedad 2 (24/11/2026). */
+#preferencias { margin-top: var(--espacio-3); padding-top: var(--espacio-3); border-top: 1px solid var(--cordon); }
+.chip-mas { font-weight: 600; }
+.modo-avisos { display: inline-flex; align-items: center; gap: var(--espacio-1); }
+.modo-titulo { font-size: var(--t-chico); color: var(--asfalto-suave); }
+@media (max-width: 420px) { .modo-titulo { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); } }
+.nota-alerta-necesidades { border-left: 3px solid #6A4FB3; padding-left: var(--espacio-2); }

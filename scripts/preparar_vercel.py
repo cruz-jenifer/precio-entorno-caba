@@ -11,6 +11,8 @@ despliegue porque el autor del commit no es miembro del proyecto.
 - Datos: las bases reales (copiadas con la API de respaldo de SQLite, consistentes aunque estén abiertas),
   las capas del mapa, el catálogo de cocheras, los CSV anuales del Mapa del Delito y el radar. No se copian `.env`, crudos de
   captura ni la app de Streamlit.
+- Índice de delitos: se arma dentro del paquete (`data/local/indice_delitos.pickle`), porque en Vercel el disco es de
+  solo lectura y sin él cada arranque relee los CSV.
 - Conserva `.vercel/`, donde la CLI guarda a qué proyecto está vinculada la carpeta.
 
 Los datos reales son para uso privado: el proyecto de Vercel tiene que tener activa la protección con
@@ -92,6 +94,20 @@ def copy_data(out):
         src.close()
 
 
+def build_crime_index(out):
+    """Arma el índice de delitos dentro del paquete, con el código y los CSV del paquete.
+
+    En Vercel el disco es de solo lectura: si el índice no viaja armado, cada arranque relee los CSV (unos 8 s).
+    Se arma con el código exportado de HEAD para que la firma coincida con la que calcula la función en Vercel.
+    """
+    codigo = ('import sys; sys.path.insert(0, sys.argv[1]); from pathlib import Path; '
+              'from precio_entorno import concentracion as c; o = Path(sys.argv[1]); '
+              "i = c.load_index(c.source_paths(o / 'data/raw'), o / 'data/local/indice_delitos.pickle'); "
+              'print(len(i.events))')
+    eventos = subprocess.run([sys.executable, '-I', '-c', codigo, str(out)], capture_output=True, text=True, check=True)
+    print(f'Índice de delitos armado: {int(eventos.stdout.strip()):,} registros'.replace(',', '.'))
+
+
 def deploy(out):
     if not (out / '.vercel/project.json').exists():
         sys.exit('La carpeta no está vinculada a un proyecto de Vercel. Ver docs/despliegue-vercel.md.')
@@ -105,6 +121,7 @@ def main():
     clean(OUT)
     export_code(OUT)
     copy_data(OUT)
+    build_crime_index(OUT)
     (OUT / 'pyproject.toml').write_text(PYPROJECT, encoding='utf-8')
     (OUT / '.python-version').write_text('3.13\n', encoding='utf-8')
     (OUT / 'vercel.json').write_text(VERCEL_JSON, encoding='utf-8')

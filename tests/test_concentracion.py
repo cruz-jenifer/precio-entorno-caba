@@ -1,6 +1,8 @@
 """Radios, cobertura y persistencia con registros sintéticos independientes de los reales."""
 
+import builtins
 import csv
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -72,6 +74,28 @@ class ConcentracionTests(unittest.TestCase):
         self.assertEqual(len(concentracion.load_index([path], saved).events), 2)
         saved.write_bytes(b'no es un indice')  # un archivo roto se vuelve a armar, no rompe el pedido
         self.assertEqual(len(concentracion.load_index([path], saved).events), 2)
+
+    def test_saved_index_survives_a_copy_that_changes_the_file_date(self):
+        # Al copiar los CSV al paquete de Vercel cambia la fecha, no el contenido: el índice armado tiene que servir.
+        path = self.file('delitos_2024.csv', [self.event('a', count=2)])
+        saved = self.root / 'local' / 'indice.pickle'
+        concentracion.load_index([path], saved)
+        os.utime(path, (1, 1))
+        with mock.patch.object(concentracion, 'csv_rows', side_effect=AssertionError('no debía releer los CSV')):
+            self.assertEqual(len(concentracion.load_index([path], saved).events), 1)
+
+    def test_read_only_disk_does_not_break_the_request(self):
+        # En Vercel no se puede escribir el índice ni borrar el parcial: el índice tiene que llegar igual.
+        path = self.file('delitos_2024.csv', [self.event('a', count=2)])
+        saved = self.root / 'solo-lectura' / 'indice.pickle'
+        def abrir(archivo, modo='r', *args, **kwargs):
+            if 'w' in modo:
+                raise OSError(30, 'Read-only file system', str(archivo))
+            return builtins.open(archivo, modo, *args, **kwargs)
+        with mock.patch.object(concentracion, 'open', abrir, create=True), \
+                mock.patch.object(Path, 'unlink', side_effect=OSError(30, 'Read-only file system')):
+            self.assertEqual(len(concentracion.load_index([path], saved).events), 1)
+        self.assertFalse(saved.exists())
 
     def persistent_rows(self, year):
         # Cobertura mensual observada por ciudad, sin inferirla de la zona del aviso.

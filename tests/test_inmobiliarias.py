@@ -214,6 +214,19 @@ class DescriptionTraitsTests(unittest.TestCase):
         plain = detail.replace('div-descripcion', 'otro')
         self.assertIsNone(parse_migliorisi_detail(plain, '/propiedad/ver/a1/depto', 'a1', '', CAPTURED)[0]['bright'])
 
+    def test_migliorisi_ascensores_de_la_tabla(self):
+        from precio_entorno.inmobiliarias import migliorisi_traits
+
+        def page(tabla, texto='Muy luminoso.'):
+            return f'<td>Ascensores</td><td>{tabla}</td><div id="div-descripcion"><p>{texto}</p></div>'
+        acceso = lambda p: (migliorisi_traits(p)['elevator'], migliorisi_traits(p)['stairs_only'])
+        self.assertEqual(acceso(page(2)), (1, 0))
+        self.assertEqual(acceso(page(1, 'Primer piso por escalera.')), (1, 0))   # la tabla gana
+        self.assertEqual(acceso(page(0)), (0, 0))                                 # 0: puede ser un campo vacío
+        self.assertEqual(acceso(page(0, 'Edificio sin ascensor.')), (0, 1))
+        self.assertEqual(acceso('<div id="div-descripcion"><p>Sin ascensores 3 cuadras del subte.</p></div>'), (0, 1))
+        self.assertEqual(migliorisi_traits('<td>Ascensores</td><td>2</td>'), {})  # sin descripción, sin dato
+
 
 if __name__ == '__main__':
     unittest.main()

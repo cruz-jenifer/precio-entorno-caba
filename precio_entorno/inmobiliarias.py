@@ -360,10 +360,23 @@ def parse_migliorisi_list(page):
     return [(path, code, html_lib.unescape(titles.get(code, ''))) for code, path in cards.items()], max(pages or [1])
 
 
+MIG_ELEVATORS = re.compile(r'\bAscensores\s*:?\s*(\d+)', re.I)
+
+
 def migliorisi_traits(page, title=''):
-    """Rasgos del bloque de descripción de la ficha. Sin ese bloque quedan sin dato."""
+    """Rasgos del bloque de descripción de la ficha. Sin ese bloque quedan sin dato.
+
+    La tabla de características de la ficha informa «Ascensores N»: con uno o más, gana sobre el texto. Un 0 no
+    se toma como «sin ascensor», porque puede ser un campo que la inmobiliaria no completó.
+    """
     description = MIG_DESCRIPTION.search(page)
-    return traits(title, description.group(1)) if description else {}
+    if not description:
+        return {}
+    found = traits(title, description.group(1))
+    elevators = MIG_ELEVATORS.search(clean(MIG_DESCRIPTION.sub(' ', page)))
+    if elevators and int(elevators.group(1)) > 0:
+        found.update(elevator=1, stairs_only=0)
+    return found
 
 
 def parse_migliorisi_detail(page, path, code, title, captured_at, operation='venta'):

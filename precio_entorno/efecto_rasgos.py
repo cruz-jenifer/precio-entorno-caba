@@ -15,7 +15,7 @@ import numpy as np
 import pandas as pd
 
 from precio_entorno.comparar_modelos import DEFAULT_DATASET, load_dataset
-from precio_entorno.descripcion import DESCRIPTION_FIELDS, TRAITS
+from precio_entorno.descripcion import PRICE_FIELDS, TRAITS
 
 ROOT = Path(__file__).resolve().parents[1]
 EXTRA = ['data/raw/zonaprop-venta-20261108-edificio/avisos.json', 'data/raw/inmobiliarias-20261109-edificio/avisos.json',
@@ -34,10 +34,10 @@ def ols_hc1(X, y):
 
 
 def effects(df, with_age):
-    data = df[df[DESCRIPTION_FIELDS[0]].notna()]
+    data = df[df[PRICE_FIELDS[0]].notna()]
     if with_age:
         data = data.dropna(subset=['age_years'])
-    parts = [data[list(DESCRIPTION_FIELDS)], np.log(data['covered_area']).rename('log_m2'),
+    parts = [data[list(PRICE_FIELDS)], np.log(data['covered_area']).rename('log_m2'),
              pd.get_dummies(data['rooms'].astype(int), prefix='amb', drop_first=True),
              pd.get_dummies(data['neighborhood'], drop_first=True),
              # Cada inmobiliaria redacta y publica distinto: se compara dentro de la misma fuente.
@@ -49,7 +49,7 @@ def effects(df, with_age):
     beta, se, r2 = ols_hc1(X.to_numpy(), np.log(data['precio_m2'].to_numpy()))
     coef, err = dict(zip(X.columns, beta)), dict(zip(X.columns, se))
     rows = []
-    for column in DESCRIPTION_FIELDS:
+    for column in PRICE_FIELDS:
         low, high = coef[column] - 1.96 * err[column], coef[column] + 1.96 * err[column]
         rows.append({'rasgo': TRAITS[column][0], 'columna': column, 'avisos_con_rasgo': int(data[column].sum()),
                      'diferencia_pct': round(float(np.expm1(coef[column]) * 100), 1),

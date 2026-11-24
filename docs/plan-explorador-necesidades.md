@@ -2,7 +2,7 @@
 
 **Proyecto:** Lüga
 **Objetivo:** ampliar «Lo que me importa» para que la persona declare necesidades concretas («me muevo sin auto», «trabajo desde casa») y la app le muestre las capas, los datos del aviso y las advertencias que corresponden, sin puntajes, rankings ni inferencias sobre la persona.
-**Estado:** plan revisado el 2026-11-17 contra el código de `main` + `tratamiento-nulls`. Reemplaza a la propuesta original («Implementation Plan — Explorador de necesidades concretas»).
+**Estado:** encendido para todos desde el 2026-11-24 (`?explorador=0` lo apaga). Plan revisado el 2026-11-17 contra el código de `main` + `tratamiento-nulls`. Reemplaza a la propuesta original («Implementation Plan — Explorador de necesidades concretas»).
 
 ---
 

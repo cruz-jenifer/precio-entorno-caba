@@ -82,8 +82,16 @@ test('el costo mensual no prende capas y una necesidad desconocida no hace nada'
   assert.deepEqual(resolver(run, ['inexistente']), resolver(run, []));
 });
 
-test('sin el interruptor la app sigue igual: capas de «Lo que me importa» y nada recordado', () => {
-  const run = runtime('', { prefs: ['subte'], necesidades: ['familia'], apagadas: ['subte'] });
+test('el explorador está encendido para todos; ?explorador=0 lo apaga', () => {
+  assert.equal(runtime()('EXPLORADOR'), true);
+  assert.equal(runtime('?explorador=1')('EXPLORADOR'), true);
+  const run = runtime('', { prefs: [], necesidades: ['sin_escaleras'] });
+  assert.deepEqual(run('[...estado.necesidades]'), ['sin_escaleras']);
+  assert.equal(run('columnasExplorador()[0].titulo'), 'Acceso según el aviso');
+});
+
+test('con ?explorador=0 la app vuelve a la de antes: capas de «Lo que me importa» y nada recordado', () => {
+  const run = runtime('?explorador=0', { prefs: ['subte'], necesidades: ['familia'], apagadas: ['subte'] });
   assert.equal(run('EXPLORADOR'), false);
   assert.deepEqual(run('[...capasIniciales()]'), ['subte']);
   assert.deepEqual(run('[...estado.necesidades]'), []);
@@ -116,7 +124,7 @@ test('las columnas siguen a las necesidades y a las capas prendidas', () => {
     ['Escuela (primario)', 'Plaza', 'El texto menciona', 'Expensas']);   // salud apagada: sin CeSAC ni hospital
   run("estado.operacion = 'alquiler';");
   assert.equal(run('columnasExplorador().at(-1).titulo'), 'Por mes');
-  assert.deepEqual(runtime('', { necesidades: ['familia'] })('columnasExplorador()'), []);   // sin interruptor
+  assert.deepEqual(runtime('?explorador=0', { necesidades: ['familia'] })('columnasExplorador()'), []);   // apagado
 });
 
 test('los textos no confunden «no menciona» ni «sin ubicación» con «no tiene»', () => {
@@ -175,8 +183,8 @@ test('«Tengo que ir seguido a un lugar» suma la distancia solo con un lugar el
   assert.ok(sinLugar('explorador()').advertencias.some((a) => a.includes('Lüga no lo recibe')));
   const run = runtime('?explorador=1', { prefs: [], necesidades: ['lugar_fijo', 'sin_escaleras'], lugarFijo: HOSPITAL });
   assert.deepEqual(run('columnasExplorador().map((c) => c.titulo)').slice(0, 2), ['A tu lugar fijo', 'Acceso según el aviso']);
-  // Sin el interruptor, el lugar guardado no se usa.
-  assert.equal(runtime('', { necesidades: ['lugar_fijo'], lugarFijo: HOSPITAL })('estado.lugarFijo'), null);
+  // Con el explorador apagado (?explorador=0), el lugar guardado no se usa.
+  assert.equal(runtime('?explorador=0', { necesidades: ['lugar_fijo'], lugarFijo: HOSPITAL })('estado.lugarFijo'), null);
 });
 
 test('la distancia al lugar fijo es en línea recta y respeta la ubicación del aviso', () => {

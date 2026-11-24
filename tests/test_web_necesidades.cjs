@@ -208,6 +208,35 @@ test('el lugar fijo se valida, queda en el navegador y no viaja en los pedidos',
   assert.ok(!pedido.includes('58.43') && !pedido.includes('34.62') && !pedido.includes('ficticio'));
 });
 
+test('«Necesito un lugar tranquilo» suma ruido de día y de noche, contrafrente y qué preguntar', () => {
+  const run = runtime('?explorador=1', { prefs: [], necesidades: ['tranquilo'] });
+  const r = run('explorador()');
+  assert.deepEqual(r.capas, ['ruido']);
+  assert.deepEqual(r.cercania, ['ruido']);
+  assert.deepEqual(run('columnasExplorador().map((c) => c.titulo)'), ['Ruido de día', 'Ruido de noche', 'El texto menciona']);
+  assert.ok(r.advertencias.some((a) => a.includes('doble vidrio')));
+  assert.equal(run("celdaDistancia(COLUMNAS_DISTANCIA.ruido_nocturno, { cercania: { ruido_nocturno: { dba: 62 } } })"), '62 dBA');
+  assert.equal(run("celdaDistancia(COLUMNAS_DISTANCIA.ruido_nocturno, { cercania: { ruido_nocturno: { dba: null } } })"), 'Sin celda relevada');
+});
+
+test('con la necesidad de silencio, cada barrio muestra la noche y se puede ordenar por ella', () => {
+  const entorno = (dia, noche) => ({ subte_lineas: [], ruido: { diurno: { alto: dia }, nocturno: { alto: noche } } });
+  const run = runtime('?explorador=1', { prefs: [], necesidades: ['tranquilo'] });
+  assert.equal(run(`datoComparacion('ruido', ${JSON.stringify(entorno(0.5, 0.25))})`),
+    '50 % de celdas con 70 dBA o más de día · 25 % con 65 dBA o más de noche');
+  // Sin la necesidad, el texto de siempre.
+  assert.equal(runtime('?explorador=1', { prefs: [] })(`datoComparacion('ruido', ${JSON.stringify(entorno(0.5, 0.25))})`),
+    '50 % de celdas con 70 dBA o más de día');
+  run(`estado.ordenBarrios = 'ruido'; estado.barrios = [
+    { barrio: 'Ruidoso', coincidencias: 9, avisos: 9, mediana: 1, entorno: ${JSON.stringify(entorno(0.9, 0.8))} },
+    { barrio: 'Sin dato', coincidencias: 9, avisos: 9, mediana: 1, entorno: null },
+    { barrio: 'Tranquilo', coincidencias: 1, avisos: 1, mediana: 1, entorno: ${JSON.stringify(entorno(0.3, 0.1))} }];
+    renderLista();`);
+  const html = run("document.querySelector('#contenido').innerHTML");
+  assert.ok(html.indexOf('Tranquilo') < html.indexOf('Ruidoso') && html.indexOf('Ruidoso') < html.indexOf('Sin dato'));
+  assert.match(html, /Menos ruido de noche/);
+});
+
 test('«Me muevo en bici» prende ciclovías y Ecobici; «Trabajo desde casa» suma bibliotecas', () => {
   const run = runtime('?explorador=1', { prefs: [], necesidades: ['bicicleta', 'teletrabajo'] });
   const r = run('explorador()');

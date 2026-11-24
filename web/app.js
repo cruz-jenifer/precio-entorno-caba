@@ -88,6 +88,14 @@ const NECESIDADES = [
       'La distancia al lugar fijo es en línea recta: no es un recorrido por calles ni un tiempo de viaje.',
       'El lugar que elegís queda guardado solo en este navegador: Lüga no lo recibe.',
     ] },
+  { clave: 'tranquilo', nombre: 'Necesito un lugar tranquilo',
+    descripcion: 'Ruido de la calle de día y de noche, y si el aviso dice contrafrente.',
+    capas: ['ruido'], columnas: ['ruido_diurno', 'ruido_nocturno', 'contrafrente'],
+    advertencias: [
+      'El mapa de ruido mide la calle, no el interior: un contrafrente o un piso alto puede ser mucho más silencioso. '
+        + 'Antes de visitar, preguntá por las ventanas (doble vidrio) y si enfrente hay bares, boliches, obras o una parada de colectivo.',
+      'Para dormir importa el ruido de noche. Si podés, visitá el lugar a la hora en que más te afecta.',
+    ] },
   { clave: 'familia', nombre: 'Escuelas y salud cerca', descripcion: 'Escuelas del nivel elegido, centros de salud y plazas.',
     capas: ['escuelas', 'salud', 'verdes'],
     columnas: ['escuela', 'cesac', 'hospital', 'plaza', 'ambientes', 'superficie', 'patio', 'balcon'], advertencias: [] },
@@ -143,6 +151,8 @@ const COLUMNAS_DISTANCIA = {
   recreacion: { capa: 'recreacion', titulo: () => 'Cine, teatro o museo', valor: (c) => c.recreacion,
     texto: (v) => `<span title="${esc(v.nombre)}">${metrosTexto(v.m)} · ${esc(RECREACION[v.tipo]?.[1] || '')}</span>` },
   ruido_diurno: { capa: 'ruido', titulo: () => 'Ruido de día', valor: (c) => c.ruido_diurno,
+    texto: (v) => (v.dba == null ? 'Sin celda relevada' : `${v.dba} dBA`) },
+  ruido_nocturno: { capa: 'ruido', titulo: () => 'Ruido de noche', valor: (c) => c.ruido_nocturno,
     texto: (v) => (v.dba == null ? 'Sin celda relevada' : `${v.dba} dBA`) },
 };
 const RASGOS_TEXTO = { patio: 'patio', balcon: 'balcón', luminoso: 'luminoso', contrafrente: 'contrafrente' };
@@ -554,8 +564,12 @@ function datoComparacion(clave, e) {
       return nivel == null ? faltante : `${numero.format((nivel.Estatal || 0) + (nivel.Privada || 0))} de nivel ${estado.nivel}`;
     }
     case 'salud': return e.cesac == null || e.hospitales == null ? faltante : `${e.cesac} CeSAC · ${e.hospitales} hospitales`;
-    case 'ruido': return e.ruido?.diurno?.alto == null ? 'Sin cobertura suficiente'
-      : `${porcentaje(e.ruido.diurno.alto)} % de celdas con 70 dBA o más de día`;
+    case 'ruido':
+      if (e.ruido?.diurno?.alto == null) return 'Sin cobertura suficiente';
+      // Con «Necesito un lugar tranquilo» se suma la noche, que es la que importa para dormir.
+      return EXPLORADOR && estado.necesidades.has('tranquilo') && e.ruido.nocturno?.alto != null
+        ? `${porcentaje(e.ruido.diurno.alto)} % de celdas con 70 dBA o más de día · ${porcentaje(e.ruido.nocturno.alto)} % con 65 dBA o más de noche`
+        : `${porcentaje(e.ruido.diurno.alto)} % de celdas con 70 dBA o más de día`;
     case 'riesgo': return e.riesgo_hidrico == null ? faltante : `${porcentaje(e.riesgo_hidrico)} % del área en prevención`;
     case 'recreacion': return e.recreacion == null ? faltante : `${totalRecreacion(e.recreacion)} lugares en OpenStreetMap`;
     case 'colectivos': return e.colectivos == null ? faltante : `${e.colectivos.length} líneas · recorridos de 2019`;
@@ -615,11 +629,15 @@ function actualizarComparador() {
 
 function renderLista() {
   const lugar = lugarActivo();
-  const orden = estado.ordenBarrios === 'lugar' && !lugar ? 'avisos' : estado.ordenBarrios;
+  const tranquilo = EXPLORADOR && estado.necesidades.has('tranquilo');
+  const orden = (estado.ordenBarrios === 'lugar' && !lugar) || (estado.ordenBarrios === 'ruido' && !tranquilo)
+    ? 'avisos' : estado.ordenBarrios;
+  const ruidoNoche = (b) => b.entorno?.ruido?.nocturno?.alto ?? Infinity;
   const cercania = lugar ? Object.fromEntries(estado.barrios.map((b) => [b.barrio, metrosLugarBarrio(b.barrio) ?? Infinity])) : {};
   const con = estado.barrios.filter((b) => b.coincidencias > 0).sort((a, b) =>
     (orden === 'precio' ? a.mediana - b.mediana
       : orden === 'lugar' ? cercania[a.barrio] - cercania[b.barrio]
+        : orden === 'ruido' ? ruidoNoche(a) - ruidoNoche(b)
         : orden === 'nombre' ? 0 : b.coincidencias - a.coincidencias) || a.barrio.localeCompare(b.barrio, 'es'));
   const sin = estado.barrios.filter((b) => !b.coincidencias);
   const total = estado.barrios.reduce((s, b) => s + b.avisos, 0);
@@ -699,6 +717,7 @@ function renderLista() {
         <option value="precio"${orden === 'precio' ? ' selected' : ''}>Menor mediana publicada</option>
         <option value="nombre"${orden === 'nombre' ? ' selected' : ''}>Nombre del barrio</option>
         ${lugar ? `<option value="lugar"${orden === 'lugar' ? ' selected' : ''}>Más cerca de tu lugar fijo</option>` : ''}
+        ${tranquilo ? `<option value="ruido"${orden === 'ruido' ? ' selected' : ''}>Menos ruido de noche</option>` : ''}
       </select></label>
       <p class="fuente" id="resumen-comparacion" role="status" aria-atomic="true"></p>
       <div class="comparador-acciones"><button class="boton-comparar" id="abrir-comparacion" type="button" disabled>Comparar (0/3)</button>

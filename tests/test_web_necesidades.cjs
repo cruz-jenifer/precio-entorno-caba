@@ -245,6 +245,54 @@ test('con la necesidad de silencio, cada barrio muestra la noche y se puede orde
   assert.match(html, /Menos ruido de noche/);
 });
 
+test('resaltado de pines: fuerte si cumple todo lo elegido, tenue si no o sin dato, nada sin criterios', () => {
+  const sin = runtime('', { prefs: [], necesidades: [] });
+  assert.equal(sin('cumpleNecesidades({ rasgos: {} })'), null);
+  const esc = runtime('', { prefs: [], necesidades: ['sin_escaleras'] });
+  assert.equal(esc("cumpleNecesidades({ rasgos: { ascensor: 1, sin_ascensor: 0 } })"), true);
+  assert.equal(esc("cumpleNecesidades({ rasgos: { ascensor: 0, sin_ascensor: 1 }, piso: 0 })"), true);   // planta baja
+  assert.equal(esc("cumpleNecesidades({ rasgos: { ascensor: 0, sin_ascensor: 1 } })"), false);
+  assert.equal(esc("cumpleNecesidades({ rasgos: { ascensor: null } })"), false);                         // sin dato: tenue
+  const tranq = runtime('', { prefs: [], necesidades: ['tranquilo'] });
+  assert.equal(tranq("cumpleNecesidades({ rasgos: {}, cercania: { ruido_nocturno: { dba: 60 } } })"), true);
+  assert.equal(tranq("cumpleNecesidades({ rasgos: {}, cercania: { ruido_nocturno: { dba: 65 } } })"), false);
+  assert.equal(tranq("cumpleNecesidades({ rasgos: { contrafrente: 1 }, cercania: { ruido_nocturno: { dba: 70 } } })"), true);
+  const lugar = runtime('', { prefs: [], necesidades: ['lugar_fijo'], lugarFijo: HOSPITAL });
+  const cerca = -34.62 + 1500 / 111320;
+  const lejos = -34.62 + 2500 / 111320;
+  assert.equal(lugar(`cumpleNecesidades({ rasgos: {}, ubicacion: 'publicada', lon: -58.43, lat: ${cerca} })`), true);
+  assert.equal(lugar(`cumpleNecesidades({ rasgos: {}, ubicacion: 'publicada', lon: -58.43, lat: ${lejos} })`), false);
+  assert.equal(lugar('cumpleNecesidades({ rasgos: {}, ubicacion: null, lon: null, lat: null })'), false);
+  // Varias necesidades: tiene que cumplir todas.
+  const dos = runtime('', { prefs: [], necesidades: ['sin_escaleras', 'tranquilo'] });
+  assert.equal(dos("cumpleNecesidades({ rasgos: { ascensor: 1 }, cercania: { ruido_nocturno: { dba: 70 } } })"), false);
+  assert.equal(dos('criteriosPines().length'), 2);
+});
+
+test('el mapa de barrios sigue al orden de la lista: más avisos, menos ruido de noche o cerca del lugar', () => {
+  const entorno = (noche) => ({ ruido: { diurno: { alto: 0.5 }, nocturno: { alto: noche } } });
+  const barrios = JSON.stringify([
+    { barrio: 'A', coincidencias: 10, entorno: entorno(0.8) },
+    { barrio: 'B', coincidencias: 5, entorno: entorno(0.2) },
+    { barrio: 'C', coincidencias: 0, entorno: entorno(0.1) }]);
+  const run = runtime('', { prefs: [], necesidades: ['tranquilo'] });
+  run(`estado.barrios = ${barrios}; estado.ordenBarrios = 'avisos';`);
+  assert.deepEqual(run('[...escalaBarrios().valores]'), [['A', 1], ['B', 0.5], ['C', 0]]);
+  run("estado.ordenBarrios = 'ruido';");
+  const e = run('({ orden: escalaBarrios().orden, v: [...escalaBarrios().valores] })');
+  assert.equal(e.orden, 'ruido');
+  assert.deepEqual(e.v, [['A', 0.001], ['B', 1], ['C', 0]]);   // C sin avisos que encajen: sin color
+  // Sin la necesidad, el orden por ruido no vale y el mapa vuelve a contar avisos.
+  const otro = runtime('', { prefs: [], necesidades: [] });
+  otro(`estado.barrios = ${barrios}; estado.ordenBarrios = 'ruido';`);
+  assert.equal(otro('ordenEfectivo()'), 'avisos');
+  const cuadrado = { type: 'Polygon', coordinates: [[[-58.44, -34.63], [-58.42, -34.63], [-58.42, -34.61], [-58.44, -34.61], [-58.44, -34.63]]] };
+  const conLugar = runtime('', { prefs: [], necesidades: ['lugar_fijo'], lugarFijo: HOSPITAL });
+  conLugar(`estado.barrios = ${barrios}; estado.ordenBarrios = 'lugar';
+    estado.formas = { features: [{ properties: { barrio: 'A' }, geometry: ${JSON.stringify(cuadrado)} }] };`);
+  assert.deepEqual(conLugar('[...escalaBarrios().valores]'), [['A', 1], ['B', 0], ['C', 0]]);   // B sin forma: sin dato
+});
+
 test('«Me muevo en bici» prende ciclovías y Ecobici; «Trabajo desde casa» suma bibliotecas', () => {
   const run = runtime('?explorador=1', { prefs: [], necesidades: ['bicicleta', 'teletrabajo'] });
   const r = run('explorador()');

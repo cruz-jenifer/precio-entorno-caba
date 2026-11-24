@@ -1591,3 +1591,7 @@ form :where(label) { line-height: var(--interlineado); }
   .alerta-mail input { font-size: 16px; }
   .panel-contenido:focus-visible { outline-offset: -3px; }
 }
+
+/* Leyenda del resaltado por necesidades: pin tenue y marcador del lugar fijo. */
+.pin-atenuado { opacity: 0.3; display: inline-flex; }
+.chip-lugar-fijo { background: #FFFFFF; border: 3px solid #1E2A32; border-radius: 50%; }

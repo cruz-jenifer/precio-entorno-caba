@@ -21,7 +21,9 @@ function runtime() {
 
 test('la leyenda general identifica conteos, ausencia de coincidencias y el alcance por barrio', () => {
   const { run, html } = runtime();
-  run("estado.barrios=[{coincidencias:7},{coincidencias:0}];renderLeyenda()");
+  run('renderLeyenda()');
+  assert.ok(html().includes('Cargando barrios'));      // antes de la primera respuesta, no «ningún barrio»
+  run("estado.barriosCargados=true;estado.barrios=[{coincidencias:7},{coincidencias:0}];renderLeyenda()");
   assert.ok(html().includes('7 avisos'));
   assert.ok(html().includes('Sin avisos que encajen'));
   assert.ok(html().includes('no un mejor barrio'));

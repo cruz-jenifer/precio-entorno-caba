@@ -64,10 +64,11 @@ const NOTAS = {
     + 'significa que no tenga rampa, y una rampa registrada pudo haber cambiado. No certifica recorridos accesibles.',
   delitos: 'Se marcan las zonas del barrio con más hechos registrados: el 20 % de las celdas de 200 m con más hechos en el año elegido, o las que se repiten entre años. Hechos registrados por celda de 200 m. Más circulación puede concentrar más eventos y existe subregistro. No equivalen a la probabilidad individual de victimización.',
 };
-/* Explorador de necesidades (docs/plan-explorador-necesidades.md). Apagado por defecto: se prueba con
-   ?explorador=1. Cada necesidad sugiere capas y columnas; no filtra avisos ni arma puntajes. */
+/* Explorador de necesidades (docs/plan-explorador-necesidades.md). Encendido para todos desde el 24/11/2026;
+   ?explorador=0 lo apaga, por si hay que volver atrás sin desplegar. Cada necesidad sugiere capas y columnas;
+   no filtra avisos ni arma puntajes. */
 const EXPLORADOR = (() => {
-  try { return new URLSearchParams(window.location?.search || '').get('explorador') === '1'; } catch { return false; }
+  try { return new URLSearchParams(window.location?.search || '').get('explorador') !== '0'; } catch { return true; }
 })();
 const NECESIDADES = [
   { clave: 'sin_auto', nombre: 'Me muevo sin auto', descripcion: 'Subte cercano y líneas de colectivo del barrio.',

@@ -43,6 +43,19 @@ class TraitsTest(unittest.TestCase):
         self.assertEqual(traits('Salvo que se indique lo contrario. Sumando el entrepiso.')['rear_facing'], 0)
         self.assertEqual(traits('Sumando el entrepiso.')['amenities'], 0)
 
+    def test_ascensor(self):
+        acceso = lambda texto: tuple(traits(texto)[c] for c in ('elevator', 'stairs_only', 'step_free'))
+        self.assertEqual(acceso('Edificio con 2 ascensores y portero.'), (1, 0, 0))
+        self.assertEqual(acceso('Tercer piso por escalera, muy luminoso.'), (0, 1, 0))
+        self.assertEqual(acceso('Edificio sin ascensor.'), (0, 1, 0))
+        # Dos palabras entre «no» y «ascensor»: la negación común no alcanza, decide «sin ascensor».
+        self.assertEqual(acceso('El edificio no cuenta con ascensor.'), (0, 1, 0))
+        self.assertEqual(acceso('Ingreso por escalera y ascensor.'), (1, 0, 0))
+        self.assertEqual(acceso('Hall con rampa de acceso y ascensor.'), (1, 0, 1))
+        self.assertEqual(acceso('PB apto para silla de ruedas.'), (0, 0, 1))
+        self.assertEqual(acceso('No apto para silla de ruedas.'), (0, 0, 0))
+        self.assertEqual(acceso('Departamento de 2 ambientes al frente.'), (0, 0, 0))
+
     def test_sin_texto_queda_sin_dato(self):
         self.assertEqual(traits(None, ''), {column: None for column in DESCRIPTION_FIELDS})
 
@@ -173,3 +186,43 @@ class AgencyBackfillTest(unittest.TestCase):
             # Solo queda pendiente el aviso dado de baja.
             self.assertEqual(complete('venta', Path(temp) / 'otra', client, base=Path(temp) / 'base.sqlite3',
                                       raw=Path(temp) / 'raw', echo=lambda line: None)['pendientes'], 1)
+
+
+class AccessBackfillTest(unittest.TestCase):
+    def test_completa_accesibilidad_sin_pisar_los_rasgos_anteriores(self):
+        from precio_entorno.descripcion import ACCESS_FIELDS, PRICE_FIELDS
+        from precio_entorno.inmobiliarias import PoliteClient, record
+        from precio_entorno.rasgos_inmobiliarias import complete
+
+        # Avisos leídos antes de sumar los rasgos de accesibilidad: tienen los demás rasgos, no estos.
+        def aviso(code, slug, balcony):
+            return dict(record('remax', code, f'https://www.remax.com.ar/listings/{slug}', '2026-11-09T12:00:00+00:00',
+                               price=100000, currency='USD', covered_area_m2=50, total_area_m2=50, rooms=2,
+                               neighborhood='Almagro'), **{**{c: 0 for c in PRICE_FIELDS}, 'balcony': balcony})
+        avisos = [aviso('R1', 'con-ascensor', 1), aviso('R2', 'por-escalera', 0)]
+        pages = {'findBySlug/con-ascensor': json.dumps({'data': {'title': 'Depto', 'description': 'Edificio con ascensor.'}}),
+                 'findBySlug/por-escalera': json.dumps({'data': {'title': 'Depto', 'description': 'Tercer piso por escalera, con balcón.'}})}
+
+        def fetch(url, params=None):
+            for part, body in pages.items():
+                if part in url:
+                    return 200, body
+            return (404, '') if 'robots' in url else (500, '')
+        with tempfile.TemporaryDirectory() as temp:
+            raw = Path(temp) / 'raw' / 'inmobiliarias-20261109'
+            raw.mkdir(parents=True)
+            (raw / 'avisos.json').write_text(json.dumps(avisos), encoding='utf-8')
+            parsed, _ = parse_listings(json.dumps(avisos).encode(), 'a.json', avisos[0]['source'])
+            store = Store(Path(temp) / 'base.sqlite3')
+            store.ingest(parsed, source=avisos[0]['source'])
+            client = PoliteClient(fetch=fetch, pause_s=0, sleep=lambda s: None)
+            run = lambda out, fields: complete('venta', Path(temp) / out, client, base=Path(temp) / 'base.sqlite3',
+                                               raw=Path(temp) / 'raw', echo=lambda line: None, fields=fields)
+            self.assertEqual(run('sin-modo', None)['pendientes'], 0)   # el modo de siempre no los ve
+            log = run('accesibilidad', ACCESS_FIELDS)
+            self.assertEqual((log['pendientes'], log['con_rasgos']), (2, 2))
+            rows = {r['id']: r for r in store.listings()}
+            self.assertEqual([rows['remax:R1'][c] for c in ACCESS_FIELDS], [1, 0, 0])
+            self.assertEqual([rows['remax:R2'][c] for c in ACCESS_FIELDS], [0, 1, 0])
+            self.assertEqual(rows['remax:R2']['balcony'], 0)   # COALESCE: no pisa lo que ya estaba
+            self.assertEqual(run('otra', ACCESS_FIELDS)['pendientes'], 0)

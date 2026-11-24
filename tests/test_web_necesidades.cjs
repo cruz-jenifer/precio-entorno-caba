@@ -144,6 +144,29 @@ test('«Me muevo sin auto» suma el subte con ascensor informado', () => {
   assert.match(run("NOTAS.subte"), /no indica si funcionan/);
 });
 
+test('«Necesito evitar escaleras» suma acceso, subte con ascensor y salud, y pide preguntar', () => {
+  const run = runtime('?explorador=1', { prefs: [], necesidades: ['sin_escaleras'] });
+  const r = run('explorador()');
+  assert.deepEqual(r.capas, ['subte', 'salud']);
+  assert.deepEqual(run('columnasExplorador().map((c) => c.titulo)'),
+    ['Acceso según el aviso', 'Subte con ascensor', 'CeSAC', 'Hospital']);
+  assert.ok(r.advertencias.some((a) => a.includes('escalones entre la vereda y el ascensor')));
+  assert.ok(r.advertencias.some((a) => a.includes('no significa que no tenga')));
+});
+
+test('el acceso distingue «dice que no», «no lo menciona» y «sin dato»', () => {
+  const run = runtime('?explorador=1');
+  const celda = (rasgos, piso = null) => run(`celdaAcceso(${JSON.stringify({ rasgos, piso })})`);
+  assert.equal(celda({ ascensor: 1, sin_ascensor: 0, acceso_sin_escalones: 0 }), 'Ascensor');
+  assert.equal(celda({ ascensor: 1, sin_ascensor: 0, acceso_sin_escalones: 1 }), 'Acceso sin escalones y ascensor');
+  assert.equal(celda({ ascensor: 0, sin_ascensor: 1, acceso_sin_escalones: 0 }), 'Dice que no tiene ascensor');
+  assert.equal(celda({ ascensor: 0, sin_ascensor: 1, acceso_sin_escalones: 0 }, 0), 'Planta baja; dice que no tiene ascensor');
+  assert.equal(celda({ ascensor: null, sin_ascensor: null, acceso_sin_escalones: null }, 0), 'Planta baja');
+  assert.match(celda({ ascensor: 0, sin_ascensor: 0, acceso_sin_escalones: 0 }), /No lo menciona/);
+  assert.match(celda({ ascensor: null, sin_ascensor: null, acceso_sin_escalones: null }), /Sin dato/);
+  assert.match(run('celdaAcceso({})'), /Sin dato/);
+});
+
 test('«Me muevo en bici» prende ciclovías y Ecobici; «Trabajo desde casa» suma bibliotecas', () => {
   const run = runtime('?explorador=1', { prefs: [], necesidades: ['bicicleta', 'teletrabajo'] });
   const r = run('explorador()');

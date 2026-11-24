@@ -19,14 +19,14 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from precio_entorno.descripcion import DESCRIPTION_FIELDS
+from precio_entorno.descripcion import PRICE_FIELDS
 from precio_entorno.modelo import BASE_FEATURES, OSM_GROUPS, boosting_model, comparables, group_split
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_DATASET = ROOT / 'data/processed/ampliado/modelo-pines-aproximados-poi-control/dataset_modelo.csv'
 BUILDING_FEATURES = ['age_years', 'garages']
 # Rasgos leídos de la descripción (1 lo menciona, 0 no). Solo entran si algún archivo los trae.
-EXTRA_FEATURES = BUILDING_FEATURES + list(DESCRIPTION_FIELDS)
+EXTRA_FEATURES = BUILDING_FEATURES + list(PRICE_FIELDS)
 MODELS = {
     'regresion_lineal': ('clásico', 'LinearRegression'),
     'arbol_de_decision': ('clásico', 'DecisionTreeRegressor'),

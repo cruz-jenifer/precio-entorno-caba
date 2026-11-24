@@ -306,7 +306,7 @@ def create_app(demo_path=None, real_path=None, entorno_dir=None, raw_dir=None, w
                 'enlace': i.get('url') if modo == 'real' else None,
                 # Rasgos leídos del texto del aviso: 1 lo menciona, 0 el texto no lo menciona, None sin texto.
                 'rasgos': {name: i.get(column) for name, column in descripcion.SPANISH_NAMES.items()},
-                'antiguedad': i.get('age_years'),
+                'antiguedad': i.get('age_years'), 'piso': i.get('floor'),
                 'comparacion': comparacion[i['id']]})
         index = proximity_index() if capas else None
         if capas:

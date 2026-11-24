@@ -72,6 +72,15 @@ const EXPLORADOR = (() => {
 const NECESIDADES = [
   { clave: 'sin_auto', nombre: 'Me muevo sin auto', descripcion: 'Subte cercano y líneas de colectivo del barrio.',
     capas: ['subte', 'colectivos'], columnas: ['subte', 'subte_ascensor'], advertencias: [] },
+  { clave: 'sin_escaleras', nombre: 'Necesito evitar escaleras',
+    descripcion: 'Ascensor, planta baja o acceso sin escalones según el aviso, subte con ascensor y salud cerca.',
+    capas: ['subte', 'salud'], columnas: ['acceso', 'subte_ascensor', 'hospital', 'cesac'],
+    advertencias: [
+      'El acceso sale del texto del aviso: que no mencione el ascensor no significa que no tenga. Por ahora lo tienen los '
+        + 'avisos de Migliorisi y los capturados desde el 23/11/2026; en los demás figura «Sin dato».',
+      'Un ascensor no asegura llegar sin escalones. Antes de visitar, preguntale al anunciante: ¿hay escalones entre la '
+        + 'vereda y el ascensor? ¿Cuánto miden la puerta del ascensor y la del baño? ¿Hay espacio para girar con una silla de ruedas?',
+    ] },
   { clave: 'familia', nombre: 'Escuelas y salud cerca', descripcion: 'Escuelas del nivel elegido, centros de salud y plazas.',
     capas: ['escuelas', 'salud', 'verdes'],
     columnas: ['escuela', 'cesac', 'hospital', 'plaza', 'ambientes', 'superficie', 'patio', 'balcon'], advertencias: [] },
@@ -144,6 +153,18 @@ function celdaRasgos(claves, aviso) {
   return menciona.length ? esc(enumerar(menciona)) : '<span class="fuente">No los menciona</span>';
 }
 
+/* Acceso según el aviso: texto de la descripción (ascensor, sin ascensor, sin escalones) y piso informado.
+   Nunca dice «no tiene» si el aviso no lo dice: «No lo menciona» y «Sin dato» son cosas distintas. */
+function celdaAcceso(aviso) {
+  const r = aviso.rasgos || {};
+  const pb = aviso.piso === 0;
+  if (r.sin_ascensor === 1) return pb ? 'Planta baja; dice que no tiene ascensor' : 'Dice que no tiene ascensor';
+  const partes = [r.acceso_sin_escalones === 1 && 'acceso sin escalones', pb && 'planta baja', r.ascensor === 1 && 'ascensor']
+    .filter(Boolean);
+  if (partes.length) { const t = enumerar(partes); return esc(t[0].toUpperCase() + t.slice(1)); }
+  return r.ascensor == null ? '<span class="fuente">Sin dato</span>' : '<span class="fuente">No lo menciona</span>';
+}
+
 function porMes(aviso) {
   if (aviso.expensas == null) return `${dinero(aviso.precio, aviso.moneda)} <span class="fuente">+ expensas sin informar</span>`;
   if (aviso.moneda === 'ARS') return dinero(aviso.precio + aviso.expensas, 'ARS');
@@ -157,6 +178,7 @@ function columnasExplorador() {
   const extra = Object.entries(COLUMNAS_DISTANCIA)
     .filter(([clave, def]) => columnas.includes(clave) && capas.includes(def.capa))
     .map(([, def]) => ({ titulo: def.titulo(), celda: (a) => celdaDistancia(def, a) }));
+  if (columnas.includes('acceso')) extra.unshift({ titulo: 'Acceso según el aviso', celda: celdaAcceso });
   const rasgos = Object.keys(RASGOS_TEXTO).filter((k) => columnas.includes(k));
   if (rasgos.length) extra.push({ titulo: 'El texto menciona', celda: (a) => celdaRasgos(rasgos, a) });
   if (columnas.includes('expensas')) {

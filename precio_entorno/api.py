@@ -29,7 +29,7 @@ from .matching import matches
 Mode = Literal['demo', 'real']
 Operation = Literal['venta', 'alquiler']
 LAYER_KEYS = ('subte', 'verdes', 'escuelas', 'salud', 'ruido', 'riesgo', 'estacionamiento', 'clubes', 'gimnasios',
-              'colectivos', 'ciclovias', 'ecobici', 'bibliotecas', 'rampas', 'recreacion')
+              'colectivos', 'ciclovias', 'ecobici', 'bibliotecas', 'rampas', 'recreacion', 'universidades', 'trenes')
 # Capas de puntos que cubren toda la ciudad, no solo el recuadro del barrio elegido.
 CITYWIDE = {'estacionamiento': 'garaje', 'clubes': 'club', 'gimnasios': 'gimnasio'}
 CURRENCIES = {'venta': ('USD',), 'alquiler': ('ARS', 'USD')}
@@ -441,8 +441,9 @@ def create_app(demo_path=None, real_path=None, entorno_dir=None, raw_dir=None, w
                                      'disponible': lines is not None}
             if name == 'verdes':
                 out['verdes'] = entorno.features_in(data['verdes'], bbox)
-            if name in ('ecobici', 'bibliotecas', 'rampas'):
-                kind = {'ecobici': 'ecobici', 'bibliotecas': 'biblioteca', 'rampas': 'rampa'}[name]
+            if name in ('ecobici', 'bibliotecas', 'rampas', 'universidades', 'trenes'):
+                kind = {'ecobici': 'ecobici', 'bibliotecas': 'biblioteca', 'rampas': 'rampa',
+                        'universidades': 'universidad', 'trenes': 'tren'}[name]
                 out[name] = {**collection(point_features(points.get(name, []), kind, bbox)), 'disponible': name in points}
             if name == 'recreacion':
                 # Cada punto lleva su tipo (cine, teatro, museo, cultural) para el color y la leyenda.

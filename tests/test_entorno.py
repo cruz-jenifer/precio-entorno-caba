@@ -152,6 +152,27 @@ class EntornoTests(unittest.TestCase):
         self.assertEqual(nothing, [])
 
 
+class UniversidadesTrenesTests(unittest.TestCase):
+    def test_universities_keep_name_unit_and_address_but_not_contacts(self):
+        rows = entorno.universities({'features': [
+            {'geometry': {'type': 'Point', 'coordinates': [-58.4, -34.6]},
+             'properties': {'nombre': 'Universidad Ficticia', 'unidad_aca': 'Facultad  de Pruebas', 'sede': None,
+                            'dirreccion': 'Calle 123', 'telefono': '4000-0000', 'fax': '4000-0001', 'web': 'x.edu'}},
+            {'geometry': {'type': 'LineString', 'coordinates': []}, 'properties': {'nombre': 'No es un punto'}}]})
+        self.assertEqual(rows, [{'name': 'Universidad Ficticia', 'unit': 'Facultad de Pruebas', 'lon': -58.4, 'lat': -34.6,
+                                 'tooltip': 'Universidad Ficticia · Facultad de Pruebas · Calle 123'}])
+        self.assertNotIn('4000', json.dumps(rows))
+
+    def test_train_stations_get_a_short_line_name_once_per_line(self):
+        punto = lambda nombre, linea, lon: {'geometry': {'type': 'Point', 'coordinates': [lon, -34.6]},
+                                            'properties': {'nombre': nombre, 'linea': linea, 'ramal': 'x'}}
+        rows = entorno.train_stations({'features': [
+            punto('Retiro', 'Mitre , F.C.G.B.M.', -58.37), punto('Retiro', 'Mitre , F.C.G.B.M.', -58.37),
+            punto('Retiro', 'San Martin , F.C.G.S.M.', -58.375), punto('Sin línea', '', -58.4)]})
+        self.assertEqual([(r['name'], r['line']) for r in rows], [('Retiro', 'Mitre'), ('Retiro', 'San Martín')])
+        self.assertEqual(rows[1]['tooltip'], 'Estación Retiro · Línea San Martín')
+
+
 class CrimeCellsTests(unittest.TestCase):
     def test_counts_registered_events_by_cell_month_and_kind(self):
         rows = [

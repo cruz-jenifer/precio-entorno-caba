@@ -27,6 +27,10 @@ Se descartan los lugares sin nombre y los salones de eventos (en CABA, casi todo
 Movilidad en bici y bibliotecas (opcionales, CC-BY 2.5 AR, en `data/raw/badata-entorno/`): tramos de ciclovía,
 estaciones de Ecobici (listado del nuevo sistema; no informa si cada una está operativa) y bibliotecas de la Red de
 la Ciudad. Se cuentan por barrio y se dibujan en el mapa. De las bibliotecas no se guardan teléfonos ni correos.
+
+Universidades y trenes (opcionales, CC-BY 2.5 AR, en `data/raw/badata-entorno/`): sedes universitarias del Ministerio
+de Educación (sin teléfonos, fax ni web) y estaciones de ferrocarril con su línea. Como el resto de los puntos, solo
+quedan las que caen dentro de un barrio de CABA: las estaciones del conurbano no se usan.
 """
 
 import argparse
@@ -121,7 +125,16 @@ MOVILIDAD = {
                 'Estaciones de Ecobici', 'Listado del 04/04/2025 · no informa si cada estación está operativa'),
     'bibliotecas': ('bibliotecas.geojson', 'ministerio-de-cultura/bibliotecas/bibliotecas.geojson',
                     'Bibliotecas de la Ciudad', 'Listado del 20/03/2025'),
+    'universidades': ('universidades.geojson', 'ministerio-de-educacion/universidades/universidades.geojson',
+                      'Universidades y facultades', 'Recurso del 16/09/2025 · sedes, sin oferta académica ni horarios'),
+    'trenes': ('estaciones_ferroviarias.geojson',
+               'transporte-y-obras-publicas/estaciones-ferrocarril/estaciones_ferroviarias.geojson',
+               'Estaciones de tren', 'Listado de 2019 · no informa frecuencias ni estaciones nuevas'),
 }
+# Nombre corto de cada línea de tren tal como la publica el listado («Mitre , F.C.G.B.M.»).
+LINEAS_TREN = {'mitre': 'Mitre', 'sarmiento': 'Sarmiento', 'roca': 'Roca', 'urquiza': 'Urquiza',
+               'san_martin': 'San Martín', 'belgrano_norte': 'Belgrano Norte', 'belgrano_sur': 'Belgrano Sur',
+               'tren_de_la_costa': 'Tren de la Costa'}
 
 
 def polygons(geometry):
@@ -394,6 +407,42 @@ def ecobici_stations(rows):
         lon, lat = round(lon, DECIMALS), round(lat, DECIMALS)
         out[lon, lat] = {'name': name, 'lon': lon, 'lat': lat,
                          'tooltip': ' · '.join(p for p in (f'Ecobici {name}', address) if p)}
+    return list(out.values())
+
+
+def universities(collection):
+    """Sedes universitarias: universidad, unidad académica, sede y dirección. Se descartan teléfonos, fax y web."""
+    out = []
+    for feature in collection.get('features', []):
+        geometry = feature.get('geometry') or {}
+        if geometry.get('type') != 'Point':
+            continue
+        props = feature.get('properties') or {}
+        clean = lambda key: ' '.join(str(props.get(key) or '').split())
+        name, unit, campus = clean('nombre') or 'Universidad', clean('unidad_aca'), clean('sede')
+        address = clean('dirreccion') or clean('direccion')
+        lon, lat = (round(v, DECIMALS) for v in geometry['coordinates'][:2])
+        out.append({'name': name, 'unit': unit or None, 'lon': lon, 'lat': lat,
+                    'tooltip': ' · '.join(p for p in (name, unit, campus, address) if p)})
+    return out
+
+
+def train_stations(collection):
+    """Estaciones de tren con su línea. Una estación que el listado repite por ramal queda una vez por línea."""
+    out = {}
+    for feature in collection.get('features', []):
+        geometry = feature.get('geometry') or {}
+        if geometry.get('type') != 'Point':
+            continue
+        props = feature.get('properties') or {}
+        name = ' '.join(str(props.get('nombre') or '').split())
+        raw = str(props.get('linea') or '').split(',')[0]
+        line = LINEAS_TREN.get(key(raw), ' '.join(raw.split()).title())
+        if not name or not line:
+            continue
+        lon, lat = (round(v, DECIMALS) for v in geometry['coordinates'][:2])
+        out.setdefault((key(name), line), {'name': name, 'line': line, 'lon': lon, 'lat': lat,
+                                            'tooltip': f'Estación {name} · Línea {line}'})
     return list(out.values())
 
 
@@ -728,6 +777,10 @@ def convert(poi_dir, entorno_dir, target, downloaded=None, osm_dir=None, gyms_pa
             points['ecobici'] = ecobici_stations(csv.DictReader(handle))
     if 'bibliotecas' in mobility:
         points['bibliotecas'] = libraries(read(mobility['bibliotecas']))
+    if 'universidades' in mobility:
+        points['universidades'] = universities(read(mobility['universidades']))
+    if 'trenes' in mobility:
+        points['trenes'] = train_stations(read(mobility['trenes']))
     lanes = bike_lanes(read(mobility['ciclovias'])) if 'ciclovias' in mobility else None
     if lanes is not None:
         middles = [f['geometry']['coordinates'][len(f['geometry']['coordinates']) // 2] for f in lanes]
@@ -802,9 +855,12 @@ def convert(poi_dir, entorno_dir, target, downloaded=None, osm_dir=None, gyms_pa
             'ruido': noise_summary,
             'riesgo_hidrico': share(risk, within),
         }
-        for layer in ('clubes', 'gimnasios', 'ecobici', 'bibliotecas'):
+        for layer in ('clubes', 'gimnasios', 'ecobici', 'bibliotecas', 'universidades'):
             if layer in points:
                 summary[name][layer] = len(mine[layer])
+        if 'trenes' in points:
+            summary[name]['trenes'] = len({s['name'] for s in mine['trenes']})
+            summary[name]['trenes_lineas'] = sorted({s['line'] for s in mine['trenes']})
         if 'recreacion' in points:
             kinds = Counter(item['kind'] for item in mine['recreacion'])
             summary[name]['recreacion'] = {kind: kinds[kind] for kind in RECREACION}

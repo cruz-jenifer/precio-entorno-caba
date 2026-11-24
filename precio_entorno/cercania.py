@@ -18,7 +18,8 @@ import math
 
 import numpy as np
 
-CAPAS = ('subte', 'escuelas', 'salud', 'verdes', 'ruido', 'ciclovias', 'ecobici', 'bibliotecas', 'recreacion')
+CAPAS = ('subte', 'escuelas', 'salud', 'verdes', 'ruido', 'ciclovias', 'ecobici', 'bibliotecas', 'recreacion',
+         'universidades', 'trenes')
 NIVELES = ('inicial', 'primario', 'secundario')
 M_LAT = 111_320
 KX = M_LAT * math.cos(math.radians(-34.62))
@@ -153,9 +154,12 @@ class Cercania:
         self.ecobici = de(puntos.get('ecobici', []))[1]
         self.bibliotecas = de(puntos.get('bibliotecas', []))[1]
         self.recreacion, self.recreacion_xy = de(puntos.get('recreacion', []))
+        self.universidades, self.universidades_xy = de(puntos.get('universidades', []))
+        self.trenes, self.trenes_xy = de(puntos.get('trenes', []))
         # Sin la capa cargada no se informa distancia (None), en lugar de «ninguna cerca».
         self.disponibles = {'ciclovias': bool(capas.get('ciclovias')), 'ecobici': 'ecobici' in puntos,
-                            'bibliotecas': 'bibliotecas' in puntos, 'recreacion': 'recreacion' in puntos}
+                            'bibliotecas': 'bibliotecas' in puntos, 'recreacion': 'recreacion' in puntos,
+                            'universidades': 'universidades' in puntos, 'trenes': 'trenes' in puntos}
         ruido = capas.get('ruido') or {}
         self.celda_m = ruido.get('celda_m', 100)
         # Una grilla por período: las celdas relevadas de día y de noche no son exactamente las mismas.
@@ -204,6 +208,19 @@ class Cercania:
                                                   'tipo': self.recreacion[idx[i]]['kind']})
             else:
                 poner('recreacion', [math.inf] * len(origen))
+        if 'universidades' in capas:
+            if self.disponibles['universidades']:
+                d, idx = cercanos(origen, self.universidades_xy)
+                poner('universidad', d, lambda i: {'nombre': self.universidades[idx[i]]['name'],
+                                                   'unidad': self.universidades[idx[i]].get('unit')})
+            else:
+                poner('universidad', [math.inf] * len(origen))
+        if 'trenes' in capas:
+            if self.disponibles['trenes']:
+                d, idx = cercanos(origen, self.trenes_xy)
+                poner('tren', d, lambda i: {'estacion': self.trenes[idx[i]]['name'], 'linea': self.trenes[idx[i]]['line']})
+            else:
+                poner('tren', [math.inf] * len(origen))
         if 'ruido' in capas:
             # La celda que contiene el punto: el centro más cercano a no más de media celda en cada eje.
             for periodo, (grilla, valores) in self.ruido.items():

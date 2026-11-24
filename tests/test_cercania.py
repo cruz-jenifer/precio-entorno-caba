@@ -18,6 +18,8 @@ NORTE_123 = ORIGEN[1] + 123 / cercania.M_LAT   # 123 m al norte del origen
 
 CAPAS = {
     'puntos': {
+        'universidades': [{'name': 'Universidad', 'unit': 'Facultad', 'lon': ORIGEN[0], 'lat': NORTE_123}],
+        'trenes': [{'name': 'Estación', 'line': 'Mitre', 'lon': ESTE_500, 'lat': ORIGEN[1]}],
         'subte': [{'name': 'Lejana', 'line': 'B', 'lon': ORIGEN[0] + 0.05, 'lat': ORIGEN[1], 'elevators': 2},
                   {'name': 'Cercana', 'line': 'A', 'lon': ESTE_500, 'lat': ORIGEN[1], 'elevators': 0},
                   {'name': 'Sin dato', 'line': 'C', 'lon': ESTE_500, 'lat': NORTE_123, 'elevators': None}],
@@ -70,6 +72,14 @@ class CercaniaTests(unittest.TestCase):
         lejos = (ORIGEN[0] + 250 / cercania.KX, ORIGEN[1])
         valores = [r['ruido_diurno']['dba'] for r in self.calcular(['ruido'], puntos=(ORIGEN, cerca, lejos))]
         self.assertEqual(valores, [70, 70, None])
+
+    def test_university_and_train_distances_with_their_names(self):
+        fila = self.calcular(['universidades', 'trenes'])[0]
+        self.assertEqual(fila['universidad'], {'m': 120, 'nombre': 'Universidad', 'unidad': 'Facultad'})
+        self.assertEqual(fila['tren'], {'m': 500, 'estacion': 'Estación', 'linea': 'Mitre'})
+        sin = cercania.Cercania({**CAPAS, 'puntos': {k: v for k, v in CAPAS['puntos'].items() if k not in ('universidades', 'trenes')}})
+        vacia = sin.calcular([ORIGEN[0]], [ORIGEN[1]], ['universidades', 'trenes'])[0]
+        self.assertEqual((vacia['universidad'], vacia['tren']), ({'m': None}, {'m': None}))
 
     def test_night_noise_uses_its_own_grid(self):
         este = (ESTE_500, ORIGEN[1])

@@ -31,9 +31,9 @@ test('la leyenda general identifica conteos, ausencia de coincidencias y el alca
 test('todas las capas se pueden descubrir sin activar primero las adicionales', () => {
   const { run } = runtime();
   const claves = run('filaCapas().map(c=>c.clave)');
-  assert.equal(claves.length, 16);
-  assert.equal(new Set(claves).size, 16);
-  for (const clave of ['subte','ruido','escuelas','delitos','colectivos','rampas']) assert.ok(claves.includes(clave));
+  assert.equal(claves.length, 18);
+  assert.equal(new Set(claves).size, 18);
+  for (const clave of ['subte','ruido','escuelas','delitos','colectivos','rampas','universidades','trenes']) assert.ok(claves.includes(clave));
 });
 
 test('la leyenda distingue una capa pendiente, no disponible y sin elementos', () => {

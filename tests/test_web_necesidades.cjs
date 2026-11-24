@@ -62,7 +62,7 @@ test('una necesidad suma sus capas, columnas y advertencias, sin filtros', () =>
 test('varias necesidades se unen sin duplicados y guardan de dónde viene cada capa', () => {
   const run = runtime();
   const r = resolver(run, ['familia', 'teletrabajo', 'sin_auto'], ['subte']);
-  assert.deepEqual(r.capas, ['subte', 'verdes', 'escuelas', 'salud', 'ruido', 'colectivos', 'bibliotecas']);
+  assert.deepEqual(r.capas, ['subte', 'verdes', 'escuelas', 'salud', 'ruido', 'colectivos', 'bibliotecas', 'trenes']);
   assert.deepEqual(r.origen.subte, ['sin_auto', 'manual']);
   assert.equal(new Set(r.columnas).size, r.columnas.length);
   assert.equal(new Set(r.advertencias).size, r.advertencias.length);
@@ -102,11 +102,11 @@ test('con ?explorador=0 la app vuelve a la de antes: capas de «Lo que me import
 test('con el interruptor, apagar una capa sugerida dura al cambiar de barrio', () => {
   const run = runtime('?explorador=1', { prefs: ['verdes'], necesidades: ['sin_auto'] });
   assert.equal(run('EXPLORADOR'), true);
-  assert.deepEqual(run('[...capasIniciales()]'), ['subte', 'verdes', 'colectivos']);
+  assert.deepEqual(run('[...capasIniciales()]'), ['subte', 'verdes', 'colectivos', 'trenes']);
   run("estado.seleccionado = 'Almagro'; estado.capas = capasIniciales(); alternarCapa('subte');");
-  assert.deepEqual(run('[...capasIniciales()]'), ['verdes', 'colectivos']);
+  assert.deepEqual(run('[...capasIniciales()]'), ['verdes', 'colectivos', 'trenes']);
   run("alternarCapa('subte');");                            // volver a prenderla la recupera
-  assert.deepEqual(run('[...capasIniciales()]'), ['subte', 'verdes', 'colectivos']);
+  assert.deepEqual(run('[...capasIniciales()]'), ['subte', 'verdes', 'colectivos', 'trenes']);
   assert.deepEqual(run('[...estado.apagadas]'), []);
 });
 
@@ -146,10 +146,26 @@ test('el costo por mes no suma monedas distintas ni inventa expensas', () => {
   assert.match(run("porMes({ precio: 800000, moneda: 'ARS', expensas: null })"), /expensas sin informar/);
 });
 
-test('«Me muevo sin auto» suma el subte con ascensor informado', () => {
+test('«Me muevo sin auto» suma el subte con ascensor informado y el tren', () => {
   const run = runtime('?explorador=1', { prefs: [], necesidades: ['sin_auto'] });
-  assert.deepEqual(run('columnasExplorador().map((c) => c.titulo)'), ['Subte', 'Subte con ascensor']);
+  assert.deepEqual(run('columnasExplorador().map((c) => c.titulo)'), ['Subte', 'Subte con ascensor', 'Tren']);
   assert.match(run("NOTAS.subte"), /no indica si funcionan/);
+});
+
+test('«Voy a estudiar a una facultad» suma universidades, tren, subte y bibliotecas', () => {
+  const run = runtime('', { prefs: [], necesidades: ['estudio'] });
+  const r = run('explorador()');
+  assert.deepEqual(r.capas, ['subte', 'bibliotecas', 'universidades', 'trenes']);
+  assert.deepEqual(r.cercania, ['subte', 'bibliotecas', 'universidades', 'trenes']);
+  assert.deepEqual(run('columnasExplorador().map((c) => c.titulo)'), ['Subte', 'Biblioteca', 'Universidad', 'Tren']);
+  assert.ok(r.advertencias.some((a) => a.includes('oferta académica')));
+  assert.ok(r.advertencias.some((a) => a.includes('2019')));
+  const celda = (def, valor) => run(`celdaDistancia(COLUMNAS_DISTANCIA.${def}, { ubicacion: 'publicada', cercania: { ${def}: ${JSON.stringify(valor)} } })`);
+  assert.match(celda('tren', { m: 400, estacion: 'Coghlan', linea: 'Mitre' }), /400 m · Mitre/);
+  assert.match(celda('universidad', { m: 740, nombre: 'UBA', unidad: 'Facultad de Derecho' }), /740 m/);
+  assert.equal(run("datoComparacion('trenes', { trenes: 2, trenes_lineas: ['Mitre', 'San Martín'] })"), '2 estaciones · Mitre, San Martín');
+  assert.equal(run("datoComparacion('trenes', { trenes: 0, trenes_lineas: [] })"), 'Sin estaciones de tren');
+  assert.equal(run("datoComparacion('universidades', { universidades: 19 })"), '19 sedes universitarias');
 });
 
 test('«Necesito evitar escaleras» suma acceso, subte con ascensor y salud, y pide preguntar', () => {

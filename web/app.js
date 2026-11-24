@@ -22,21 +22,24 @@ const CAPAS_MAPA = [...PREFERENCIAS, { clave: 'estacionamiento', nombre: 'Estaci
   { clave: 'clubes', nombre: 'Clubes' }, { clave: 'gimnasios', nombre: 'Gimnasios' },
   { clave: 'colectivos', nombre: 'Colectivos' }, { clave: 'ciclovias', nombre: 'Ciclovías' },
   { clave: 'ecobici', nombre: 'Ecobici' }, { clave: 'bibliotecas', nombre: 'Bibliotecas' },
-  { clave: 'rampas', nombre: 'Rampas' }];
+  { clave: 'rampas', nombre: 'Rampas' }, { clave: 'universidades', nombre: 'Universidades' },
+  { clave: 'trenes', nombre: 'Trenes' }];
 // Capas de puntos de toda la ciudad: se piden una vez, sin importar el barrio.
 const CAPAS_CIUDAD = new Set(['estacionamiento', 'clubes', 'gimnasios']);
 const CAPAS = [...CAPAS_MAPA, { clave: 'delitos', nombre: 'Delitos registrados' }];
 // Las capas de «Lo que me importa» van siempre a la vista; el resto, en «Más capas», agrupadas.
 // Una capa de «Más capas» encendida también aparece en la fila, para apagarla sin abrir el cajón.
 const MAS_CAPAS = [
-  ['Movilidad', ['colectivos', 'ciclovias', 'ecobici', 'estacionamiento']],
-  ['Actividades', ['clubes', 'gimnasios', 'bibliotecas']],
+  ['Movilidad', ['trenes', 'colectivos', 'ciclovias', 'ecobici', 'estacionamiento']],
+  ['Estudio', ['universidades', 'bibliotecas']],
+  ['Actividades', ['clubes', 'gimnasios']],
   ['Registros', ['delitos', 'rampas']],
 ];
 const SUBTE = { A: '#18CCCC', B: '#EB0909', C: '#233AA8', D: '#02A17A', E: '#AE3D97', H: '#FFD600' };
 const COLOR = { verdes: '#5E7D4F', riesgo: '#1E88E5', escuela: '#1E2A32', cesac: '#00897B', hospital: '#795548',
   aviso: '#6A4FB3', estacionamiento: '#1671A3', clubes: '#C2410C', gimnasios: '#0F766E', colectivo: '#D81B60',
-  ascensor: '#1E2A32', ciclovias: '#00838F', ecobici: '#004F56', bibliotecas: '#AD1457', rampas: '#B26B00' };
+  ascensor: '#1E2A32', ciclovias: '#00838F', ecobici: '#004F56', bibliotecas: '#AD1457', rampas: '#B26B00',
+  universidades: '#6D28D9', trenes: '#37474F' };
 const RUIDO = [[50, '#FFFFCC'], [55, '#FFEDA0'], [60, '#FED976'], [65, '#FEB24C'], [70, '#FD8D3C'], [75, '#F03B20'], [80, '#BD0026']];
 const DELITOS = ['#D3DBE3', '#A9B8C8', '#7E93AB', '#55708E', '#2E4560'];
 const ESCALA_BARRIOS = ['#F4F2F8', '#E2DAF3', '#7A62C4'];
@@ -58,6 +61,10 @@ const NOTAS = {
   ciclovias: 'Tramos de ciclovía publicados por la Ciudad (recurso de marzo de 2025). Que haya una cerca no garantiza un recorrido continuo ni protegido.',
   ecobici: 'Estaciones del listado oficial de abril de 2025. No informa si cada estación está operativa ni cuántas bicis tiene: consultalo en la app de Ecobici.',
   bibliotecas: 'Bibliotecas de la Red de la Ciudad, incluidas las populares (listado de marzo de 2025). Confirmá horarios y servicios con cada una.',
+  universidades: 'Sedes de universidades y facultades del listado del Ministerio de Educación (recurso de septiembre de 2025). '
+    + 'No informa la oferta académica ni los horarios: confirmá en qué sede se cursa cada carrera.',
+  trenes: 'Estaciones de tren dentro de la Ciudad, del listado oficial de 2019. No informa frecuencias, obras ni estaciones '
+    + 'nuevas: confirmá los horarios en Trenes Argentinos.',
   recreacion: 'Cines, teatros, museos, centros culturales y galerías cargados en OpenStreetMap. La cobertura depende de quién mapea cada zona: '
     + 'faltan salas independientes y puede haber cierres recientes. Confirmá la programación con cada lugar.',
   rampas: 'Rampas registradas en obras de 2011 a 2016 (BA Data), ubicadas por dirección. No es un inventario: que una esquina no tenga punto no '
@@ -71,8 +78,11 @@ const EXPLORADOR = (() => {
   try { return new URLSearchParams(window.location?.search || '').get('explorador') !== '0'; } catch { return true; }
 })();
 const NECESIDADES = [
-  { clave: 'sin_auto', nombre: 'Me muevo sin auto', descripcion: 'Subte cercano y líneas de colectivo del barrio.',
-    capas: ['subte', 'colectivos'], columnas: ['subte', 'subte_ascensor'], advertencias: [] },
+  { clave: 'sin_auto', nombre: 'Me muevo sin auto', descripcion: 'Subte y tren cercanos, y líneas de colectivo del barrio.',
+    capas: ['subte', 'trenes', 'colectivos'], columnas: ['subte', 'subte_ascensor', 'tren'], advertencias: [] },
+  { clave: 'estudio', nombre: 'Voy a estudiar a una facultad', descripcion: 'Universidades y facultades, tren, subte y bibliotecas cerca.',
+    capas: ['universidades', 'trenes', 'subte', 'bibliotecas'], columnas: ['universidad', 'tren', 'subte', 'biblioteca'],
+    advertencias: ['Si ya sabés a qué sede vas a ir, marcá también «Tengo que ir seguido a un lugar» y elegila en el mapa.'] },
   { clave: 'sin_escaleras', nombre: 'Necesito evitar escaleras',
     descripcion: 'Ascensor, planta baja o acceso sin escalones según el aviso, subte con ascensor y salud cerca.',
     capas: ['subte', 'salud'], columnas: ['acceso', 'subte_ascensor', 'hospital', 'cesac'],
@@ -112,7 +122,8 @@ const NECESIDADES = [
     advertencias: ['Los importes se suman por moneda, sin convertir. Si el aviso no informa las expensas, se indica.'] },
 ];
 // Capas con distancia por aviso en /api/barrios/{barrio}/avisos (precio_entorno/cercania.py).
-const CAPAS_CERCANIA = ['subte', 'escuelas', 'salud', 'verdes', 'ruido', 'ciclovias', 'ecobici', 'bibliotecas', 'recreacion'];
+const CAPAS_CERCANIA = ['subte', 'escuelas', 'salud', 'verdes', 'ruido', 'ciclovias', 'ecobici', 'bibliotecas', 'recreacion',
+  'universidades', 'trenes'];
 
 /* Combina las necesidades elegidas con las decisiones manuales. La elección manual gana: una capa apagada a mano
    no vuelve aunque una necesidad la sugiera. Devuelve capas en el orden del mapa, sin duplicados. */
@@ -149,6 +160,10 @@ const COLUMNAS_DISTANCIA = {
   ciclovia: { capa: 'ciclovias', titulo: () => 'Ciclovía', valor: (c) => c.ciclovia },
   ecobici: { capa: 'ecobici', titulo: () => 'Ecobici', valor: (c) => c.ecobici },
   biblioteca: { capa: 'bibliotecas', titulo: () => 'Biblioteca', valor: (c) => c.biblioteca },
+  universidad: { capa: 'universidades', titulo: () => 'Universidad', valor: (c) => c.universidad,
+    texto: (v) => `<span title="${esc(v.nombre)}${v.unidad ? ` · ${esc(v.unidad)}` : ''}">${metrosTexto(v.m)}</span>` },
+  tren: { capa: 'trenes', titulo: () => 'Tren', valor: (c) => c.tren,
+    texto: (v) => `<span title="Estación ${esc(v.estacion)}">${metrosTexto(v.m)} · ${esc(v.linea)}</span>` },
   recreacion: { capa: 'recreacion', titulo: () => 'Cine, teatro o museo', valor: (c) => c.recreacion,
     texto: (v) => `<span title="${esc(v.nombre)}">${metrosTexto(v.m)} · ${esc(RECREACION[v.tipo]?.[1] || '')}</span>` },
   ruido_diurno: { capa: 'ruido', titulo: () => 'Ruido de día', valor: (c) => c.ruido_diurno,
@@ -643,6 +658,10 @@ function datoComparacion(clave, e) {
     case 'ciclovias': return e.ciclovias_km == null ? faltante : `${decimal.format(e.ciclovias_km)} km de ciclovías`;
     case 'ecobici': return valor(e.ecobici, 'estaciones');
     case 'bibliotecas': return valor(e.bibliotecas, 'bibliotecas');
+    case 'universidades': return valor(e.universidades, 'sedes universitarias');
+    case 'trenes':
+      if (e.trenes == null) return faltante;
+      return e.trenes ? `${e.trenes} ${plural(e.trenes, 'estación', 'estaciones')} · ${e.trenes_lineas.join(', ')}` : 'Sin estaciones de tren';
     case 'clubes': return valor(e.clubes, 'clubes y polideportivos');
     case 'gimnasios': return valor(e.gimnasios, 'gimnasios en OpenStreetMap');
     default: return faltante;
@@ -843,6 +862,8 @@ function renderPiezas(e) {
     pieza(numero.format(e.cesac + e.hospitales), `centros de salud: ${e.cesac} CeSAC y ${e.hospitales} ${plural(e.hospitales, 'hospital', 'hospitales')}`),
     e.clubes != null ? pieza(numero.format(e.clubes), `clubes de barrio y polideportivos${e.gimnasios != null ? `, y ${e.gimnasios} gimnasios en OpenStreetMap` : ''}`) : '',
     e.bibliotecas != null ? pieza(numero.format(e.bibliotecas), `${plural(e.bibliotecas, 'biblioteca', 'bibliotecas')} de la Red de la Ciudad`) : '',
+    e.universidades != null ? pieza(numero.format(e.universidades), `${plural(e.universidades, 'sede', 'sedes')} de universidades y facultades`) : '',
+    e.trenes ? pieza(numero.format(e.trenes), `${plural(e.trenes, 'estación', 'estaciones')} de tren: ${esc(e.trenes_lineas.join(', '))}`) : '',
     pieza(`${porcentaje(e.riesgo_hidrico)} %`, 'de la superficie en área de prevención por riesgo hídrico, según la capa de 2020'),
     e.recreacion ? pieza(numero.format(totalRecreacion(e.recreacion)), totalRecreacion(e.recreacion)
       ? `lugares de recreación: ${esc(textoRecreacion(e.recreacion))}` : 'cines, teatros, museos o centros culturales en OpenStreetMap') : '',
@@ -1644,9 +1665,9 @@ async function prepararMapa() {
   mapa.addLayer({ id: 'ciclovias', type: 'line', source: 'ciclovias', layout: { 'line-cap': 'round' },
     paint: { 'line-color': COLOR.ciclovias, 'line-width': ['interpolate', ['linear'], ['zoom'], 12, 1.5, 16, 4] } },
   'escuelas'); // debajo de las capas de puntos
-  for (const id of ['rampas', 'ecobici', 'bibliotecas']) {
+  for (const id of ['rampas', 'ecobici', 'bibliotecas', 'universidades', 'trenes']) {
     mapa.addLayer({ id, type: 'circle', source: id,
-      paint: { 'circle-radius': { bibliotecas: 6, ecobici: 4.5, rampas: 3 }[id], 'circle-color': COLOR[id],
+      paint: { 'circle-radius': { bibliotecas: 6, ecobici: 4.5, rampas: 3, universidades: 6, trenes: 6.5 }[id], 'circle-color': COLOR[id],
         'circle-stroke-color': '#FFFFFF', 'circle-stroke-width': 1.5 } });
   }
   mapa.addLayer({ id: 'recreacion', type: 'circle', source: 'recreacion',
@@ -1680,7 +1701,8 @@ async function prepararMapa() {
   mapa.addLayer({ id: 'lugar-fijo', type: 'circle', source: 'lugar-fijo',
     paint: { 'circle-radius': 9, 'circle-color': '#FFFFFF', 'circle-stroke-color': '#1E2A32', 'circle-stroke-width': 4 } });
 
-  const puntos = ['subte', 'salud', 'escuelas', 'estacionamiento', 'clubes', 'gimnasios', 'ecobici', 'bibliotecas', 'rampas', 'recreacion'];
+  const puntos = ['subte', 'salud', 'escuelas', 'estacionamiento', 'clubes', 'gimnasios', 'ecobici', 'bibliotecas', 'rampas', 'recreacion',
+    'universidades', 'trenes'];
   const conTexto = [...puntos, 'colectivo', 'colectivos', 'ciclovias', 'verdes', 'riesgo', 'ruido', 'delitos'];
 
   let movimiento = null;
@@ -2067,7 +2089,8 @@ function alternarCapa(clave) {
 // Punto de color de cada capa en los chips del mapa (el mismo que usa la capa).
 const PUNTO_CAPA = { subte: '#02A17A', verdes: '#5E7D4F', escuelas: '#1E2A32', salud: '#00897B', ruido: '#FD8D3C',
   riesgo: '#1E88E5', estacionamiento: '#1671A3', clubes: '#C2410C', gimnasios: '#0F766E', colectivos: '#D81B60',
-  ciclovias: '#00838F', ecobici: '#004F56', bibliotecas: '#AD1457', rampas: '#B26B00', recreacion: '#BE123C', delitos: '#55708E' };
+  ciclovias: '#00838F', ecobici: '#004F56', bibliotecas: '#AD1457', rampas: '#B26B00', recreacion: '#BE123C', delitos: '#55708E',
+  universidades: '#6D28D9', trenes: '#37474F' };
 
 function chipCapa(c) {
   return `<button class="chip" type="button" data-capa="${c.clave}" aria-pressed="${estado.capas.has(c.clave)}">`
@@ -2226,9 +2249,10 @@ function renderLeyenda() {
       if (capa?.features.length) items = [muestra(COLOR[c.clave], `${nombre} · ${numero.format(capa.features.length)} en toda la ciudad`)];
       else if (capa) items = [esc(capa.disponible ? 'Sin lugares registrados.' : 'Capa sin cargar.')];
     }
-    else if (['ciclovias', 'ecobici', 'bibliotecas', 'rampas'].includes(c.clave)) {
+    else if (['ciclovias', 'ecobici', 'bibliotecas', 'rampas', 'universidades', 'trenes'].includes(c.clave)) {
       const capa = estado.capasDatos[claveCapa(c.clave)];
       const nombre = { ciclovias: 'Tramo de ciclovía', ecobici: 'Estación de Ecobici', bibliotecas: 'Biblioteca',
+        universidades: 'Sede de universidad o facultad', trenes: 'Estación de tren (listado de 2019)',
         rampas: 'Rampa registrada en obras 2011–2016 (no es un inventario)' }[c.clave];
       if (capa?.features.length) items = [muestra(COLOR[c.clave], nombre)];
       else if (capa) items = [esc(capa.disponible === false ? 'Capa sin cargar.' : 'Ninguna en esta zona.')];

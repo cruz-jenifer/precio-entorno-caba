@@ -192,6 +192,12 @@ class ApiTests(unittest.TestCase):
         bad = self.client.get('/api/mapa/capas', params={'barrio': 'Caballito', 'capas': 'bares'})
         self.assertEqual(bad.status_code, 422)
 
+    def test_universidades_y_trenes_sin_archivos_no_fallan(self):
+        layers = self.client.get('/api/mapa/capas', params=[('barrio', 'Caballito'), ('capas', 'universidades'),
+                                                             ('capas', 'trenes')]).json()
+        self.assertEqual({k: (v['disponible'], v['features']) for k, v in layers.items()},
+                         {'universidades': (False, []), 'trenes': (False, [])})
+
     def test_hospitales_de_toda_la_ciudad_para_el_lugar_fijo(self):
         rows = self.get('/api/hospitales')['hospitales']
         self.assertTrue(rows)

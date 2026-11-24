@@ -146,13 +146,17 @@ function explorador() {
   return resolverNecesidades(estado.necesidades, { encendidas: estado.prefs, apagadas: estado.apagadas });
 }
 
+// Superficie de un aviso: algunas fuentes publican decimales («49.21»); se muestra redondeada, con formato local.
+const m2 = (valor) => (valor == null ? '—' : `${numero.format(Math.round(valor))} m²`);
 const metrosTexto = (m) => (m < 1000 ? `${numero.format(m)} m` : `${decimal.format(m / 1000)} km`);
+// Nombre del lugar más cercano, debajo de la distancia: visible también en celular, donde no hay «pasar el mouse».
+const nombreCelda = (nombre) => (nombre ? `<span class="celda-nombre" title="${esc(nombre)}">${esc(nombre)}</span>` : '');
 // Columnas de distancia de la tabla de avisos: la capa tiene que estar prendida para que la API la calcule.
 const COLUMNAS_DISTANCIA = {
   subte: { capa: 'subte', titulo: () => 'Subte', valor: (c) => c.subte,
-    texto: (v) => `<span title="Estación ${esc(v.estacion)}">${metrosTexto(v.m)} · ${esc(v.linea)}</span>` },
+    texto: (v) => `${metrosTexto(v.m)} · ${esc(v.linea)}${nombreCelda(v.estacion)}` },
   subte_ascensor: { capa: 'subte', titulo: () => 'Subte con ascensor', valor: (c) => c.subte_ascensor,
-    texto: (v) => `<span title="Estación ${esc(v.estacion)}">${metrosTexto(v.m)} · ${esc(v.linea)}</span>` },
+    texto: (v) => `${metrosTexto(v.m)} · ${esc(v.linea)}${nombreCelda(v.estacion)}` },
   escuela: { capa: 'escuelas', titulo: () => `Escuela (${estado.nivel})`, valor: (c) => c.escuela },
   cesac: { capa: 'salud', titulo: () => 'CeSAC', valor: (c) => c.cesac },
   hospital: { capa: 'salud', titulo: () => 'Hospital', valor: (c) => c.hospital },
@@ -161,11 +165,11 @@ const COLUMNAS_DISTANCIA = {
   ecobici: { capa: 'ecobici', titulo: () => 'Ecobici', valor: (c) => c.ecobici },
   biblioteca: { capa: 'bibliotecas', titulo: () => 'Biblioteca', valor: (c) => c.biblioteca },
   universidad: { capa: 'universidades', titulo: () => 'Universidad', valor: (c) => c.universidad,
-    texto: (v) => `<span title="${esc(v.nombre)}${v.unidad ? ` · ${esc(v.unidad)}` : ''}">${metrosTexto(v.m)}</span>` },
+    texto: (v) => `${metrosTexto(v.m)}${nombreCelda(v.unidad && v.unidad !== 'Rectorado' ? `${v.nombre} · ${v.unidad}` : v.nombre)}` },
   tren: { capa: 'trenes', titulo: () => 'Tren', valor: (c) => c.tren,
-    texto: (v) => `<span title="Estación ${esc(v.estacion)}">${metrosTexto(v.m)} · ${esc(v.linea)}</span>` },
+    texto: (v) => `${metrosTexto(v.m)} · ${esc(v.linea)}${nombreCelda(v.estacion)}` },
   recreacion: { capa: 'recreacion', titulo: () => 'Cine, teatro o museo', valor: (c) => c.recreacion,
-    texto: (v) => `<span title="${esc(v.nombre)}">${metrosTexto(v.m)} · ${esc(RECREACION[v.tipo]?.[1] || '')}</span>` },
+    texto: (v) => `${metrosTexto(v.m)} · ${esc(RECREACION[v.tipo]?.[1] || '')}${nombreCelda(v.nombre)}` },
   ruido_diurno: { capa: 'ruido', titulo: () => 'Ruido de día', valor: (c) => c.ruido_diurno,
     texto: (v) => (v.dba == null ? 'Sin celda relevada' : `${v.dba} dBA`) },
   ruido_nocturno: { capa: 'ruido', titulo: () => 'Ruido de noche', valor: (c) => c.ruido_nocturno,
@@ -666,7 +670,7 @@ function datoComparacion(clave, e) {
   const valor = (v, unidad) => v == null ? faltante : `${numero.format(v)} ${unidad}`;
   switch (clave) {
     case 'subte': return e.subte_lineas == null ? faltante : e.subte_lineas.length
-      ? `Líneas ${enumerar(e.subte_lineas)} · ${valor(e.subte_estaciones, plural(e.subte_estaciones, 'estación', 'estaciones'))}` : 'Sin estaciones de subte';
+      ? `${plural(e.subte_lineas.length, 'Línea', 'Líneas')} ${enumerar(e.subte_lineas)} · ${valor(e.subte_estaciones, plural(e.subte_estaciones, 'estación', 'estaciones'))}` : 'Sin estaciones de subte';
     case 'verdes': return e.verdes_cantidad == null || e.verdes_ha == null ? faltante
       : `${numero.format(e.verdes_cantidad)} ${plural(e.verdes_cantidad, 'espacio', 'espacios')} · ${decimal.format(e.verdes_ha)} ha`;
     case 'escuelas': {
@@ -930,16 +934,23 @@ function renderFicha() {
     ? `<p class="nota-cumplen" role="status"><strong>${cumple.cumplen} de ${cumple.total}</strong> ${plural(cumple.cumplen, 'aviso cumple', 'avisos cumplen')} lo que elegiste y ${plural(cumple.cumplen, 'va', 'van')} primero.${
       cumple.sinPunto ? ` ${cumple.sinPunto} de ${plural(cumple.cumplen, 'ese', 'esos')} no ${plural(cumple.sinPunto, 'tiene', 'tienen')} ubicación publicada, así que no ${plural(cumple.sinPunto, 'aparece', 'aparecen')} en el mapa.` : ''}</p>`
     : `<p class="nota-cumplen" role="status">${esc(textoNingunoCumple())}</p>`;
+  // Dos publicaciones distintas con el mismo precio, superficie, ambientes y punto pueden ser el mismo departamento.
+  // No se ocultan (también pueden ser dos unidades iguales del mismo edificio): se marcan.
+  const claveRepetido = (a) => (a.lat == null ? null : [a.precio, a.moneda, Math.round(a.superficie), a.ambientes, a.lat, a.lon].join('|'));
+  const vecesClave = new Map();
+  for (const a of estado.avisos) { const k = claveRepetido(a); if (k) vecesClave.set(k, (vecesClave.get(k) || 0) + 1); }
+  const repetido = (a) => (vecesClave.get(claveRepetido(a)) || 0) > 1;
   const conPosicion = estado.avisos.filter((a) => a.comparacion?.posicion);
   const debajo = conPosicion.filter((a) => a.comparacion.posicion === 'debajo').length;
   const notaParecidos = conPosicion.length >= 5 && debajo / conPosicion.length >= 0.6
     ? `<p class="fuente">Con tu presupuesto, ${debajo} de ${conPosicion.length} avisos quedan por debajo de sus parecidos del barrio. Para compararlos entre sí, mirá el porcentaje.</p>` : '';
   // 9. Las columnas de lo que elegiste van al lado del precio: son las que la persona vino a mirar.
   const filas = visibles.map((a) => `<tr${cumple && cumpleNecesidades(a) ? ' class="cumple"' : ''}>
-      <td>${dinero(a.precio, a.moneda)}${cumple && cumpleNecesidades(a) ? '<span class="marca-cumple">Cumple lo que elegiste</span>' : ''}</td>
+      <td>${dinero(a.precio, a.moneda)}${cumple && cumpleNecesidades(a) ? '<span class="marca-cumple">Cumple lo que elegiste</span>' : ''}${
+        repetido(a) ? '<span class="marca-repetido" title="Otro aviso tiene el mismo precio, superficie, ambientes y punto: puede ser el mismo departamento publicado dos veces">Posible aviso repetido</span>' : ''}</td>
       ${extra.map((c) => `<td>${c.celda(a)}</td>`).join('')}
       <td>${celdaComparacion(a.comparacion, a.moneda)}</td>
-      <td>${a.superficie} m²</td>
+      <td>${m2(a.superficie)}</td>
       <td>${a.ambientes}</td>
       <td>${a.cocheras == null ? 'No informada' : a.cocheras === 0 ? 'Sin cochera' : a.cocheras}</td>
       ${alquiler ? `<td>${a.expensas == null ? '—' : dinero(a.expensas, 'ARS')}</td>` : ''}
@@ -1545,6 +1556,17 @@ function crearMapa() {
     dragRotate: false,
     pitchWithRotate: false,
     attributionControl: { compact: true },
+    // Textos de los controles de MapLibre (por defecto, en inglés).
+    locale: {
+      'NavigationControl.ZoomIn': 'Acercar', 'NavigationControl.ZoomOut': 'Alejar',
+      'NavigationControl.ResetBearing': 'Volver al norte',
+      'GeolocateControl.FindMyLocation': 'Mostrar mi ubicación',
+      'GeolocateControl.LocationNotAvailable': 'Tu ubicación no está disponible en este navegador',
+      'AttributionControl.ToggleAttribution': 'Ver créditos del mapa', 'AttributionControl.MapFeedback': 'Sugerir una corrección',
+      'ScrollZoomBlocker.CtrlMessage': 'Usá Ctrl + rueda para acercar el mapa',
+      'ScrollZoomBlocker.CmdMessage': 'Usá ⌘ + rueda para acercar el mapa',
+      'TouchPanBlocker.Message': 'Usá dos dedos para mover el mapa',
+    },
     // Sin el fundido de etiquetas: el mapa no queda redibujando 300 ms después de cada movimiento.
     fadeDuration: 0,
   });
@@ -1870,7 +1892,7 @@ function textoPin(clave) {
   const lista = gruposAvisos().get(clave) || [];
   if (lista.length === 1) {
     const a = lista[0];
-    return `${dinero(a.precio, a.moneda)} · ${a.superficie} m² · ${a.ambientes} amb.${a.ubicacion === 'aproximada' ? ' Ubicación aproximada.' : ''}`;
+    return `${dinero(a.precio, a.moneda)} · ${m2(a.superficie)} · ${a.ambientes} amb.${a.ubicacion === 'aproximada' ? ' Ubicación aproximada.' : ''}`;
   }
   const precios = lista.map((a) => a.precio);
   return `${lista.length} avisos en este punto, de ${dinero(Math.min(...precios), lista[0].moneda)} a ${dinero(Math.max(...precios), lista[0].moneda)}. Tocá para verlos.`;
@@ -1881,7 +1903,7 @@ function abrirPin(clave) {
   if (!lista || !popupAviso) return;
   popup?.remove();
   estado.pinAbierto = clave;
-  const filas = lista.map((a) => `<li><strong>${esc(dinero(a.precio, a.moneda))}</strong> · ${a.superficie} m² · ${a.ambientes} amb.
+  const filas = lista.map((a) => `<li><strong>${esc(dinero(a.precio, a.moneda))}</strong> · ${m2(a.superficie)} · ${a.ambientes} amb.
     ${a.enlace ? `<a href="${esc(a.enlace)}" target="_blank" rel="noopener">Ver aviso</a>` : ''}
     <span class="pin-comparacion">${textoComparacion(a.comparacion)}</span></li>`).join('');
   const nota = (lista.every((a) => a.ubicacion === 'aproximada')

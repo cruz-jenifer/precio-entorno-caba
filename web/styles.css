@@ -1623,3 +1623,8 @@ table.avisos tr.cumple > td:first-child { box-shadow: inset 3px 0 0 #6A4FB3; }
 .modo-titulo { font-size: var(--t-chico); color: var(--asfalto-suave); }
 @media (max-width: 420px) { .modo-titulo { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); } }
 .nota-alerta-necesidades { border-left: 3px solid #6A4FB3; padding-left: var(--espacio-2); }
+
+/* Detalles de la auditoría de usabilidad, gravedad 1 (24/11/2026). */
+.celda-nombre { display: block; max-width: 14rem; color: var(--asfalto-suave); font-size: var(--t-chico);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.marca-repetido { display: block; color: var(--asfalto-suave); font-size: var(--t-chico); }

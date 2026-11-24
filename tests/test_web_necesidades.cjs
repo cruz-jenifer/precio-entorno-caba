@@ -371,6 +371,20 @@ test('la alerta aclara que no usa las necesidades elegidas', () => {
   assert.match(nota, /no tiene en cuenta «Necesito evitar escaleras» y «Necesito un lugar tranquilo»/);
 });
 
+test('detalles: superficie redondeada, nombres visibles y «Línea» en singular', () => {
+  const run = runtime();
+  assert.equal(run('m2(49.21)'), '49 m²');
+  assert.equal(run('m2(1250)'), '1.250 m²');
+  assert.equal(run('m2(null)'), '—');
+  const celda = (def, valor) => run(`celdaDistancia(COLUMNAS_DISTANCIA.${def}, { ubicacion: 'publicada', cercania: { ${def}: ${JSON.stringify(valor)} } })`);
+  assert.match(celda('tren', { m: 400, estacion: 'Coghlan', linea: 'Mitre' }), /celda-nombre"[^>]*>Coghlan</);
+  assert.match(celda('universidad', { m: 740, nombre: 'UBA', unidad: 'Facultad de Derecho' }), />UBA · Facultad de Derecho</);
+  assert.match(celda('universidad', { m: 740, nombre: 'UBA', unidad: 'Rectorado' }), />UBA</);
+  assert.match(celda('subte', { m: 180, estacion: 'Primera Junta', linea: 'A' }), /180 m · A.*Primera Junta/);
+  assert.equal(run("datoComparacion('subte', { subte_lineas: ['H'], subte_estaciones: 4 })"), 'Línea H · 4 estaciones');
+  assert.equal(run("datoComparacion('subte', { subte_lineas: ['A', 'B'], subte_estaciones: 5 })"), 'Líneas A y B · 5 estaciones');
+});
+
 test('«Me muevo en bici» prende ciclovías y Ecobici; «Trabajo desde casa» suma bibliotecas', () => {
   const run = runtime('?explorador=1', { prefs: [], necesidades: ['bicicleta', 'teletrabajo'] });
   const r = run('explorador()');

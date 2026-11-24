@@ -236,6 +236,72 @@ function celdaLugarFijo(aviso) {
   return aviso.ubicacion === 'aproximada' ? `${texto} <span class="fuente">aprox.</span>` : texto;
 }
 
+/* Resaltado en el mapa según las necesidades. No oculta nada: los pines que cumplen se ven fuertes y el resto se
+   atenúa; los barrios se pintan según el orden elegido en la lista, así nunca se mezclan dos criterios. */
+const LUGAR_CERCA_M = 2000;   // pin fuerte: a esta distancia o menos del lugar fijo, en línea recta
+const LUGAR_LEJOS_M = 8000;   // barrios a esta distancia o más: el tono más claro
+const RUIDO_NOCHE_DBA = 65;   // mismo umbral nocturno que ruido.json
+
+// Qué tiene que cumplir un aviso para verse fuerte, según las necesidades marcadas. Vacío: no se atenúa nada.
+function criteriosPines() {
+  if (!EXPLORADOR) return [];
+  const out = [];
+  if (estado.necesidades.has('sin_escaleras')) out.push('planta baja, acceso sin escalones o ascensor, según el aviso');
+  if (estado.necesidades.has('tranquilo')) out.push(`menos de ${RUIDO_NOCHE_DBA} dBA de noche en la calle, o contrafrente`);
+  if (lugarActivo()) out.push(`a ${metrosTexto(LUGAR_CERCA_M)} o menos de tu lugar fijo, en línea recta`);
+  return out;
+}
+
+// true si cumple todo lo elegido, false si no o si falta el dato, null si no hay nada elegido.
+function cumpleNecesidades(a) {
+  if (!criteriosPines().length) return null;
+  const r = a.rasgos || {};
+  if (EXPLORADOR && estado.necesidades.has('sin_escaleras')
+    && !(a.piso === 0 || r.acceso_sin_escalones === 1 || (r.ascensor === 1 && r.sin_ascensor !== 1))) return false;
+  if (EXPLORADOR && estado.necesidades.has('tranquilo')) {
+    const dba = a.cercania?.ruido_nocturno?.dba;
+    if (!((dba != null && dba < RUIDO_NOCHE_DBA) || r.contrafrente === 1)) return false;
+  }
+  const lugar = lugarActivo();
+  if (lugar && (!a.ubicacion || a.lat == null || metrosEntre(a.lon, a.lat, lugar.lon, lugar.lat) > LUGAR_CERCA_M)) return false;
+  return true;
+}
+
+// El orden de la lista que vale de verdad: si la necesidad que lo habilita no está, se vuelve a «Más avisos».
+function ordenEfectivo() {
+  const tranquilo = EXPLORADOR && estado.necesidades.has('tranquilo');
+  return (estado.ordenBarrios === 'lugar' && !lugarActivo()) || (estado.ordenBarrios === 'ruido' && !tranquilo)
+    ? 'avisos' : estado.ordenBarrios;
+}
+
+// Tono de cada barrio en el mapa (0 = sin avisos que encajen; de 0,001 a 1, más oscuro). Sigue al orden de la lista.
+function escalaBarrios() {
+  const orden = ordenEfectivo();
+  const con = estado.barrios.filter((b) => b.coincidencias > 0);
+  const tono = (x) => Math.max(0.001, Math.min(1, x));
+  const valores = new Map(estado.barrios.map((b) => [b.barrio, 0]));
+  if (orden === 'lugar') {
+    for (const b of con) {
+      const m = metrosLugarBarrio(b.barrio);
+      valores.set(b.barrio, m == null ? 0 : tono(1 - Math.min(m, LUGAR_LEJOS_M) / LUGAR_LEJOS_M));
+    }
+    return { orden, valores };
+  }
+  if (orden === 'ruido') {
+    const altos = con.map((b) => b.entorno?.ruido?.nocturno?.alto).filter((v) => v != null);
+    const min = Math.min(...altos);
+    const max = Math.max(...altos);
+    for (const b of con) {
+      const alto = b.entorno?.ruido?.nocturno?.alto;
+      valores.set(b.barrio, alto == null ? 0 : tono(max > min ? (max - alto) / (max - min) : 1));
+    }
+    return { orden, valores, min, max };
+  }
+  const maximo = Math.max(1, ...estado.barrios.map((b) => b.coincidencias));
+  for (const b of con) valores.set(b.barrio, b.coincidencias / maximo);
+  return { orden: 'avisos', valores, maximo };
+}
+
 function porMes(aviso) {
   if (aviso.expensas == null) return `${dinero(aviso.precio, aviso.moneda)} <span class="fuente">+ expensas sin informar</span>`;
   if (aviso.moneda === 'ARS') return dinero(aviso.precio + aviso.expensas, 'ARS');
@@ -631,8 +697,7 @@ function actualizarComparador() {
 function renderLista() {
   const lugar = lugarActivo();
   const tranquilo = EXPLORADOR && estado.necesidades.has('tranquilo');
-  const orden = (estado.ordenBarrios === 'lugar' && !lugar) || (estado.ordenBarrios === 'ruido' && !tranquilo)
-    ? 'avisos' : estado.ordenBarrios;
+  const orden = ordenEfectivo();
   const ruidoNoche = (b) => b.entorno?.ruido?.nocturno?.alto ?? Infinity;
   const cercania = lugar ? Object.fromEntries(estado.barrios.map((b) => [b.barrio, metrosLugarBarrio(b.barrio) ?? Infinity])) : {};
   const con = estado.barrios.filter((b) => b.coincidencias > 0).sort((a, b) =>
@@ -1605,7 +1670,8 @@ async function prepararMapa() {
       'icon-size': ['interpolate', ['linear'], ['zoom'], 12, ['*', 0.7, porCantidad], 15, porCantidad],
       'icon-anchor': 'bottom', 'icon-offset': [0, 3], // la imagen tiene 3 px de margen debajo de la punta
       'icon-allow-overlap': true, 'icon-ignore-placement': true,
-    } });
+    },
+    paint: { 'icon-opacity': ['case', ['get', 'atenuado'], 0.3, 1] } });
   mapa.addLayer({ id: 'radios', type: 'line', source: 'radios',
     paint: { 'line-color': '#6A4FB3', 'line-width': ['case', ['get', 'seleccionado'], 2.5, 1], 'line-dasharray': [3, 2] } });
   mapa.addLayer({ id: 'inmueble', type: 'circle', source: 'inmueble',
@@ -1717,12 +1783,16 @@ function pintarAvisos() {
   const fuente = mapa?.getSource('avisos');
   if (!fuente) return;
   const grupos = estado.seleccionado ? gruposAvisos() : new Map();
+  // Se vuelve a dibujar si cambian los avisos o lo que hay que resaltar (necesidades o lugar fijo).
+  const resalte = JSON.stringify([criteriosPines(), lugarActivo()]);
   const firma = estado.seleccionado ? estado.avisos : null;
-  if (pinesPintados !== firma) {
-    pinesPintados = firma;
+  if (pinesPintados?.avisos !== firma || pinesPintados?.resalte !== resalte) {
+    pinesPintados = { avisos: firma, resalte };
     fuente.setData({ type: 'FeatureCollection', features: [...grupos].map(([clave, lista]) => ({
       type: 'Feature', geometry: { type: 'Point', coordinates: [lista[0].lon, lista[0].lat] },
-      properties: { clave, cantidad: lista.length, aproximada: lista.every((a) => a.ubicacion === 'aproximada') },
+      properties: { clave, cantidad: lista.length, aproximada: lista.every((a) => a.ubicacion === 'aproximada'),
+        // Atenuado si ningún aviso del punto cumple lo elegido. Sin necesidades con criterio, nada se atenúa.
+        atenuado: lista.every((a) => cumpleNecesidades(a) === false) },
     })) });
   }
   if (estado.pinAbierto && !grupos.has(estado.pinAbierto)) popupAviso?.remove();
@@ -1789,10 +1859,8 @@ function marcarHover(nombre, origen) {
 
 function pintarCoropletas() {
   if (!mapa?.getSource('barrios')) return;
-  const maximo = Math.max(1, ...estado.barrios.map((b) => b.coincidencias));
-  for (const b of estado.barrios) {
-    mapa.setFeatureState({ source: 'barrios', id: b.barrio }, { r: b.coincidencias ? b.coincidencias / maximo : 0 });
-  }
+  const { valores } = escalaBarrios();
+  for (const b of estado.barrios) mapa.setFeatureState({ source: 'barrios', id: b.barrio }, { r: valores.get(b.barrio) || 0 });
   mapa.setPaintProperty('barrios-relleno', 'fill-opacity',
     estado.seleccionado ? ['case', ['boolean', ['feature-state', 'sel'], false], 0, 0.28] : 0.62);
 }
@@ -2082,6 +2150,24 @@ function renderLeyenda() {
   const leyenda = $('#leyenda');
   if (!estado.seleccionado) {
     const maximo = Math.max(0, ...estado.barrios.map((b) => b.coincidencias));
+    const escala = escalaBarrios();
+    const gradiente = `<div class="gradiente" style="background:linear-gradient(90deg,${ESCALA_BARRIOS[1]},${ESCALA_BARRIOS[2]})"></div>`;
+    const sinAvisos = `<ul class="leyenda-items">${muestra(ESCALA_BARRIOS[0], 'Sin avisos que encajen')}</ul>`;
+    if (maximo && escala.orden === 'lugar') {
+      leyenda.innerHTML = `<h3>Cerca de tu lugar fijo</h3>${gradiente}
+        <div class="gradiente-extremos"><span>A ${metrosTexto(LUGAR_LEJOS_M)} o más</span><span>En el barrio</span></div>
+        <ul class="leyenda-items"><li><span class="chip-muestra chip-lugar-fijo"></span>${esc(lugarActivo().nombre)}</li>
+          ${muestra(ESCALA_BARRIOS[0], 'Sin avisos que encajen')}</ul>
+        <p class="fuente">Distancia en línea recta desde tu lugar fijo hasta el borde de cada barrio con avisos que encajan. Sigue al orden «Más cerca de tu lugar fijo» de la lista.</p>`;
+      return;
+    }
+    if (maximo && escala.orden === 'ruido' && Number.isFinite(escala.min)) {
+      leyenda.innerHTML = `<h3>Menos ruido de noche</h3>${gradiente}
+        <div class="gradiente-extremos"><span>${porcentaje(escala.max)} % ruidoso</span><span>${porcentaje(escala.min)} % ruidoso</span></div>
+        ${sinAvisos}
+        <p class="fuente">Parte del barrio con ${RUIDO_NOCHE_DBA} dBA o más de noche en la calle (celdas de 100 m). Más oscuro: más tranquilo. Mide la calle, no el interior. Sigue al orden «Menos ruido de noche» de la lista.</p>`;
+      return;
+    }
     leyenda.innerHTML = maximo ? `<h3>Avisos que encajan por barrio</h3>
       <div class="gradiente" style="background:linear-gradient(90deg,${ESCALA_BARRIOS[1]},${ESCALA_BARRIOS[2]})"></div>
       <div class="gradiente-extremos"><span>1 aviso</span><span>${maximo} ${plural(maximo, 'aviso', 'avisos')}</span></div>
@@ -2094,11 +2180,20 @@ function renderLeyenda() {
   const notas = [];
   const conPunto = estado.avisos.filter((a) => a.ubicacion);
   if (conPunto.length) {
-    const pin = (hueco, etiqueta) => `<li><svg class="muestra-pin" viewBox="0 0 22 30" aria-hidden="true">
+    const dibujoPin = (hueco) => `<svg class="muestra-pin" viewBox="0 0 22 30" aria-hidden="true">
       <path d="M11 29 2.85 15.4A9.5 9.5 0 1 1 19.15 15.4Z" fill="${hueco ? '#FFFFFF' : COLOR.aviso}" stroke="${hueco ? COLOR.aviso : '#FFFFFF'}" stroke-width="2"/>
-      <circle cx="11" cy="10.5" r="3.5" fill="${hueco ? COLOR.aviso : '#FFFFFF'}"/></svg>${esc(etiqueta)}</li>`;
+      <circle cx="11" cy="10.5" r="3.5" fill="${hueco ? COLOR.aviso : '#FFFFFF'}"/></svg>`;
+    const pin = (hueco, etiqueta) => `<li>${dibujoPin(hueco)}${esc(etiqueta)}</li>`;
     bloques.push(`<h3>Avisos que encajan</h3><ul class="leyenda-items">${pin(false, 'Punto publicado')}${
       conPunto.some((a) => a.ubicacion === 'aproximada') ? pin(true, 'Aproximado') : ''}</ul>`);
+    const criterios = criteriosPines();
+    if (criterios.length) {
+      const cumplen = conPunto.filter((a) => cumpleNecesidades(a)).length;
+      bloques.push(`<h3>Según lo que necesitás</h3><ul class="leyenda-items">
+        <li>${dibujoPin(false)}Fuerte: cumple (${cumplen} de ${conPunto.length})</li>
+        <li><span class="pin-atenuado">${dibujoPin(false)}</span>Tenue: no cumple o el aviso no lo dice</li></ul>
+        <p class="leyenda-nota">Fuerte si: ${esc(criterios.join('; '))}. No se oculta ningún aviso.</p>`);
+    }
     notas.push(`<li><strong>Avisos.</strong> ${esc(NOTA_AVISOS)}</li>`);
   }
   for (const c of CAPAS) {
@@ -2419,12 +2514,14 @@ function fijarLugar(lugar) {
   if (mapa) mapa.getCanvas().style.cursor = '';
   if (!estado.lugarFijo && lugar) avisar('Ese punto queda fuera de la Ciudad. Elegí un lugar dentro de CABA.');
   else if (estado.lugarFijo) avisar(`Lugar fijo: ${estado.lugarFijo.nombre}.`);
-  if (estado.ordenBarrios === 'lugar' && !estado.lugarFijo) estado.ordenBarrios = 'avisos';
+  estado.ordenBarrios = estado.lugarFijo ? 'lugar' : (estado.ordenBarrios === 'lugar' ? 'avisos' : estado.ordenBarrios);
   guardar();
   renderLugarFijo();
   pintarLugarFijo();
   renderResumenNecesidades();
   renderPanel();
+  pintarCoropletas();
+  renderLeyenda();
 }
 
 async function aplicarNecesidades() {
@@ -2432,7 +2529,8 @@ async function aplicarNecesidades() {
   sincronizarControles();
   renderLugarFijo();
   pintarLugarFijo();
-  if (!estado.seleccionado) { renderPanel(); return; }
+  pintarCoropletas();
+  if (!estado.seleccionado) { renderPanel(); renderLeyenda(); return; }
   const delitos = estado.capas.has('delitos');
   estado.capas = capasIniciales();
   if (delitos) estado.capas.add('delitos');
@@ -2440,6 +2538,7 @@ async function aplicarNecesidades() {
   actualizarCapas();
   try { await cargarAvisos(); } catch { /* La ficha sigue con los avisos anteriores. */ }
   renderPanel();
+  renderLeyenda();
 }
 
 function enteroDe(texto) {
@@ -2661,6 +2760,8 @@ function conectarEventos() {
     if (e.target.id === 'orden-barrios') {
       estado.ordenBarrios = e.target.value;
       renderLista();
+      pintarCoropletas();
+      renderLeyenda();
       $('#orden-barrios').focus({ preventScroll: true });
     }
   });
@@ -2904,6 +3005,9 @@ function conectarEventos() {
   $('#necesidades')?.addEventListener('change', (e) => {
     const clave = e.target.value;
     if (e.target.checked) estado.necesidades.add(clave); else estado.necesidades.delete(clave);
+    // Al marcar una necesidad que tiene orden propio, la lista y el mapa pasan a ese orden.
+    if (e.target.checked && clave === 'tranquilo') { estado.ordenBarrios = 'ruido'; estado.ruido = 'nocturno'; }
+    if (e.target.checked && clave === 'lugar_fijo' && estado.lugarFijo) estado.ordenBarrios = 'lugar';
     aplicarNecesidades();
   });
   $('#restablecer-necesidades')?.addEventListener('click', () => {
